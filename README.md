@@ -21,6 +21,7 @@ Built on top of [`laravel/ai`](https://github.com/laravel/ai).
 - [Session memory](#session-memory)
 - [Configuration](#configuration)
 - [Built-in tools](#built-in-tools)
+- [Self-healing queue workers](#self-healing-queue-workers)
 - [Limitations](#limitations)
 - [Customization](#customization)
   - [Adding your own tools](#adding-your-own-tools)
@@ -91,6 +92,12 @@ All config options can be set via `.env`. Nothing requires editing a PHP file.
 | `AI_CODE_BUDGET` | `1.00` | Hard spend limit in USD per session |
 | `AI_CODE_SHELL` | `approve` | Shell mode: `off` \| `allowlist` \| `approve` \| `yolo` |
 | `AI_CODE_MEMORY` | `file` | Session persistence: `none` \| `file` \| `database` |
+| `AI_CODE_HEALING_ENABLED` | `false` | Enable the self-healing queue worker feature |
+| `AI_CODE_HEALING_MODE` | `pr` | Healing mode: `pr` \| `patch` |
+| `AI_CODE_HEALING_QUEUE` | `healer` | Queue name for the `HealJobFailure` job |
+| `AI_CODE_HEALING_THRESHOLD` | `1` | Failures before healing is triggered |
+| `AI_CODE_HEALING_BASE_BRANCH` | `main` | Base branch for fix pull requests |
+| `GITHUB_TOKEN` | — | GitHub token for opening pull requests (pr mode) |
 
 ---
 
@@ -301,6 +308,136 @@ These tools are available to the agent in every session.
 
 All file reads happen in-process. Everything that executes code runs as a
 subprocess, so a broken generated file cannot crash the agent session.
+
+---
+
+## Self-healing queue workers
+
+When enabled, Tackle listens for every failed queue job and automatically
+dispatches an AI agent to diagnose the exception, patch the code, verify the fix
+with your test suite, and either open a pull request or apply the fix directly —
+all without you lifting a finger.
+
+### How it works
+
+1. A job fails → Laravel fires the `JobFailed` event.
+2. Tackle's `JobFailureListener` picks it up and dispatches a `HealJobFailure`
+   job to the `healer` queue (a separate queue from your normal workers).
+3. A dedicated queue worker picks up `HealJobFailure`. It:
+   - Creates an **isolated git worktree** on a fresh branch (`tackle/heal-{id}`).
+   - Spins up a `HealingAgent` pointed at that worktree.
+   - Feeds the agent the exception class, message, stack trace, and (if
+     [Telescope](https://laravel.com/docs/telescope) is installed) the full
+     Telescope exception entry.
+   - The agent reads the failing code, applies a minimal fix via `EditFile`, and
+     runs your test suite to verify.
+4. After the agent finishes:
+   - **`pr` mode (default):** pushes the branch to GitHub and opens a pull
+     request with the agent's reasoning as the description.
+   - **`patch` mode:** merges the fix back into your main workspace branch and
+     re-dispatches the original job.
+5. The worktree is cleaned up regardless of outcome.
+
+### Prerequisites
+
+- Your project must be a **git repository** with a remote named `origin`.
+- A **queue worker** must be running the `healer` queue (see below).
+- For PR mode, a **GitHub personal access token** is required.
+- For `patch` mode, the working tree must be clean when healing runs.
+
+### Enabling the healer
+
+In `.env`:
+
+```env
+AI_CODE_HEALING_ENABLED=true
+```
+
+That's it. The `JobFailed` listener registers automatically via the service
+provider once this is set to `true`.
+
+### Starting the healer worker
+
+The healer runs on a dedicated queue to avoid competing with your normal
+workers:
+
+```bash
+php artisan queue:work --queue=healer
+```
+
+Run this alongside your existing workers. In production (Supervisor, Forge, etc.)
+add a separate process group for the `healer` queue.
+
+### GitHub token setup
+
+For PR mode, Tackle needs a GitHub token with the `repo` scope.
+
+**Resolution order:**
+
+1. `GITHUB_TOKEN` in `.env` (or the `ai-code.healing.github_token` config key)
+2. GitHub CLI (`~/.config/gh/hosts.yml`) — if you have `gh` installed and
+   authenticated, Tackle reads your token automatically with no extra config.
+3. If no token is found, the branch is pushed but the PR is not opened. A log
+   entry records that you need to configure a token.
+
+```env
+GITHUB_TOKEN=ghp_...
+```
+
+### Configuration
+
+All healer options live under the `healing` key in `config/ai-code.php`:
+
+| Option | Env var | Default | Description |
+|---|---|---|---|
+| `enabled` | `AI_CODE_HEALING_ENABLED` | `false` | Enable or disable the healer |
+| `mode` | `AI_CODE_HEALING_MODE` | `pr` | `pr` = open a pull request; `patch` = apply directly |
+| `queue` | `AI_CODE_HEALING_QUEUE` | `healer` | Queue name for the `HealJobFailure` job |
+| `threshold` | `AI_CODE_HEALING_THRESHOLD` | `1` | Number of failures before healing triggers |
+| `base_branch` | `AI_CODE_HEALING_BASE_BRANCH` | `main` | Branch PRs are opened against |
+| `branch_prefix` | `AI_CODE_HEALING_BRANCH_PREFIX` | `tackle/heal-` | Prefix for fix branches |
+| `github_token` | `GITHUB_TOKEN` | `null` | GitHub token for opening PRs |
+| `telescope` | `AI_CODE_HEALING_TELESCOPE` | `true` | Use Telescope context if available |
+
+### Failure threshold
+
+By default (`threshold=1`) the healer triggers on the first failure. If you want
+the healer to wait until a job has failed a certain number of times before
+intervening (e.g. to let transient failures resolve themselves), set:
+
+```env
+AI_CODE_HEALING_THRESHOLD=3
+```
+
+### PR mode vs patch mode
+
+| | `pr` (default) | `patch` |
+|---|---|---|
+| Human review required | Yes — merge the PR | No — merged automatically |
+| Tests must pass | No (PR opened regardless) | Yes (only merges on green) |
+| Job re-dispatched | No | Yes, after merge |
+| Best for | Production / sensitive code | CI environments / trusted agents |
+
+### Laravel Telescope integration
+
+If [Laravel Telescope](https://laravel.com/docs/telescope) is installed in your
+application, Tackle uses it to give the agent richer context: the full exception
+entry including class, message, and stack frames. No extra configuration is
+needed — Tackle detects Telescope automatically and degrades gracefully if it is
+not present.
+
+### Healer limitations
+
+- The healer targets **code bugs** — logic errors the AI can diagnose and fix.
+  It is not designed for infrastructure issues (database down, disk full, etc.).
+- The fix branch is pushed to `origin` — your CI pipeline will run on it and
+  can catch anything the local test run missed.
+- In `patch` mode, if tests fail the healer falls back to PR mode automatically
+  so nothing is merged without verification.
+- The healer never modifies `.env`, `vendor/`, `storage/`, or `.git/` — the
+  same path guards apply as in interactive mode.
+- `HealJobFailure` itself has `$tries = 1`. A failing healer does not create a
+  healing loop.
 
 ---
 
@@ -572,6 +709,37 @@ composer require laravel/pint --dev
 This is expected behaviour. When `RunTests` returns failures, the agent reads the
 output and attempts to fix the code. If it gets stuck, tell it what the failure
 means or paste the relevant stack trace as your next message.
+
+### Healer branch is pushed but no PR is opened
+
+Tackle could not find a GitHub token. Check the resolution order:
+
+1. `GITHUB_TOKEN` in `.env`
+2. GitHub CLI: run `gh auth status` — if it shows "not logged in", run `gh auth login`
+3. `ai-code.healing.github_token` in `config/ai-code.php`
+
+### `git worktree add failed`
+
+This means either:
+- The project is not inside a git repository. Run `git init && git commit -am "initial"`.
+- The branch name already exists. Delete it: `git branch -D tackle/heal-<id>` and retry.
+
+### Healer ran but didn't fix the bug
+
+The agent's fix will be in the PR (or logged). Review the PR description for the
+agent's reasoning. If the diagnosis was wrong, close the PR and fix it manually —
+the agent's attempt gives you a starting point and a working branch to build on.
+
+### Healer triggered a loop
+
+`HealJobFailure` has `$tries = 1`, so a failing healer cannot create a loop with
+itself. If you see repeated healer jobs it means the original job keeps failing
+and `threshold` is set to 1. Raise the threshold or disable healing until the
+root cause is resolved:
+
+```env
+AI_CODE_HEALING_ENABLED=false
+```
 
 ---
 

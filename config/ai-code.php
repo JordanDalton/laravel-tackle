@@ -125,4 +125,46 @@ return [
     */
     'memory' => env('AI_CODE_MEMORY', 'file'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Self-Healing Queue Workers
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, every failed queue job triggers the Tackle Healer:
+    | an AI agent that reads the exception, locates the failing code, applies
+    | a minimal patch in an isolated git worktree, runs your test suite, then
+    | either commits the fix directly (mode=patch) or opens a GitHub PR
+    | (mode=pr) for human review. Set AI_CODE_HEALING_ENABLED=true to opt in.
+    |
+    | mode:
+    |   pr    - Push a fix branch and open a GitHub PR (default — safest).
+    |   patch - Merge the fix back to the working tree and re-dispatch the job.
+    |
+    | threshold:
+    |   Number of times a job class must fail before healing is triggered.
+    |   Default 1 = heal on the first failure.
+    |
+    | queue:
+    |   The queue name the HealJobFailure job runs on. Run a separate worker:
+    |   php artisan queue:work --queue=healer
+    |
+    | base_branch:
+    |   The branch that fix PRs are opened against.
+    |
+    | github_token:
+    |   Personal access token used to open PRs. Resolution order:
+    |   GITHUB_TOKEN env var → GitHub CLI (~/.config/gh/hosts.yml) → null.
+    |
+    */
+    'healing' => [
+        'enabled'       => env('AI_CODE_HEALING_ENABLED', false),
+        'mode'          => env('AI_CODE_HEALING_MODE', 'pr'),
+        'queue'         => env('AI_CODE_HEALING_QUEUE', 'healer'),
+        'threshold'     => (int) env('AI_CODE_HEALING_THRESHOLD', 1),
+        'branch_prefix' => env('AI_CODE_HEALING_BRANCH_PREFIX', 'tackle/heal-'),
+        'base_branch'   => env('AI_CODE_HEALING_BASE_BRANCH', 'main'),
+        'github_token'  => env('GITHUB_TOKEN', null),
+        'telescope'     => env('AI_CODE_HEALING_TELESCOPE', true),
+    ],
+
 ];

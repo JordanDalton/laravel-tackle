@@ -9,9 +9,9 @@ class PathGuard
     /** @var list<string> */
     private array $protectedPatterns;
 
-    public function __construct()
+    public function __construct(?string $workspace = null)
     {
-        $raw = config('ai-code.workspace') ?? base_path();
+        $raw = $workspace ?? config('ai-code.workspace') ?? base_path();
         $this->workspace = rtrim(
             (is_dir($raw) ? (realpath($raw) ?: $raw) : $raw),
             DIRECTORY_SEPARATOR
