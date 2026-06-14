@@ -9,11 +9,15 @@ use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Tackle\Agents\DefaultCodingAgent;
 use Tackle\Commands\CodeCommand;
+use Tackle\Commands\ExplainCommand;
+use Tackle\Commands\HealthCommand;
 use Tackle\Commands\HealingLogCommand;
 use Tackle\Commands\InstallCommand;
 use Tackle\Commands\MakeAgentCommand;
 use Tackle\Commands\MakeToolCommand;
+use Tackle\Commands\ReplayCommand;
 use Tackle\Commands\ReviewCommand;
+use Tackle\Commands\TestCommand;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Healing\JobFailureListener;
 use Tackle\Healing\ScheduledTaskFailureListener;
@@ -28,9 +32,13 @@ class TackleServiceProvider extends PackageServiceProvider
             ->hasMigration('create_tackle_healing_log_table')
             ->hasCommands([
                 InstallCommand::class,
+                HealthCommand::class,
                 CodeCommand::class,
                 ReviewCommand::class,
+                ExplainCommand::class,
+                TestCommand::class,
                 HealingLogCommand::class,
+                ReplayCommand::class,
                 MakeToolCommand::class,
                 MakeAgentCommand::class,
             ]);

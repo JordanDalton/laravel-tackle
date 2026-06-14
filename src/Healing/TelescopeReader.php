@@ -12,6 +12,35 @@ class TelescopeReader
      * Returns an empty string if Telescope is not installed or the entry
      * is not found — callers must tolerate a blank result.
      */
+    public function recent(int $limit = 10): string
+    {
+        if (! class_exists('Laravel\Telescope\Telescope')) {
+            return '';
+        }
+
+        try {
+            $rows = DB::table('telescope_entries')
+                ->where('type', 'exception')
+                ->orderByDesc('created_at')
+                ->limit($limit)
+                ->get();
+
+            if ($rows->isEmpty()) {
+                return 'No recent Telescope exception entries found.';
+            }
+
+            return $rows->map(function ($row) {
+                $content = json_decode($row->content ?? '{}', true) ?? [];
+                $class   = $content['class']   ?? '';
+                $message = $content['message'] ?? '';
+                $when    = $row->created_at    ?? '';
+                return "[{$when}] {$class}: {$message}";
+            })->implode("\n");
+        } catch (Throwable) {
+            return '';
+        }
+    }
+
     public function forJob(string $jobUuid): string
     {
         if (!config('ai-code.healing.telescope', true)) {

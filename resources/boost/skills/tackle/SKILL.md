@@ -53,6 +53,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 | `ReadLog` | Tail `storage/logs/laravel.log` with optional filter |
 | `ListRoutes` | Registered routes — method, URI, name, action |
 | `GitDiff` | Git diff — supports staged, commit, against, path, stat |
+| `ReadTelescopeEntry` | Telescope exception entries — by job UUID or recent list |
 
 ---
 
@@ -262,6 +263,50 @@ php artisan ai:review --focus=security,performance
 ```
 
 The `ReviewAgent` is read-only — it has `ReadFile`, `Glob`, and `SearchCode` but no editing tools. It reads full files for context before commenting on any changed function.
+
+---
+
+## Explain code
+
+```bash
+php artisan ai:explain app/Services/BillingService.php
+php artisan ai:explain app/Services/BillingService.php --method=charge
+```
+
+The `ExplainAgent` is read-only. It reads the full file and any related classes before explaining.
+
+---
+
+## Generate tests
+
+```bash
+php artisan ai:test app/Services/BillingService.php
+php artisan ai:test app/Services/BillingService.php --method=charge
+php artisan ai:test app/Http/Controllers/UserController.php --feature
+php artisan ai:test app/Services/BillingService.php --unit
+```
+
+The `TestWriterAgent` reads the class, checks existing test conventions, writes a Pest test file, then runs the tests to confirm they pass. Test type is inferred from the path when no flag is given.
+
+---
+
+## Health check
+
+```bash
+php artisan tackle:health
+```
+
+Checks: config published, API key set, git repo with commits, `.env.testing` present, and (if healing enabled) migration run and GitHub token available.
+
+---
+
+## Replay a healing attempt
+
+```bash
+php artisan tackle:replay                                    # last attempt
+php artisan tackle:replay --class="App\Jobs\ProcessPayment" # last for a class
+php artisan tackle:replay --id=42                           # specific log entry
+```
 
 ---
 

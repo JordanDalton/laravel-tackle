@@ -11,6 +11,10 @@ The harness ships with three built-in agents (`ai:code`, `ai:review`, self-heale
 - `php artisan tackle:healing-log` — view the audit log of all healing attempts. Accepts `--type`, `--outcome`, and `--limit` filters.
 - `php artisan tackle:tool ToolName` — scaffold a new tool class at `app/Ai/Tools/ToolName.php`.
 - `php artisan tackle:agent AgentName` — scaffold a new agent at `app/Ai/AgentName.php`. Pass `--full` for a bare `CodingAgent` implementation instead of a `DefaultCodingAgent` subclass.
+- `php artisan ai:explain {path}` — explain what a file or class does in plain English. Pass `--method=` to focus on a specific method.
+- `php artisan ai:test {path}` — generate Pest tests for a class or method. Pass `--method=`, `--feature`, or `--unit`.
+- `php artisan tackle:health` — verify the package is correctly configured (API key, git, config, healing setup).
+- `php artisan tackle:replay` — re-dispatch a previous healing attempt. Pass `--id=` or `--class=` to target a specific entry.
 
 ### Key environment variables
 
@@ -73,6 +77,7 @@ The coding agent has access to these tools:
 - `ReadLog` — tail `storage/logs/laravel.log` with optional filter string
 - `ListRoutes` — formatted route table with method, URI, name, action
 - `GitDiff` — git diff with support for `staged`, `commit`, `against`, `path`, and `stat` options
+- `ReadTelescopeEntry` — Telescope exception entries by job UUID or recent list; no-ops if Telescope is not installed
 
 ### Customization
 

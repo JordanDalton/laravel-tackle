@@ -19,6 +19,7 @@ use Tackle\Tools\ListRoutes;
 use Tackle\Tools\QueryDatabase;
 use Tackle\Tools\ReadFile;
 use Tackle\Tools\ReadLog;
+use Tackle\Tools\ReadTelescopeEntry;
 use Tackle\Tools\RunArtisan;
 use Tackle\Tools\RunPint;
 use Tackle\Tools\RunShell;
@@ -52,6 +53,7 @@ class DefaultCodingAgent implements CodingAgent
         private readonly ReadLog $readLog,
         private readonly GitDiff $gitDiff,
         private readonly ListRoutes $listRoutes,
+        private readonly ReadTelescopeEntry $readTelescopeEntry,
     ) {}
 
     protected function provider(): string
@@ -132,6 +134,7 @@ class DefaultCodingAgent implements CodingAgent
             $this->readLog,
             $this->gitDiff,
             $this->listRoutes,
+            $this->readTelescopeEntry,
         ];
     }
 }

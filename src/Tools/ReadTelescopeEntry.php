@@ -12,15 +12,16 @@ class ReadTelescopeEntry extends AbstractTool
 
     public function description(): string
     {
-        return 'Look up a Telescope exception entry for a given job UUID. Returns the exception class, message, and truncated stack trace if Telescope is installed and has an entry for this job. Returns empty string if not available.';
+        return 'Read Telescope exception entries. Pass job_uuid to look up a specific failed job, or omit it to retrieve the most recent exceptions. Returns an empty result if Telescope is not installed.';
     }
 
     public function schema(JsonSchema $schema): array
     {
         return [
             'job_uuid' => $schema->string()
-                ->description('The UUID of the failed job to look up in Telescope.')
-                ->required(),
+                ->description('UUID of a specific failed job to look up. Omit to return recent exceptions.'),
+            'limit' => $schema->integer()
+                ->description('Number of recent exceptions to return when no job_uuid is given. Defaults to 10.'),
         ];
     }
 
@@ -28,12 +29,14 @@ class ReadTelescopeEntry extends AbstractTool
     {
         $uuid = $request->string('job_uuid', '');
 
-        if ($uuid === '') {
-            return 'No job_uuid provided.';
+        if ($uuid !== '') {
+            $entry = $this->reader->forJob($uuid);
+            return $entry !== '' ? $entry : 'No Telescope entry found for this job UUID.';
         }
 
-        $entry = $this->reader->forJob($uuid);
+        $limit  = max(1, min(50, (int) $request->integer('limit', 10)));
+        $result = $this->reader->recent($limit);
 
-        return $entry !== '' ? $entry : 'No Telescope entry found for this job UUID.';
+        return $result !== '' ? $result : 'No Telescope exception entries found.';
     }
 }

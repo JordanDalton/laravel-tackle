@@ -11,13 +11,11 @@ purpose-built for Laravel and installed directly into your app via Composer.
 The harness ships with three built-in agents and a full tool infrastructure you
 can extend or build on top of:
 
-- **`ai:code`** — an interactive coding agent that reads your codebase, edits
-  files, runs tests, and formats code
-- **`ai:review`** — a read-only agent that reviews git diffs and surfaces real
-  issues with severity levels
-- **Self-healer** — an autonomous agent that listens for failed jobs and
-  scheduled tasks, diagnoses the exception, patches the code, and opens a PR
-  or applies the fix — without you lifting a finger
+- **`ai:code`** — an interactive coding agent that reads your codebase, edits files, runs tests, and formats code
+- **`ai:review`** — a read-only agent that reviews git diffs and surfaces real issues with severity levels
+- **`ai:explain`** — explains what a file, class, or method does in plain English
+- **`ai:test`** — generates a Pest test file for any class or method
+- **Self-healer** — an autonomous agent that listens for failed jobs and scheduled tasks, diagnoses the exception, patches the code, and opens a PR or applies the fix — without you lifting a finger
 
 Every agent runs through the same tool infrastructure and safety layer. You can
 add your own tools, write new agents, and swap the default agent entirely —
@@ -43,6 +41,10 @@ Built on top of [`laravel/ai`](https://github.com/laravel/ai).
   - [Per-class opt-out](#per-class-opt-out)
   - [Audit log](#audit-log)
 - [Code review](#code-review)
+- [Explain code](#explain-code)
+- [Generate tests](#generate-tests)
+- [Health check](#health-check)
+- [Replay a healing attempt](#replay-a-healing-attempt)
 - [Limitations](#limitations)
 - [Customization](#customization)
   - [Adding your own tools](#adding-your-own-tools)
@@ -358,6 +360,7 @@ These tools are available to the agent in every session.
 | `QueryDatabase` | Runs a read-only `SELECT` query and returns results as JSON. Capped at 100 rows. |
 | `ListRoutes` | Returns a formatted table of all registered routes with method, URI, name, and action. |
 | `GitDiff` | Shows a git diff — supports staged, a specific commit, a branch range, or a path. |
+| `ReadTelescopeEntry` | Reads Telescope exception entries. Pass a job UUID for a specific lookup, or omit to return recent exceptions. No-ops gracefully if Telescope is not installed. |
 
 All file reads happen in-process. Everything that executes code runs as a
 subprocess, so a broken generated file cannot crash the agent session.
@@ -638,6 +641,83 @@ php artisan ai:review --staged --focus=bugs,security
 
 Any plain-language description works — `security`, `performance`, `n+1 queries`,
 `missing tests`, `breaking changes`, etc.
+
+---
+
+## Explain code
+
+`php artisan ai:explain` reads a file or class and explains what it does in plain
+English — inputs, outputs, side effects, and any non-obvious behaviour. The agent
+reads the full file and any closely-related classes before responding.
+
+```bash
+# Explain a whole file
+php artisan ai:explain app/Services/BillingService.php
+
+# Focus on a specific method
+php artisan ai:explain app/Services/BillingService.php --method=charge
+```
+
+---
+
+## Generate tests
+
+`php artisan ai:test` reads a class, checks your existing test conventions, and
+writes a Pest test file covering the happy path, edge cases, and error conditions.
+It runs the tests after writing to confirm they pass.
+
+```bash
+# Generate tests for a class
+php artisan ai:test app/Services/BillingService.php
+
+# Focus on a single method
+php artisan ai:test app/Services/BillingService.php --method=charge
+
+# Force a feature or unit test
+php artisan ai:test app/Http/Controllers/UserController.php --feature
+php artisan ai:test app/Services/BillingService.php --unit
+```
+
+Test type is inferred from the path when no flag is given — controllers, jobs,
+commands, listeners, and middleware default to `Feature`; everything else defaults
+to `Unit`.
+
+---
+
+## Health check
+
+`php artisan tackle:health` verifies that the package is correctly set up. Run it
+after installation or when something isn't working as expected.
+
+```bash
+php artisan tackle:health
+```
+
+It checks:
+
+- `config/ai-code.php` and `config/ai.php` are published
+- An API key is configured for the active provider
+- The project is a git repository with at least one commit
+- `.env.testing` exists (warns if missing)
+- If healing is enabled: migration has been run, GitHub token is available
+
+---
+
+## Replay a healing attempt
+
+`php artisan tackle:replay` re-dispatches a previous healing attempt — useful when
+you want to retry after adjusting config or fixing something manually.
+
+```bash
+# Replay the most recent healing attempt
+php artisan tackle:replay
+
+# Replay the last attempt for a specific job class
+php artisan tackle:replay --class="App\Jobs\ProcessPayment"
+
+# Replay a specific log entry by ID
+php artisan tackle:replay --id=42
+```
 
 ---
 
