@@ -2,9 +2,11 @@
 
 namespace Tackle\Support;
 
+use Tackle\Support\WorktreeManager;
+
 class PathGuard
 {
-    private string $workspace;
+    private string $configuredWorkspace;
 
     /** @var list<string> */
     private array $protectedPatterns;
@@ -12,7 +14,7 @@ class PathGuard
     public function __construct(?string $workspace = null)
     {
         $raw = $workspace ?? config('tackle.workspace') ?? base_path();
-        $this->workspace = rtrim(
+        $this->configuredWorkspace = rtrim(
             (is_dir($raw) ? (realpath($raw) ?: $raw) : $raw),
             DIRECTORY_SEPARATOR
         );
@@ -42,19 +44,20 @@ class PathGuard
 
     private function check(string $path): ?string
     {
-        $resolved = $this->resolve($path);
+        $ws       = $this->workspace();
+        $resolved = $this->resolve($path, $ws);
 
         if ($resolved === null) {
             return "Path '{$path}' could not be resolved to a real location.";
         }
 
-        if (! str_starts_with($resolved, $this->workspace . DIRECTORY_SEPARATOR)
-            && $resolved !== $this->workspace) {
-            return "Path '{$path}' is outside the workspace root '{$this->workspace}'.";
+        if (! str_starts_with($resolved, $ws . DIRECTORY_SEPARATOR)
+            && $resolved !== $ws) {
+            return "Path '{$path}' is outside the workspace root '{$ws}'.";
         }
 
         $relative = ltrim(
-            substr($resolved, strlen($this->workspace)),
+            substr($resolved, strlen($ws)),
             DIRECTORY_SEPARATOR
         );
 
@@ -71,11 +74,11 @@ class PathGuard
      * Resolve a path that may not exist yet by walking up to the
      * nearest existing ancestor and joining the remaining segments.
      */
-    private function resolve(string $path): ?string
+    private function resolve(string $path, string $ws): ?string
     {
         // Absolute path provided directly.
         if (! str_starts_with($path, DIRECTORY_SEPARATOR)) {
-            $path = $this->workspace . DIRECTORY_SEPARATOR . $path;
+            $path = $ws . DIRECTORY_SEPARATOR . $path;
         }
 
         // realpath() only works for existing paths.
@@ -104,7 +107,11 @@ class PathGuard
 
     public function workspace(): string
     {
-        return $this->workspace;
+        if (app()->bound(WorktreeManager::class) && app(WorktreeManager::class)->active()) {
+            return app(WorktreeManager::class)->path();
+        }
+
+        return $this->configuredWorkspace;
     }
 
     /**

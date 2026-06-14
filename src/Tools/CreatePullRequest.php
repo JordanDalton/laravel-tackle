@@ -6,11 +6,15 @@ use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
 use Tackle\Support\GitHubClient;
+use Tackle\Support\PathGuard;
 use Throwable;
 
 class CreatePullRequest extends AbstractTool
 {
-    public function __construct(private GitHubClient $client) {}
+    public function __construct(
+        private GitHubClient $client,
+        private PathGuard $pathGuard,
+    ) {}
 
     public function description(): string
     {
@@ -59,29 +63,29 @@ class CreatePullRequest extends AbstractTool
         $escapedTitle  = escapeshellarg($title);
 
         // Check there's something to commit
-        $status = Process::path(base_path())->run('git status --porcelain');
+        $status = Process::path($this->pathGuard->workspace())->run('git status --porcelain');
         if (trim($status->output()) === '') {
             return 'No changes to commit. Make sure the agent has edited files before opening a PR.';
         }
 
         try {
             // Create and switch to the new branch
-            $checkout = Process::path(base_path())->run("git checkout -b {$escapedBranch}");
+            $checkout = Process::path($this->pathGuard->workspace())->run("git checkout -b {$escapedBranch}");
             if (! $checkout->successful()) {
                 return 'Failed to create branch: ' . trim($checkout->errorOutput());
             }
 
             // Stage all changes (respects .gitignore)
-            Process::path(base_path())->run('git add -A');
+            Process::path($this->pathGuard->workspace())->run('git add -A');
 
             // Commit
-            $commit = Process::path(base_path())->run("git commit -m {$escapedTitle}");
+            $commit = Process::path($this->pathGuard->workspace())->run("git commit -m {$escapedTitle}");
             if (! $commit->successful()) {
                 return 'Commit failed: ' . trim($commit->errorOutput());
             }
 
             // Push
-            $push = Process::path(base_path())->run("git push origin {$escapedBranch}");
+            $push = Process::path($this->pathGuard->workspace())->run("git push origin {$escapedBranch}");
             if (! $push->successful()) {
                 return 'Push failed: ' . trim($push->errorOutput());
             }

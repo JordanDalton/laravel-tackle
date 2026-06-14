@@ -4,11 +4,12 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
 use Tackle\Support\GitHubClient;
+use Tackle\Support\PathGuard;
 use Tackle\Tools\CreatePullRequest;
 
 function makePrTool(): CreatePullRequest
 {
-    return new CreatePullRequest(app(GitHubClient::class));
+    return new CreatePullRequest(app(GitHubClient::class), app(PathGuard::class));
 }
 
 function fakeGitSuccess(string $statusOutput = ' M app/Foo.php'): void

@@ -21,6 +21,7 @@ use Tackle\Commands\ReviewCommand;
 use Tackle\Commands\TestCommand;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Healing\JobFailureListener;
+use Tackle\Support\WorktreeManager;
 use Tackle\Healing\ScheduledTaskFailureListener;
 
 class TackleServiceProvider extends PackageServiceProvider
@@ -49,6 +50,7 @@ class TackleServiceProvider extends PackageServiceProvider
     public function packageRegistered(): void
     {
         $this->app->bind(CodingAgent::class, DefaultCodingAgent::class);
+        $this->app->singleton(WorktreeManager::class);
     }
 
     public function packageBooted(): void

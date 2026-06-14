@@ -11,6 +11,7 @@ use Laravel\Ai\Streaming\Events\ToolResult;
 use Laravel\Prompts\Stream;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Support\BudgetTracker;
+use Tackle\Support\WorktreeManager;
 
 use function Laravel\Prompts\error as promptError;
 use function Laravel\Prompts\intro;
@@ -29,7 +30,9 @@ class CodeCommand extends Command
         {--off : Shorthand for --shell=off}
         {--allowlist : Shorthand for --shell=allowlist}
         {--approve : Shorthand for --shell=approve}
-        {--yolo : Shorthand for --shell=yolo}';
+        {--yolo : Shorthand for --shell=yolo}
+        {--worktree : Force worktree isolation for this session}
+        {--no-worktree : Disable worktree isolation for this session}';
 
     protected $description = 'Start an interactive AI coding session powered by Laravel Tackle.';
 
@@ -37,7 +40,7 @@ class CodeCommand extends Command
     private array   $history      = [];
     private ?array  $fileIndex    = null;
 
-    public function handle(CodingAgent $agent, BudgetTracker $budget): int
+    public function handle(CodingAgent $agent, BudgetTracker $budget, WorktreeManager $worktrees): int
     {
         if (! App::runningInConsole()) {
             $this->error('ai:code must be run from the terminal.');
@@ -65,12 +68,35 @@ class CodeCommand extends Command
             config(['tackle.shell' => $shell]);
         }
 
+        $useWorktree = $this->resolveWorktreeMode();
+
+        if ($useWorktree) {
+            try {
+                $worktrees->create();
+            } catch (\RuntimeException $e) {
+                $this->warn('Could not create worktree: ' . $e->getMessage() . ' — falling back to live workspace.');
+                $useWorktree = false;
+            }
+        }
+
+        try {
+            return $this->runSession($agent, $budget, $useWorktree);
+        } finally {
+            if ($worktrees->active()) {
+                $worktrees->cleanup();
+            }
+        }
+    }
+
+    private function runSession(CodingAgent $agent, BudgetTracker $budget, bool $worktree): int
+    {
         $model     = config('tackle.model', 'claude-sonnet-4-6');
         $budgetUsd = config('tackle.budget_usd', 1.00);
         $shellMode = $this->resolveShellMode();
+        $wtLabel   = $worktree ? ' · worktree: on' : '';
 
         title('Tackle — Ready');
-        intro("Laravel Tackle  ·  {$model}  ·  \${$budgetUsd} budget  ·  shell: {$shellMode}");
+        intro("Laravel Tackle  ·  {$model}  ·  \${$budgetUsd} budget  ·  shell: {$shellMode}{$wtLabel}");
 
         while (true) {
             $task = (new TackleSuggestPrompt(
@@ -117,6 +143,26 @@ class CodeCommand extends Command
             $this->line('');
             $this->line('<fg=gray>─────────────────────────────────────────────────────────</>');
         }
+    }
+
+    private function resolveWorktreeMode(): bool
+    {
+        if ($this->option('worktree')) {
+            return true;
+        }
+
+        if ($this->option('no-worktree')) {
+            return false;
+        }
+
+        $config = config('tackle.worktree', false);
+
+        if (is_array($config)) {
+            $env = app()->environment();
+            return (bool) ($config[$env] ?? $config['*'] ?? false);
+        }
+
+        return (bool) $config;
     }
 
     private function runAgentTurn(CodingAgent $agent, BudgetTracker $budget, string $task): void

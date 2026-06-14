@@ -145,6 +145,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Worktree Isolation
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, ai:code creates a temporary git worktree at the start of
+    | each session. The agent edits files in the worktree copy — live production
+    | files are never touched. Changes are committed and pushed via CreatePullRequest.
+    |
+    | Can be a boolean or an APP_ENV-keyed array. Use AI_CODE_WORKTREE=true/false
+    | in .env to override. The --worktree / --no-worktree flags on ai:code also
+    | override for a single session.
+    |
+    */
+    'worktree' => [
+        'local'      => env('AI_CODE_WORKTREE', false),
+        'staging'    => env('AI_CODE_WORKTREE', false),
+        'production' => env('AI_CODE_WORKTREE', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Workspace
     |--------------------------------------------------------------------------
     |
