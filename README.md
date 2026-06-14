@@ -81,7 +81,7 @@ Run through this checklist once before your first session:
       clean git state is your undo button.
 - [ ] Set `ANTHROPIC_API_KEY` in `.env` (or the key for your chosen provider).
 - [ ] Publish the `laravel/ai` config: `php artisan vendor:publish --provider="Laravel\Ai\AiServiceProvider"`
-- [ ] Publish the Tackle config: `php artisan vendor:publish --tag="tackle-config"`
+- [ ] Publish the Tackle config: `php artisan vendor:publish --tag="tackle-config"` (publishes as `config/tackle.php`)
 - [ ] Run `php artisan ai:code` and type a small test task to confirm everything connects.
 
 ---
@@ -129,7 +129,8 @@ All config options can be set via `.env`. Nothing requires editing a PHP file.
 | `AI_CODE_MODEL` | `claude-sonnet-4-6` | Model to use |
 | `AI_CODE_MAX_STEPS` | `40` | Max tool-call cycles per agent turn |
 | `AI_CODE_BUDGET` | `1.00` | Hard spend limit in USD per session |
-| `AI_CODE_SHELL` | `approve` | Shell mode: `off` \| `allowlist` \| `approve` \| `yolo` |
+| `AI_CODE_SHELL` | `approve` | Shell mode: `off` \| `allowlist` \| `approve` \| `yolo`. Can be set per-environment in `config/tackle.php` — production defaults to `off`. |
+| `AI_CODE_WORKTREE` | `false` | Enable worktree isolation (production defaults to `true`). |
 | `AI_CODE_MEMORY` | `file` | Session persistence: `none` \| `file` \| `database` |
 | `AI_CODE_HEALING_ENABLED` | `false` | Enable the self-healing queue worker feature |
 | `AI_CODE_HEALING_MODE` | `pr` | Healing mode: `pr` \| `patch` |
@@ -175,6 +176,26 @@ php artisan ai:code --yolo         # shorthand
 ```
 
 The flag is session-scoped and does not persist to config.
+
+### Worktree mode
+
+Worktree mode runs the agent against an isolated git worktree rather than your
+live files. All edits land in a temp directory; nothing touches your working
+tree until you open a PR.
+
+```bash
+php artisan ai:code --worktree      # force on for this session
+php artisan ai:code --no-worktree   # force off for this session
+```
+
+When active, the intro line shows `· worktree: on` and a note box explains that
+live files are untouched. After each turn, the git diff stat is labelled
+**"Worktree changes (live files untouched)"** so it's clear no production code
+has been modified.
+
+Production environments default to `worktree: on` (see [Configuration](#configuration)).
+Worktrees are cleaned up automatically when the session ends. Use `tackle:prune`
+to remove any that were left behind by interrupted sessions.
 
 ### Interactive UX
 
@@ -298,7 +319,7 @@ Then set `AI_CODE_MEMORY=database` in `.env`.
 
 ## Configuration
 
-After publishing the config, edit `config/ai-code.php`. All values can be set
+After publishing the config, edit `config/tackle.php`. All values can be set
 via environment variables — see the [Environment variables](#environment-variables)
 table above.
 
@@ -316,12 +337,39 @@ return [
     // Hard spend limit for the session in USD — aborts when exceeded
     'budget_usd' => env('AI_CODE_BUDGET', 1.00),
 
-    // Shell execution policy: off | allowlist | approve | yolo
-    'shell'           => env('AI_CODE_SHELL', 'approve'),
+    // Shell execution policy — string or per-environment array.
+    // String form (backward-compatible): applies to all environments.
+    // Array form: keyed by environment name; production defaults to 'off'.
+    'shell' => [
+        'local'      => env('AI_CODE_SHELL', 'approve'),
+        'staging'    => env('AI_CODE_SHELL', 'approve'),
+        'production' => env('AI_CODE_SHELL', 'off'),
+    ],
+
     'shell_allowlist' => ['composer', 'npm', 'php artisan'],
 
-    // Artisan commands the agent may run without a confirmation prompt
-    'artisan_allowlist' => ['make:*', 'route:list', 'migrate', 'db:seed', 'test'],
+    // Artisan commands the agent may run without confirmation — per environment.
+    // Flat array form is still accepted for backward compatibility.
+    'artisan_allowlist' => [
+        'local'      => ['make:*', 'migrate:*', 'db:seed', 'route:list', 'test'],
+        'staging'    => ['migrate', 'route:list'],
+        'production' => ['route:list'],
+    ],
+
+    // Artisan commands that require an interactive confirmation before running.
+    'artisan_destructive' => [
+        'local'      => ['migrate:fresh', 'migrate:reset', 'migrate:refresh', 'db:wipe'],
+        'staging'    => [],
+        'production' => [],
+    ],
+
+    // Worktree isolation — edits go to a temp worktree instead of live files.
+    // Production defaults to true; other environments default to false.
+    'worktree' => [
+        'local'      => env('AI_CODE_WORKTREE', false),
+        'staging'    => env('AI_CODE_WORKTREE', false),
+        'production' => env('AI_CODE_WORKTREE', true),
+    ],
 
     // Glob patterns (relative to workspace) the agent can never read or write
     'protected_paths' => ['.env', '.env.*', 'storage/*', 'vendor/*', '.git/*'],
@@ -343,10 +391,19 @@ return [
 | `approve` | **Default.** Every command shows a confirmation prompt before running. |
 | `yolo` | Runs anything, no prompt. **Dangerous — CI or fully-trusted environments only.** |
 
-### Artisan allowlist
+Shell mode can be set as a plain string (applies to all environments) or as a
+per-environment array (shown above). The `production` key defaults to `off`.
 
-The `artisan_allowlist` supports glob patterns, so `make:*` covers `make:model`,
-`make:controller`, etc. Commands not matching any pattern are refused.
+### Artisan allowlist and destructive list
+
+`artisan_allowlist` controls which commands the agent may run freely. `artisan_destructive`
+lists commands that require an interactive terminal confirmation before running. Commands
+in neither list are refused outright. Both support glob patterns (`make:*` covers
+`make:model`, `make:controller`, etc.) and can be a flat array (all environments) or a
+per-environment keyed array.
+
+`RunTests` also respects the allowlist — if `test` is not in the allowlist for the
+current environment, the tool is refused.
 
 ### Protected paths
 
@@ -390,6 +447,10 @@ These tools are available to the agent in every session.
 | `ReadTelescopeEntry` | Reads Telescope exception entries. Pass a job UUID for a specific lookup, or omit to return recent exceptions. No-ops gracefully if Telescope is not installed. |
 | `ReadSentryIssue` | Fetches a Sentry issue by ID — exception, stacktrace, breadcrumbs, and request context. Omit the ID to list recent unresolved issues for the configured project. No-ops gracefully if `SENTRY_AUTH_TOKEN` / `SENTRY_ORG` are not set. |
 | `ReadGitHubIssue` | Fetches a GitHub issue by number — title, body, labels, and all comments. Omit the number to list recent open issues. No-ops gracefully if `GITHUB_TOKEN` / `GITHUB_REPO` are not set. |
+| `ReadPullRequest` | Fetches a GitHub pull request by number — title, body, **branch name (head ref)**, base branch, state, author, and comments. Use this (not `ReadGitHubIssue`) when the user references a PR number, especially when the branch name is needed for `CommitAndPush`. |
+| `CreateGitHubIssue` | Opens a new GitHub issue with a title and body. |
+| `CreatePullRequest` | Creates a branch, commits all worktree changes, pushes to origin, and opens a GitHub pull request. |
+| `CommitAndPush` | Stages all changes, fetches the remote branch tip, rebases onto it, commits, and pushes via `HEAD:<branch>` — without checking out the branch. Use this to add follow-up commits to an existing PR from a worktree session. Always pass the `branch` parameter (get it from `ReadPullRequest`). |
 | `AskUser` | Presents the user with a `select()` or `multiselect()` prompt and returns their choice. The agent calls this when there are multiple valid paths and it wants the user to decide. |
 | `ConfirmAction` | Presents the user with a `confirm()` prompt before a destructive or irreversible operation. Returns `"confirmed"` or `"cancelled"`. |
 
@@ -542,7 +603,7 @@ For PR mode, Tackle needs a GitHub token with the `repo` scope.
 
 **Resolution order:**
 
-1. `GITHUB_TOKEN` in `.env` (or the `ai-code.healing.github_token` config key)
+1. `GITHUB_TOKEN` in `.env` (or the `tackle.healing.github_token` config key)
 2. GitHub CLI (`~/.config/gh/hosts.yml`) — if you have `gh` installed and
    authenticated, Tackle reads your token automatically with no extra config.
 3. If no token is found, the branch is pushed but the PR is not opened. A log
@@ -554,7 +615,7 @@ GITHUB_TOKEN=ghp_...
 
 ### Configuration
 
-All healer options live under the `healing` key in `config/ai-code.php`:
+All healer options live under the `healing` key in `config/tackle.php`:
 
 | Option | Env var | Default | Description |
 |---|---|---|---|
@@ -564,7 +625,7 @@ All healer options live under the `healing` key in `config/ai-code.php`:
 | `threshold` | `AI_CODE_HEALING_THRESHOLD` | `1` | Number of failures before healing triggers |
 | `base_branch` | `AI_CODE_HEALING_BASE_BRANCH` | `main` | Branch PRs are opened against |
 | `branch_prefix` | `AI_CODE_HEALING_BRANCH_PREFIX` | `tackle/heal-` | Prefix for fix branches |
-| `github_token` | `GITHUB_TOKEN` | `null` | GitHub token for opening PRs |
+| `github_token` | `GITHUB_TOKEN` | — | GitHub token for opening PRs |
 | `telescope` | `AI_CODE_HEALING_TELESCOPE` | `true` | Use Telescope context if available |
 
 ### Failure threshold
@@ -803,11 +864,28 @@ php artisan tackle:health
 
 It checks:
 
-- `config/ai-code.php` and `config/ai.php` are published
+- `config/tackle.php` and `config/ai.php` are published
 - An API key is configured for the active provider
 - The project is a git repository with at least one commit
 - `.env.testing` exists (warns if missing)
 - If healing is enabled: migration has been run, GitHub token is available
+
+---
+
+## Pruning dangling worktrees
+
+If a session is interrupted before cleanup (e.g. a crash or `kill -9`), worktrees
+may be left behind in `/tmp`. Use `tackle:prune` to remove them:
+
+```bash
+php artisan tackle:prune
+
+# Preview without removing
+php artisan tackle:prune --dry-run
+```
+
+Only directories matching the `tackle-worktree-*` pattern are touched — the
+command will never remove your main working tree.
 
 ---
 
@@ -837,8 +915,10 @@ Things Tackle cannot do in v1:
   call external APIs. It works only with files in your workspace.
 - **No binary files.** `ReadFile` reads text. Images, compiled assets, and other
   binaries are not readable by the agent.
-- **No auto-commit or push.** All edits are left unstaged. The agent will never
-  run `git commit` or `git push`.
+- **No auto-commit or push in standard mode.** In a normal session all edits are
+  left unstaged. In worktree mode the agent can commit and push to an existing PR
+  branch using the `CommitAndPush` tool, but it will always call `ConfirmAction`
+  first.
 - **History resets on exit** (unless `memory=file` or `memory=database`). With
   the default `file` mode, history persists between sessions automatically.
 - **Budget is estimated, not exact.** The spend limit is calculated from token
@@ -1066,8 +1146,19 @@ automatically through the container.
 - **Protected paths** — the agent cannot read or write `.env`, `storage/`,
   `vendor/`, or `.git/` by default. Enforced in `PathGuard`, not via prompting.
   The model cannot talk its way around this.
-- **Unstaged edits** — all file changes are left unstaged. Review with
-  `git diff`; discard with `git checkout -- .`.
+- **Unstaged edits** — in standard mode all file changes are left unstaged.
+  Review with `git diff`; discard with `git checkout -- .`.
+- **Worktree isolation** — in worktree mode all edits go to a temp copy of the
+  repo. Live files are untouched until you open a PR. The worktree is cleaned up
+  automatically when the session ends.
+- **Environment-aware defaults** — production defaults to `shell: off` and
+  `worktree: on`. The artisan allowlist is narrowed per environment (e.g. `test`
+  and `migrate:*` are only allowed locally). All of this is enforced in PHP, not
+  via prompting.
+- **Allowlist-gated commands** — `RunArtisan` and `RunTests` check the allowlist
+  for the current environment before executing. Commands not in the list are
+  refused with a clear message. Destructive commands (e.g. `migrate:fresh`) require
+  an interactive confirmation even when allowlisted.
 - **Budget cap** — the session aborts once estimated spend exceeds `budget_usd`.
 - **Subprocess isolation** — `RunArtisan`, `RunTests`, `RunPint`, and `RunShell`
   all run as child processes. A broken generated file cannot crash the session.
@@ -1111,7 +1202,7 @@ need user input.
 
 The agent tried to access a file outside the configured workspace (defaults to
 `base_path()`). If you're working in a monorepo or non-standard layout, set
-`workspace` in `config/ai-code.php` to the correct root path.
+`workspace` in `config/tackle.php` to the correct root path.
 
 ### `Path '...' matches protected pattern`
 
@@ -1147,7 +1238,7 @@ Tackle could not find a GitHub token. Check the resolution order:
 
 1. `GITHUB_TOKEN` in `.env`
 2. GitHub CLI: run `gh auth status` — if it shows "not logged in", run `gh auth login`
-3. `ai-code.healing.github_token` in `config/ai-code.php`
+3. `tackle.healing.github_token` in `config/tackle.php`
 
 ### `git worktree add failed`
 
