@@ -31,6 +31,15 @@ class JobFailureListener
             return;
         }
 
+        // Per-class opt-out: respect $healable = false on the job class.
+        if (class_exists($jobClass)) {
+            $defaults = (new \ReflectionClass($jobClass))->getDefaultProperties();
+            if (($defaults['healable'] ?? true) === false) {
+                logger()->info("Tackle Healer: skipping {$jobClass} — \$healable is false.");
+                return;
+            }
+        }
+
         // Threshold check: how many times has this job class failed before?
         $threshold = (int) config('ai-code.healing.threshold', 1);
         if ($threshold > 1) {

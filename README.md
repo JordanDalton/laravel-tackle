@@ -22,6 +22,9 @@ Built on top of [`laravel/ai`](https://github.com/laravel/ai).
 - [Configuration](#configuration)
 - [Built-in tools](#built-in-tools)
 - [Self-healing queue workers](#self-healing-queue-workers)
+  - [Scheduled command healing](#scheduled-command-healing)
+  - [Per-class opt-out](#per-class-opt-out)
+  - [Audit log](#audit-log)
 - [Code review](#code-review)
 - [Limitations](#limitations)
 - [Customization](#customization)
@@ -314,7 +317,7 @@ subprocess, so a broken generated file cannot crash the agent session.
 
 ## Self-healing queue workers
 
-When enabled, Tackle listens for every failed queue job and automatically
+When enabled, Tackle listens for failed queue jobs and failed scheduled commands,
 dispatches an AI agent to diagnose the exception, patch the code, verify the fix
 with your test suite, and either open a pull request or apply the fix directly —
 all without you lifting a finger.
@@ -348,14 +351,18 @@ all without you lifting a finger.
 
 ### Enabling the healer
 
-In `.env`:
+Publish and run the migration, then enable via `.env`:
+
+```bash
+php artisan vendor:publish --tag="laravel-tackle-migrations"
+php artisan migrate
+```
 
 ```env
 AI_CODE_HEALING_ENABLED=true
 ```
 
-That's it. The `JobFailed` listener registers automatically via the service
-provider once this is set to `true`.
+The event listeners register automatically once this is set to `true`.
 
 ### Starting the healer worker
 
@@ -427,6 +434,91 @@ entry including class, message, and stack frames. No extra configuration is
 needed — Tackle detects Telescope automatically and degrades gracefully if it is
 not present.
 
+### Scheduled command healing
+
+Tackle also listens to the `ScheduledTaskFailed` event, which Laravel fires when
+a task registered in `App\Console\Kernel::schedule()` (or a `Schedule` class)
+throws an exception.
+
+The healing flow is identical to queue jobs — an isolated git worktree, an AI
+agent, a test run, then a PR or patch. The one difference: scheduled tasks are
+not re-dispatched after a patch (they run on their own schedule). The fix simply
+takes effect the next time the task runs.
+
+No extra configuration is needed beyond `AI_CODE_HEALING_ENABLED=true`.
+
+### Per-class opt-out
+
+Some jobs should never be auto-patched — payment processors, email senders,
+anything where an untested change would be worse than the failure. Add a
+`$healable` property to opt out:
+
+```php
+class ChargeSubscription implements ShouldQueue
+{
+    // Tackle will skip this job entirely — even in AI_CODE_HEALING_ENABLED=true.
+    public bool $healable = false;
+
+    public function handle(): void
+    {
+        // ...
+    }
+}
+```
+
+The listener checks this property via reflection before dispatching a heal job.
+Jobs without the property, or with `$healable = true`, are healed normally.
+
+### Audit log
+
+Every healing attempt — successful or not — is written to the
+`tackle_healing_log` table. View recent entries with:
+
+```bash
+php artisan tackle:healing-log
+```
+
+The table output shows when, what failed, whether tests passed, the outcome,
+and a link to the PR or branch:
+
+```
++-------------+----------------+--------------------+-----------+-------+------------+
+| When        | Type           | Subject            | Tests     | Out.  | PR / Branch|
++-------------+----------------+--------------------+-----------+-------+------------+
+| 2 mins ago  | job            | BrokenJob          | ✗         | PR    | github.com/|
+| 1 hour ago  | scheduled_task | SendWeeklyReport   | ✓         | patched| tackle/... |
++-------------+----------------+--------------------+-----------+-------+------------+
+```
+
+**Filters:**
+
+```bash
+# Show only job failures
+php artisan tackle:healing-log --type=job
+
+# Show only scheduled task failures
+php artisan tackle:healing-log --type=scheduled_task
+
+# Show only successful patches
+php artisan tackle:healing-log --outcome=patched
+
+# Show only PR-mode results
+php artisan tackle:healing-log --outcome=pr_opened
+
+# Show more entries
+php artisan tackle:healing-log --limit=50
+```
+
+The audit log requires the migration to have been run:
+
+```bash
+php artisan vendor:publish --tag="laravel-tackle-migrations"
+php artisan migrate
+```
+
+If the migration has not been run, healing continues normally — the log write
+degrades gracefully.
+
 ### Healer limitations
 
 - The healer targets **code bugs** — logic errors the AI can diagnose and fix.
@@ -437,8 +529,7 @@ not present.
   so nothing is merged without verification.
 - The healer never modifies `.env`, `vendor/`, `storage/`, or `.git/` — the
   same path guards apply as in interactive mode.
-- `HealJobFailure` itself has `$tries = 1`. A failing healer does not create a
-  healing loop.
+- Healer jobs have `$tries = 1`. A failing healer does not create a healing loop.
 
 ---
 

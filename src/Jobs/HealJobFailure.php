@@ -2,33 +2,11 @@
 
 namespace Tackle\Jobs;
 
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
-use Laravel\Ai\Streaming\Events\TextDelta;
-use Tackle\Agents\HealingAgent;
-use Tackle\Healing\GitHubTokenReader;
-use Tackle\Healing\SandboxRunner;
 use Throwable;
 
-class HealJobFailure implements ShouldQueue
+class HealJobFailure extends AbstractHealJob
 {
-    use Dispatchable, InteractsWithQueue, SerializesModels;
-
-    /**
-     * Never retry the healer itself — a healer loop would be unpleasant.
-     */
-    public int $tries = 1;
-
-    /**
-     * Give the agent plenty of time to read, reason, edit, and test.
-     */
-    public int $timeout = 600;
-
-    public string $queue;
-
     public function __construct(
         public readonly string $jobUuid,
         public readonly string $jobClass,
@@ -37,68 +15,22 @@ class HealJobFailure implements ShouldQueue
         public readonly string $exceptionMessage,
         public readonly string $exceptionTrace,
     ) {
-        $this->queue = config('ai-code.healing.queue', 'healer');
+        parent::__construct();
     }
 
-    public function handle(SandboxRunner $runner, GitHubTokenReader $tokenReader): void
+    protected function subjectType(): string { return 'job'; }
+    protected function subjectClass(): string { return $this->jobClass; }
+    protected function branchSuffix(): string { return substr($this->jobUuid, 0, 8); }
+    protected function getExceptionClass(): string { return $this->exceptionClass; }
+    protected function getExceptionMessage(): string { return $this->exceptionMessage; }
+    protected function getExceptionTrace(): string { return $this->exceptionTrace; }
+
+    protected function commitMessage(): string
     {
-        $branchName   = config('ai-code.healing.branch_prefix', 'tackle/heal-') . substr($this->jobUuid, 0, 8);
-        $worktreePath = null;
-
-        try {
-            $worktreePath = $runner->prepare($branchName);
-
-            $agent   = new HealingAgent($worktreePath);
-            $prompt  = $this->buildPrompt();
-            $summary = '';
-
-            $response = $agent->stream($prompt);
-            $response->each(function ($event) use (&$summary) {
-                if ($event instanceof TextDelta) {
-                    $summary .= $event->delta;
-                }
-            });
-
-            // Commit whatever the agent changed
-            $commitMessage = "tackle(healer): auto-fix for {$this->jobClass}\n\n{$this->exceptionClass}: {$this->exceptionMessage}";
-            $runner->commit($worktreePath, $commitMessage);
-
-            $testsPassed = $runner->runTests($worktreePath);
-            $mode        = config('ai-code.healing.mode', 'pr');
-
-            if ($testsPassed && $mode === 'patch') {
-                $runner->applyToMain($branchName);
-                $this->redispatch();
-                Log::info("Tackle Healer: patch applied and job re-dispatched for {$this->jobClass}.");
-            } else {
-                $reason = match (true) {
-                    !$testsPassed && $mode !== 'patch' => "tests failed, mode={$mode}",
-                    !$testsPassed                      => 'tests failed in sandbox',
-                    default                            => "mode={$mode} (expected patch)",
-                };
-                Log::info("Tackle Healer: opening PR ({$reason}) for {$this->jobClass}.");
-                $runner->push($branchName, $worktreePath);
-                $prUrl = $runner->createPullRequest(
-                    branchName: $branchName,
-                    title:      $this->buildPrTitle($testsPassed),
-                    body:       $this->buildPrBody($summary, $testsPassed),
-                    token:      $tokenReader->token(),
-                );
-                $logMsg = $prUrl
-                    ? "Tackle Healer: PR opened at {$prUrl}"
-                    : "Tackle Healer: branch {$branchName} pushed (could not open PR — check github_token).";
-                Log::info($logMsg);
-            }
-        } catch (Throwable $e) {
-            Log::error("Tackle Healer: failed to process {$this->jobClass} ({$this->jobUuid}): " . $e->getMessage());
-        } finally {
-            if ($worktreePath !== null) {
-                $runner->cleanup($worktreePath, $branchName);
-            }
-        }
+        return "tackle(healer): auto-fix for {$this->jobClass}\n\n{$this->exceptionClass}: {$this->exceptionMessage}";
     }
 
-    private function buildPrompt(): string
+    protected function agentPrompt(): string
     {
         $telescopeHint = config('ai-code.healing.telescope', true)
             ? "\n\nYou can call ReadTelescopeEntry with job_uuid=\"{$this->jobUuid}\" if you need richer context."
@@ -121,14 +53,21 @@ class HealJobFailure implements ShouldQueue
         PROMPT;
     }
 
-    private function buildPrTitle(bool $testsPassed): string
+    protected function onPatched(): void
+    {
+        $this->redispatch();
+        Log::info("Tackle Healer: job re-dispatched for {$this->jobClass}.");
+    }
+
+    protected function prTitle(bool $testsPassed): string
     {
         $status = $testsPassed ? '' : '[tests failing] ';
         $short  = class_basename($this->jobClass);
+
         return "tackle(healer): {$status}fix {$short} — {$this->exceptionClass}";
     }
 
-    private function buildPrBody(string $agentSummary, bool $testsPassed): string
+    protected function prBody(string $agentSummary, bool $testsPassed): string
     {
         $testLine = $testsPassed
             ? '✅ Tests passed in the sandbox worktree.'
@@ -163,7 +102,7 @@ class HealJobFailure implements ShouldQueue
     {
         $payload = json_decode($this->jobPayload, true);
 
-        if (!isset($payload['data']['command'])) {
+        if (! isset($payload['data']['command'])) {
             return;
         }
 
