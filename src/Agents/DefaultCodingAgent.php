@@ -22,6 +22,7 @@ use Tackle\Tools\ListRoutes;
 use Tackle\Tools\QueryDatabase;
 use Tackle\Tools\ReadFile;
 use Tackle\Tools\ReadLog;
+use Tackle\Tools\CommitAndPush;
 use Tackle\Tools\CreateGitHubIssue;
 use Tackle\Tools\CreatePullRequest;
 use Tackle\Tools\ReadGitHubIssue;
@@ -65,6 +66,7 @@ class DefaultCodingAgent implements CodingAgent
         private readonly ReadGitHubIssue $readGitHubIssue,
         private readonly CreateGitHubIssue $createGitHubIssue,
         private readonly CreatePullRequest $createPullRequest,
+        private readonly CommitAndPush $commitAndPush,
         private readonly AskUser $askUser,
         private readonly ConfirmAction $confirmAction,
     ) {}
@@ -112,6 +114,7 @@ class DefaultCodingAgent implements CodingAgent
         - Use RunArtisan for framework operations (make:model, migrate, etc.). Allowed for this environment: {$allowlistStr}. Destructive (terminal confirmation required): {$destructiveStr}. Do NOT attempt RunArtisan with commands outside both lists — they will be refused. For blocked operations, tell the user to run the command themselves in their terminal.
         - Use RunTests after any code change.
         - Use RunShell only when no other tool suffices.
+        - Use CommitAndPush to stage, commit, and push additional changes to an existing PR branch after CreatePullRequest has already opened the PR. Do NOT use RunShell for git add/commit/push — it may be blocked in this environment.
 
         ## User interaction — REQUIRED RULES
 
@@ -176,6 +179,7 @@ class DefaultCodingAgent implements CodingAgent
             $this->readGitHubIssue,
             $this->createGitHubIssue,
             $this->createPullRequest,
+            $this->commitAndPush,
             $this->askUser,
             $this->confirmAction,
         ];

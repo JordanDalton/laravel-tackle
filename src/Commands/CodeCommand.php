@@ -257,6 +257,7 @@ class CodeCommand extends Command
             'ReadGitHubIssue'    => '🐙 reading github issue',
             'CreateGitHubIssue'  => '🐙 creating github issue',
             'CreatePullRequest'  => '🚀 opening pull request',
+            'CommitAndPush'      => '📤 committing and pushing',
             default              => '→ ' . $tool,
         };
 
@@ -270,12 +271,24 @@ class CodeCommand extends Command
         $result = (string) ($event->toolResult->result ?? '');
 
         if (in_array($tool, ['RunTests', 'RunArtisan', 'RunShell'], strict: true)) {
-            if (str_starts_with($result, "Command '") && str_contains($result, 'not in the allowlist')) {
+            if (str_starts_with($result, 'Shell execution is disabled')) {
+                $this->line('<fg=yellow>  ⚠ Refused — shell is disabled in this environment.</>');
+            } elseif (str_starts_with($result, "Command '") && str_contains($result, 'not in the allowlist')) {
                 $this->line('<fg=yellow>  ⚠ Refused — command not in allowlist.</>');
             } elseif (str_contains($result, 'FAILED') || str_contains($result, 'Error')) {
                 $this->line('<fg=red>  ✗ Command reported failures — agent will handle them.</>');
             } else {
                 $this->line('<fg=green>  ✓ Done</>');
+            }
+        }
+
+        if ($tool === 'CommitAndPush') {
+            if (str_starts_with($result, 'Commit failed') || str_starts_with($result, 'Push failed')) {
+                $this->line('<fg=red>  ✗ ' . $result . '</>');
+            } elseif ($result === 'No changes to commit.') {
+                $this->line('<fg=yellow>  ⚠ No changes to commit.</>');
+            } else {
+                $this->line('<fg=green>  ✓ Committed and pushed.</>');
             }
         }
 
