@@ -51,6 +51,16 @@ class SandboxRunner
             symlink($vendorSrc, $vendorDst);
         }
 
+        // Symlink env files so the test suite can connect to the database.
+        // These are gitignored and therefore absent from the worktree.
+        foreach (['.env', '.env.testing'] as $envFile) {
+            $src = $this->repoRoot . '/' . $envFile;
+            $dst = $path . '/' . $envFile;
+            if (file_exists($src) && !file_exists($dst)) {
+                symlink($src, $dst);
+            }
+        }
+
         return $path;
     }
 
