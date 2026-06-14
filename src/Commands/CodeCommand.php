@@ -79,11 +79,11 @@ class CodeCommand extends Command
         while (true) {
             $task = suggest(
                 label: 'What should I work on?',
-                options: array_reverse($this->history),
-                placeholder: 'Describe a task or type "exit" to quit.',
+                options: fn (string $value) => $this->completions($value),
+                placeholder: 'Describe a task or type "exit" to quit. Use @ to reference files.',
                 required: true,
-                hint: count($this->history) > 0 ? 'Use ↑↓ to browse history. Ctrl+C during a run interrupts without ending the session.' : 'Ctrl+C during a run interrupts without ending the session.',
-                scroll: 8,
+                hint: count($this->history) > 0 ? 'Use ↑↓ for history · @ to reference a file · Ctrl+C interrupts a run' : '@ to reference a file · Ctrl+C interrupts a run',
+                scroll: 10,
             );
 
             if (in_array(strtolower(trim($task)), ['exit', 'quit', 'q'], strict: true)) {
@@ -108,7 +108,7 @@ class CodeCommand extends Command
             $this->line('');
 
             try {
-                $this->runAgentTurn($agent, $budget, $task);
+                $this->runAgentTurn($agent, $budget, $this->expandAtMentions($task));
             } catch (\Throwable $e) {
                 $this->closeStream();
                 promptError('Agent error: ' . $e->getMessage());
@@ -287,6 +287,69 @@ class CodeCommand extends Command
             $this->line('');
             note(trim($output));
         }
+    }
+
+    private function completions(string $input): array
+    {
+        $atPos = strrpos($input, '@');
+
+        // No @ in input — return session history.
+        if ($atPos === false) {
+            return array_reverse($this->history);
+        }
+
+        $afterAt = substr($input, $atPos + 1);
+
+        // Space after the @-mention means it's already complete — fall back to history.
+        if (str_contains($afterAt, ' ')) {
+            return array_reverse($this->history);
+        }
+
+        $before  = substr($input, 0, $atPos + 1); // everything up to and including @
+        $base    = base_path();
+        $pattern = $base . '/' . $afterAt . '*';
+        $matches = glob($pattern) ?: [];
+
+        $excluded = ['vendor', '.git', 'node_modules', 'storage', 'bootstrap/cache'];
+
+        $results = [];
+        foreach ($matches as $match) {
+            $relative = ltrim(str_replace($base, '', $match), '/');
+            $topLevel = explode('/', $relative)[0];
+
+            if (in_array($topLevel, $excluded, strict: true)) {
+                continue;
+            }
+
+            // Append / for directories so the user can keep drilling down.
+            $results[] = $before . $relative . (is_dir($match) ? '/' : '');
+        }
+
+        return array_slice($results, 0, 20);
+    }
+
+    private function expandAtMentions(string $task): string
+    {
+        return preg_replace_callback('/@([\w./\-]+)/', function ($matches) {
+            $path = base_path($matches[1]);
+
+            if (! file_exists($path) || is_dir($path)) {
+                return $matches[0];
+            }
+
+            $content = @file_get_contents($path);
+
+            if ($content === false) {
+                return $matches[0];
+            }
+
+            return sprintf(
+                "%s\n```\n// %s\n%s\n```",
+                $matches[0],
+                $matches[1],
+                rtrim($content),
+            );
+        }, $task);
     }
 
     private function isTty(): bool
