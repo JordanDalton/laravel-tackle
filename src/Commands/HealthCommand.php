@@ -31,6 +31,8 @@ class HealthCommand extends Command
             $this->checkHealing();
         }
 
+        $this->checkWorktrees();
+
         $this->printSummary();
 
         return empty($this->failed) ? self::SUCCESS : self::FAILURE;
@@ -127,6 +129,33 @@ class HealthCommand extends Command
                 $this->check(
                     'No GitHub token found (required for pr mode)',
                     'Set GITHUB_TOKEN in .env, or authenticate with: gh auth login'
+                );
+            }
+        }
+    }
+
+    private function checkWorktrees(): void
+    {
+        $result = \Illuminate\Support\Facades\Process::path(base_path())
+            ->run(['git', 'worktree', 'list', '--porcelain']);
+
+        if (! $result->successful()) {
+            return;
+        }
+
+        $dangling = collect(explode("\n", trim($result->output())))
+            ->filter(fn ($line) => str_starts_with($line, 'worktree '))
+            ->map(fn ($line) => trim(substr($line, strlen('worktree '))))
+            ->filter(fn ($path) => str_contains($path, 'tackle-'))
+            ->values();
+
+        if ($dangling->isEmpty()) {
+            $this->pass('No dangling Tackle worktrees');
+        } else {
+            foreach ($dangling as $path) {
+                $this->notice(
+                    "Dangling worktree: {$path}",
+                    'Run: php artisan tackle:prune'
                 );
             }
         }

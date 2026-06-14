@@ -15,6 +15,7 @@ use Tackle\Commands\HealingLogCommand;
 use Tackle\Commands\InstallCommand;
 use Tackle\Commands\MakeAgentCommand;
 use Tackle\Commands\MakeToolCommand;
+use Tackle\Commands\PruneCommand;
 use Tackle\Commands\ReplayCommand;
 use Tackle\Commands\ReviewCommand;
 use Tackle\Commands\TestCommand;
@@ -39,6 +40,7 @@ class TackleServiceProvider extends PackageServiceProvider
                 TestCommand::class,
                 HealingLogCommand::class,
                 ReplayCommand::class,
+                PruneCommand::class,
                 MakeToolCommand::class,
                 MakeAgentCommand::class,
             ]);
