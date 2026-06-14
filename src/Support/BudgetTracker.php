@@ -2,6 +2,8 @@
 
 namespace Tackle\Support;
 
+use Illuminate\Container\Attributes\Config;
+
 class BudgetTracker
 {
     // Pricing per million tokens (approximate Sonnet 4 rates; overrideable).
@@ -12,9 +14,10 @@ class BudgetTracker
     private int   $outputTokens = 0;
     private float $budgetUsd;
 
-    public function __construct(?float $budgetUsd = null)
-    {
-        $this->budgetUsd = $budgetUsd ?? (float) config('ai-code.budget_usd', 1.00);
+    public function __construct(
+        #[Config('ai-code.budget_usd')] float $budgetUsd = 1.00,
+    ) {
+        $this->budgetUsd = $budgetUsd;
     }
 
     public function record(int $inputTokens, int $outputTokens): void
