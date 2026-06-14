@@ -43,12 +43,11 @@ it('stages, commits, and pushes when there are changes', function () {
     Process::assertRan('git push');
 });
 
-it('checks out the branch before committing when branch is provided', function () {
+it('pushes to HEAD:<branch> when branch is provided without checking it out', function () {
     Process::fake([
         'git status --porcelain'   => Process::result(' M app/Foo.php'),
-        'git checkout*'            => Process::result(''),
         'git add -A'               => Process::result(''),
-        'git commit*'              => Process::result('[tackle/pr-6 abc1234] Add comment'),
+        'git commit*'              => Process::result('[detached HEAD abc1234] Add comment'),
         'git push origin*'         => Process::result(''),
     ]);
 
@@ -58,23 +57,8 @@ it('checks out the branch before committing when branch is provided', function (
     ]));
 
     expect($result)->toBe('Changes committed and pushed to the existing PR branch.');
-    Process::assertRan('git checkout \'tackle/issue-6-return-dalton\'');
-    Process::assertRan('git push origin \'tackle/issue-6-return-dalton\'');
-});
-
-it('returns error when branch checkout fails', function () {
-    Process::fake([
-        'git status --porcelain' => Process::result(' M app/Foo.php'),
-        'git checkout*'          => Process::result('', 'error: pathspec not found', 1),
-    ]);
-
-    $result = makeCommitAndPushTool()->handle(new Request([
-        'message' => 'Fix',
-        'branch'  => 'tackle/nonexistent',
-    ]));
-
-    expect($result)->toStartWith('Failed to switch to branch:');
-    Process::assertNotRan('git add -A');
+    Process::assertNotRan('git checkout*');
+    Process::assertRan("git push origin HEAD:'tackle/issue-6-return-dalton'");
 });
 
 it('returns error when commit fails', function () {

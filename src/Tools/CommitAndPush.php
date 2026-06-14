@@ -23,7 +23,7 @@ class CommitAndPush extends AbstractTool
                 ->description('Commit message describing what changed.')
                 ->required(),
             'branch' => $schema->string()
-                ->description('Branch name to push to. Required when the workspace is in detached HEAD (e.g. after git worktree add HEAD). Pass the same branch that was used for CreatePullRequest.'),
+                ->description('Remote branch name to push to, e.g. "tackle/issue-6-return-dalton". Required when working in a worktree (detached HEAD). Get this from ReadPullRequest. Do NOT check out the branch — the push uses HEAD:<branch> so no checkout is needed.'),
         ];
     }
 
@@ -43,13 +43,6 @@ class CommitAndPush extends AbstractTool
             return 'No changes to commit.';
         }
 
-        if ($branch !== '') {
-            $checkout = Process::path($path)->run('git checkout ' . escapeshellarg($branch));
-            if ($checkout->failed()) {
-                return 'Failed to switch to branch: ' . trim($checkout->errorOutput());
-            }
-        }
-
         Process::path($path)->run('git add -A');
 
         $commit = Process::path($path)->run('git commit -m ' . escapeshellarg($message));
@@ -57,8 +50,10 @@ class CommitAndPush extends AbstractTool
             return 'Commit failed: ' . trim($commit->errorOutput());
         }
 
+        // Use HEAD:<branch> so we never need to check out the branch (avoids
+        // "already checked out" errors when the same branch exists in the main repo).
         $pushCmd = $branch !== ''
-            ? 'git push origin ' . escapeshellarg($branch)
+            ? 'git push origin HEAD:' . escapeshellarg($branch)
             : 'git push';
 
         $push = Process::path($path)->run($pushCmd);

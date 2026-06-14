@@ -284,12 +284,12 @@ class CodeCommand extends Command
         }
 
         if ($tool === 'CommitAndPush') {
-            if (str_starts_with($result, 'Commit failed') || str_starts_with($result, 'Push failed')) {
-                $this->line('<fg=red>  ✗ ' . $result . '</>');
+            if ($result === 'Changes committed and pushed to the existing PR branch.') {
+                $this->line('<fg=green>  ✓ Committed and pushed.</>');
             } elseif ($result === 'No changes to commit.') {
                 $this->line('<fg=yellow>  ⚠ No changes to commit.</>');
             } else {
-                $this->line('<fg=green>  ✓ Committed and pushed.</>');
+                $this->line('<fg=red>  ✗ ' . $result . '</>');
             }
         }
 
