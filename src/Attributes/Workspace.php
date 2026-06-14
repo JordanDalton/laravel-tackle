@@ -4,6 +4,7 @@ namespace Tackle\Attributes;
 
 use Attribute;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Contracts\Container\ContextualAttribute;
 use Tackle\Support\PathGuard;
 
 /**
@@ -17,7 +18,7 @@ use Tackle\Support\PathGuard;
  * instantiated directly with the runtime path instead.
  */
 #[Attribute(Attribute::TARGET_PARAMETER)]
-class Workspace
+class Workspace implements ContextualAttribute
 {
     public static function resolve(self $attribute, Container $container): PathGuard
     {

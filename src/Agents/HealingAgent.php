@@ -4,6 +4,8 @@ namespace Tackle\Agents;
 
 use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Promptable;
+use Tackle\Attributes\AiModel;
+use Tackle\Attributes\AiProvider;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Healing\TelescopeReader;
 use Tackle\Support\PathGuard;
@@ -21,20 +23,16 @@ class HealingAgent implements CodingAgent
 
     private PathGuard $guard;
 
-    public function __construct(private readonly string $workspace)
-    {
+    public function __construct(
+        private readonly string $workspace,
+        #[AiProvider] private string $provider = 'anthropic',
+        #[AiModel]    private string $model    = 'claude-sonnet-4-6',
+    ) {
         $this->guard = new PathGuard($workspace);
     }
 
-    protected function provider(): string
-    {
-        return config('ai-code.provider', 'anthropic');
-    }
-
-    protected function model(): string
-    {
-        return config('ai-code.model', 'claude-sonnet-4-6');
-    }
+    protected function provider(): string { return $this->provider; }
+    protected function model(): string    { return $this->model; }
 
     public function instructions(): string
     {

@@ -2,9 +2,10 @@
 
 namespace Tackle\Agents;
 
-use Illuminate\Container\Attributes\Config;
 use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Promptable;
+use Tackle\Attributes\AiModel;
+use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Support\PathGuard;
@@ -18,8 +19,8 @@ class ReviewAgent implements CodingAgent
     use Promptable;
 
     public function __construct(
-        #[Config('ai-code.provider')] private string $provider = 'anthropic',
-        #[Config('ai-code.model')]    private string $model    = 'claude-sonnet-4-6',
+        #[AiProvider] private string $provider = 'anthropic',
+        #[AiModel]    private string $model    = 'claude-sonnet-4-6',
         #[Workspace] private readonly PathGuard $pathGuard,
         private readonly ReadFile $readFile,
         private readonly Glob $glob,
