@@ -1,0 +1,16 @@
+<?php
+
+namespace App\Ai;
+
+use Tackle\Agents\DefaultCodingAgent;
+
+class {{ class }} extends DefaultCodingAgent
+{
+    public function tools(): iterable
+    {
+        return [
+            ...parent::tools(),
+            // Add your custom tools here.
+        ];
+    }
+}

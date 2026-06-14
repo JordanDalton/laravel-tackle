@@ -1,12 +1,16 @@
 ## Laravel Tackle
 
-Laravel Tackle is an AI coding assistant and self-healing queue worker package built on `laravel/ai`. It provides an interactive terminal agent (`ai:code`), a read-only code reviewer (`ai:review`), and a self-healing system that automatically diagnoses and patches failing queue jobs and scheduled tasks.
+Laravel Tackle is an AI agent harness for Laravel — the runtime layer that lets AI agents operate inside a Laravel application with tool infrastructure, safety boundaries, and a `CodingAgent` contract for extension. Think of it as Claude Code or Codex, but purpose-built for Laravel and installed directly into the app via Composer.
+
+The harness ships with three built-in agents (`ai:code`, `ai:review`, self-healer) and a full tool set. New tools and agents can be scaffolded with `tackle:tool` and `tackle:agent` and wired in without forking the package.
 
 ### Commands
 
 - `php artisan ai:code` — interactive coding agent session. The agent reads files, edits code, runs tests, and formats with Pint.
 - `php artisan ai:review` — one-shot read-only review of a git diff. Accepts `--staged`, `--against=<branch>`, `--commit=<sha>`, and `--focus=<areas>`.
 - `php artisan tackle:healing-log` — view the audit log of all healing attempts. Accepts `--type`, `--outcome`, and `--limit` filters.
+- `php artisan tackle:tool ToolName` — scaffold a new tool class at `app/Ai/Tools/ToolName.php`.
+- `php artisan tackle:agent AgentName` — scaffold a new agent at `app/Ai/AgentName.php`. Pass `--full` for a bare `CodingAgent` implementation instead of a `DefaultCodingAgent` subclass.
 
 ### Key environment variables
 
@@ -61,4 +65,28 @@ Tackle ships three Laravel contextual attributes for constructor injection:
 
 ### Customization
 
-To add tools or change agent behaviour, extend `DefaultCodingAgent` and rebind `Tackle\Contracts\CodingAgent` in a service provider. The `CodingAgent` contract extends `laravel/ai`'s `Agent`, `HasTools`, and `Conversational` contracts.
+Use the generator commands to scaffold new tools and agents:
+
+@verbatim
+<code-snippet name="Generate a tool and agent" lang="bash">
+php artisan tackle:tool MyTool       # → app/Ai/Tools/MyTool.php
+php artisan tackle:agent MyAgent     # → app/Ai/MyAgent.php (extends DefaultCodingAgent)
+php artisan tackle:agent MyAgent --full  # → bare CodingAgent implementation
+</code-snippet>
+@endverbatim
+
+To activate a custom agent, bind it over the default in `AppServiceProvider::register()`:
+
+@verbatim
+<code-snippet name="Bind a custom agent" lang="php">
+$this->app->bind(\Tackle\Contracts\CodingAgent::class, \App\Ai\MyAgent::class);
+</code-snippet>
+@endverbatim
+
+Stubs can be published and customised:
+
+@verbatim
+<code-snippet name="Publish stubs" lang="bash">
+php artisan vendor:publish --tag="laravel-tackle-stubs"
+</code-snippet>
+@endverbatim

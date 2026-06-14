@@ -1,0 +1,29 @@
+<?php
+
+namespace App\Ai\Tools;
+
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Ai\Tools\Request;
+use Tackle\Tools\AbstractTool;
+
+class {{ class }} extends AbstractTool
+{
+    public function description(): string
+    {
+        return '';
+    }
+
+    public function schema(JsonSchema $schema): array
+    {
+        return [
+            // 'param' => $schema->string()->description('...')->required(),
+        ];
+    }
+
+    public function handle(Request $request): string
+    {
+        // Return a string — the agent reads it as tool output.
+        // To refuse an action, return a descriptive message rather than throwing.
+        return '';
+    }
+}

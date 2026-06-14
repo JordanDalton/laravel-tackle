@@ -10,6 +10,9 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Tackle\Agents\DefaultCodingAgent;
 use Tackle\Commands\CodeCommand;
 use Tackle\Commands\HealingLogCommand;
+use Tackle\Commands\InstallCommand;
+use Tackle\Commands\MakeAgentCommand;
+use Tackle\Commands\MakeToolCommand;
 use Tackle\Commands\ReviewCommand;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Healing\JobFailureListener;
@@ -23,7 +26,14 @@ class TackleServiceProvider extends PackageServiceProvider
             ->name('laravel-tackle')
             ->hasConfigFile('ai-code')
             ->hasMigration('create_tackle_healing_log_table')
-            ->hasCommands([CodeCommand::class, ReviewCommand::class, HealingLogCommand::class]);
+            ->hasCommands([
+                InstallCommand::class,
+                CodeCommand::class,
+                ReviewCommand::class,
+                HealingLogCommand::class,
+                MakeToolCommand::class,
+                MakeAgentCommand::class,
+            ]);
     }
 
     public function packageRegistered(): void
@@ -33,6 +43,10 @@ class TackleServiceProvider extends PackageServiceProvider
 
     public function packageBooted(): void
     {
+        $this->publishes([
+            __DIR__ . '/../resources/stubs' => base_path('stubs/tackle'),
+        ], 'laravel-tackle-stubs');
+
         if (config('ai-code.healing.enabled', false)) {
             Event::listen(JobFailed::class, JobFailureListener::class);
             Event::listen(ScheduledTaskFailed::class, ScheduledTaskFailureListener::class);

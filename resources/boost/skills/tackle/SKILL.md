@@ -1,15 +1,17 @@
 ---
 name: laravel-tackle
-description: Configure, extend, and work with Laravel Tackle — the AI coding assistant and self-healing queue worker package. Use this skill when installing Tackle, writing custom tools, configuring the healer, opting jobs out of healing, or customizing agent behaviour.
+description: Configure, extend, and build on Laravel Tackle — an AI agent harness for Laravel (similar to Claude Code or Codex, but installed into the app via Composer). Use this skill when installing Tackle, writing custom tools or agents, configuring the self-healer, or opting jobs out of healing.
 ---
 
 # Laravel Tackle
+
+Laravel Tackle is an AI agent harness for Laravel. It provides the runtime layer — tool infrastructure, safety boundaries (`PathGuard`, `BudgetTracker`, shell modes), and a `CodingAgent` contract — that agents run inside. The harness ships with three built-in agents and can be extended with custom tools and agents without forking the package.
 
 ## When to use this skill
 
 Use this skill when:
 - Installing or configuring Laravel Tackle
-- Writing a custom agent tool
+- Writing a custom tool (`tackle:tool`) or agent (`tackle:agent`)
 - Extending or swapping the coding agent
 - Configuring the self-healing queue worker (modes, thresholds, GitHub tokens)
 - Opting a job or scheduled task out of self-healing
@@ -30,6 +32,25 @@ Add your API key to `.env`:
 
 ```env
 ANTHROPIC_API_KEY=sk-ant-...
+```
+
+---
+
+## Generating tools and agents
+
+Use the built-in generators to scaffold new classes:
+
+```bash
+php artisan tackle:tool MyTool        # → app/Ai/Tools/MyTool.php
+php artisan tackle:agent MyAgent      # → app/Ai/MyAgent.php (extends DefaultCodingAgent)
+php artisan tackle:agent MyAgent --full  # → bare CodingAgent implementation
+```
+
+Stubs can be published and customised:
+
+```bash
+php artisan vendor:publish --tag="laravel-tackle-stubs"
+# publishes to stubs/tackle/ — commands pick up published stubs automatically
 ```
 
 ---

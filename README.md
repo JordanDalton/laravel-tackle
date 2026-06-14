@@ -1,10 +1,27 @@
 # Laravel Tackle
 
-**An interactive, terminal-based AI coding assistant for Laravel.**
+**An AI agent harness for Laravel.**
 
-Think Claude Code, but installed directly into your Laravel app via Composer. Run
-`php artisan ai:code`, describe a task, and the agent reads your codebase, edits
-files, runs tests, and formats code — all within your project.
+Tackle is the runtime layer that lets AI agents operate inside your Laravel
+application — reading code, executing tools, running tests, and taking action,
+with safety boundaries enforced at the framework level.
+
+Think of it the way you think of Claude Code, Codex, or GitHub Copilot — but
+purpose-built for Laravel and installed directly into your app via Composer.
+The harness ships with three built-in agents and a full tool infrastructure you
+can extend or build on top of:
+
+- **`ai:code`** — an interactive coding agent that reads your codebase, edits
+  files, runs tests, and formats code
+- **`ai:review`** — a read-only agent that reviews git diffs and surfaces real
+  issues with severity levels
+- **Self-healer** — an autonomous agent that listens for failed jobs and
+  scheduled tasks, diagnoses the exception, patches the code, and opens a PR
+  or applies the fix — without you lifting a finger
+
+Every agent runs through the same tool infrastructure and safety layer. You can
+add your own tools, write new agents, and swap the default agent entirely —
+all without forking the package.
 
 Built on top of [`laravel/ai`](https://github.com/laravel/ai).
 
@@ -35,6 +52,22 @@ Built on top of [`laravel/ai`](https://github.com/laravel/ai).
 - [Troubleshooting](#troubleshooting)
 - [Known risks](#known-risks)
 - [Development](#development)
+
+---
+
+## How the harness works
+
+Tackle has three layers:
+
+| Layer | What it is |
+|---|---|
+| **Tools** | Action primitives agents can call — `ReadFile`, `EditFile`, `RunTests`, `RunShell`, etc. Every tool goes through `PathGuard` and shell policy before executing. |
+| **Agents** | Classes implementing `CodingAgent` that receive a prompt, call tools, and return a result. Tackle ships three; you can add your own. |
+| **Safety** | `PathGuard` blocks reads/writes outside the workspace and protected paths. `BudgetTracker` aborts the session when estimated spend exceeds the limit. Shell modes gate command execution. All enforced in PHP — not advisory. |
+
+The self-healer adds a fourth piece: an event-driven runtime that spins up an
+agent autonomously in an isolated git worktree whenever a job or scheduled task
+fails. It is the same harness, running unattended.
 
 ---
 
@@ -615,12 +648,44 @@ Things Tackle cannot do in v1:
 
 ## Customization
 
+### Generators
+
+Tackle ships generator commands so you don't have to look up method signatures:
+
+```bash
+# Scaffold a tool at app/Ai/Tools/MyTool.php
+php artisan tackle:tool MyTool
+
+# Scaffold an agent that extends DefaultCodingAgent (most common)
+php artisan tackle:agent MyAgent
+
+# Scaffold a bare CodingAgent implementation
+php artisan tackle:agent MyAgent --full
+```
+
+To customise the generated stubs, publish them first:
+
+```bash
+php artisan vendor:publish --tag="laravel-tackle-stubs"
+```
+
+This copies the stubs to `stubs/tackle/` in your project root. Both commands
+check for published stubs before falling back to the package defaults.
+
+---
+
 ### Adding your own tools
 
 Create a class that extends `Tackle\Tools\AbstractTool`, then extend
 `DefaultCodingAgent` to merge it into the tool list, and rebind the contract.
 
-**Step 1 — Write the tool:**
+**Step 1 — Generate the tool (or write it manually):**
+
+```bash
+php artisan tackle:tool ReadDatabase
+```
+
+**Step 2 — Implement the tool:**
 
 ```php
 // app/Ai/Tools/ReadDatabase.php
@@ -660,7 +725,13 @@ class ReadDatabase extends AbstractTool
 }
 ```
 
-**Step 2 — Extend the agent:**
+**Step 3 — Extend the agent (or generate it):**
+
+```bash
+php artisan tackle:agent MyCodingAgent
+```
+
+**Step 4 — Wire in your tool:**
 
 ```php
 // app/Ai/MyCodingAgent.php
@@ -685,7 +756,7 @@ class MyCodingAgent extends DefaultCodingAgent
 }
 ```
 
-**Step 3 — Rebind in your service provider:**
+**Step 5 — Rebind in your service provider:**
 
 ```php
 // app/Providers/AppServiceProvider.php

@@ -1,0 +1,26 @@
+<?php
+
+namespace App\Ai;
+
+use Laravel\Ai\Promptable;
+use Tackle\Contracts\CodingAgent;
+
+class {{ class }} implements CodingAgent
+{
+    use Promptable;
+
+    public function instructions(): string
+    {
+        return '';
+    }
+
+    public function messages(): iterable
+    {
+        return [];
+    }
+
+    public function tools(): iterable
+    {
+        return [];
+    }
+}
