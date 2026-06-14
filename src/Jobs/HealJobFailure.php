@@ -71,6 +71,12 @@ class HealJobFailure implements ShouldQueue
                 $this->redispatch();
                 Log::info("Tackle Healer: patch applied and job re-dispatched for {$this->jobClass}.");
             } else {
+                $reason = match (true) {
+                    !$testsPassed && $mode !== 'patch' => "tests failed, mode={$mode}",
+                    !$testsPassed                      => 'tests failed in sandbox',
+                    default                            => "mode={$mode} (expected patch)",
+                };
+                Log::info("Tackle Healer: opening PR ({$reason}) for {$this->jobClass}.");
                 $runner->push($branchName, $worktreePath);
                 $prUrl = $runner->createPullRequest(
                     branchName: $branchName,
