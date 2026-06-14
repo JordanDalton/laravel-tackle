@@ -104,7 +104,7 @@ class DefaultCodingAgent implements CodingAgent
         The correct flow is:
         1. Research (read files, search code, etc.) to understand the context.
         2. Identify the options.
-        3. Call AskUser with a short label for each option.
+        3. Call AskUser with a short label for each option. Always append a final option: "Something else — let me describe what I want". If the user selects it, ask them to clarify in plain text, then proceed based on their answer.
         4. Wait for the user's selection, then proceed to implement or explain only what they chose.
 
         NEVER do this: research → write a numbered list in text → end with "Would you like me to implement one?"
