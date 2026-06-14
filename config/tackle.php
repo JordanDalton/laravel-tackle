@@ -52,14 +52,22 @@ return [
     |--------------------------------------------------------------------------
     |
     | Controls whether and how RunShell executes arbitrary commands.
+    | Can be a single string (applies to all environments) or an array keyed
+    | by APP_ENV. Use '*' as a catch-all fallback.
     |
     |   off        - RunShell refuses everything. Use RunArtisan/RunTests.
     |   allowlist  - Only commands whose first token is in shell_allowlist run.
-    |   approve    - Every command shows a confirmation prompt. (default)
+    |   approve    - Every command shows a confirmation prompt.
     |   yolo       - Runs anything with no prompt. WARNING: dangerous.
     |
+    | Production defaults to 'off' — set AI_CODE_SHELL=approve in .env to opt in.
+    |
     */
-    'shell' => env('AI_CODE_SHELL', 'approve'),
+    'shell' => [
+        'local'      => env('AI_CODE_SHELL', 'approve'),
+        'staging'    => env('AI_CODE_SHELL', 'approve'),
+        'production' => env('AI_CODE_SHELL', 'off'),
+    ],
 
     'shell_allowlist' => [
         'composer',

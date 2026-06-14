@@ -67,7 +67,7 @@ class CodeCommand extends Command
 
         $model     = config('tackle.model', 'claude-sonnet-4-6');
         $budgetUsd = config('tackle.budget_usd', 1.00);
-        $shellMode = config('tackle.shell', 'approve');
+        $shellMode = $this->resolveShellMode();
 
         title('Tackle — Ready');
         intro("Laravel Tackle  ·  {$model}  ·  \${$budgetUsd} budget  ·  shell: {$shellMode}");
@@ -373,6 +373,18 @@ class CodeCommand extends Command
                 rtrim($content),
             );
         }, $task);
+    }
+
+    private function resolveShellMode(): string
+    {
+        $config = config('tackle.shell', 'approve');
+
+        if (is_array($config)) {
+            $env = app()->environment();
+            return $config[$env] ?? $config['*'] ?? 'approve';
+        }
+
+        return $config;
     }
 
     private function isTty(): bool

@@ -39,7 +39,7 @@ class RunShell extends AbstractTool
             return 'A non-empty command is required.';
         }
 
-        $mode = config('tackle.shell', 'approve');
+        $mode = $this->resolveShellMode();
 
         return match ($mode) {
             'off'       => $this->refuseAll($command),
@@ -48,6 +48,18 @@ class RunShell extends AbstractTool
             'yolo'      => $this->runUnrestricted($command),
             default     => "Unknown shell mode '{$mode}'. Check your tackle config.",
         };
+    }
+
+    private function resolveShellMode(): string
+    {
+        $config = config('tackle.shell', 'approve');
+
+        if (is_array($config)) {
+            $env = app()->environment();
+            return $config[$env] ?? $config['*'] ?? 'approve';
+        }
+
+        return $config;
     }
 
     private function refuseAll(string $command): string
