@@ -22,12 +22,15 @@ class CommitAndPush extends AbstractTool
             'message' => $schema->string()
                 ->description('Commit message describing what changed.')
                 ->required(),
+            'branch' => $schema->string()
+                ->description('Branch name to push to. Required when the workspace is in detached HEAD (e.g. after git worktree add HEAD). Pass the same branch that was used for CreatePullRequest.'),
         ];
     }
 
     public function handle(Request $request): string
     {
         $message = (string) $request->string('message', '');
+        $branch  = trim((string) $request->string('branch', ''));
 
         if (trim($message) === '') {
             return 'message is required.';
@@ -40,6 +43,13 @@ class CommitAndPush extends AbstractTool
             return 'No changes to commit.';
         }
 
+        if ($branch !== '') {
+            $checkout = Process::path($path)->run('git checkout ' . escapeshellarg($branch));
+            if ($checkout->failed()) {
+                return 'Failed to switch to branch: ' . trim($checkout->errorOutput());
+            }
+        }
+
         Process::path($path)->run('git add -A');
 
         $commit = Process::path($path)->run('git commit -m ' . escapeshellarg($message));
@@ -47,7 +57,11 @@ class CommitAndPush extends AbstractTool
             return 'Commit failed: ' . trim($commit->errorOutput());
         }
 
-        $push = Process::path($path)->run('git push');
+        $pushCmd = $branch !== ''
+            ? 'git push origin ' . escapeshellarg($branch)
+            : 'git push';
+
+        $push = Process::path($path)->run($pushCmd);
         if ($push->failed()) {
             return 'Push failed: ' . trim($push->errorOutput());
         }
