@@ -220,7 +220,9 @@ class CodeCommand extends Command
         $result = (string) ($event->toolResult->result ?? '');
 
         if (in_array($tool, ['RunTests', 'RunArtisan', 'RunShell'], strict: true)) {
-            if (str_contains($result, 'FAILED') || str_contains($result, 'Error')) {
+            if (str_starts_with($result, "Command '") && str_contains($result, 'not in the allowlist')) {
+                $this->line('<fg=yellow>  ⚠ Refused — command not in allowlist.</>');
+            } elseif (str_contains($result, 'FAILED') || str_contains($result, 'Error')) {
                 $this->line('<fg=red>  ✗ Command reported failures — agent will handle them.</>');
             } else {
                 $this->line('<fg=green>  ✓ Done</>');

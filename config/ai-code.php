@@ -78,9 +78,10 @@ return [
     */
     'artisan_allowlist' => [
         'make:*',
-        'route:list',
         'migrate',
+        'migrate:*',
         'db:seed',
+        'route:list',
         'test',
     ],
 
