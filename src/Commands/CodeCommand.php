@@ -98,6 +98,10 @@ class CodeCommand extends Command
         title('Tackle — Ready');
         intro("Laravel Tackle  ·  {$model}  ·  \${$budgetUsd} budget  ·  shell: {$shellMode}{$wtLabel}");
 
+        if ($worktree) {
+            note('Worktree mode — all edits go to an isolated copy of the repo. Live files are untouched until you open a PR.');
+        }
+
         while (true) {
             $task = (new TackleSuggestPrompt(
                 label: 'What should I work on?',
@@ -301,7 +305,8 @@ class CodeCommand extends Command
 
         if ($output && trim($output) !== '') {
             $this->line('');
-            note(trim($output));
+            $label = $wt->active() ? 'Worktree changes (live files untouched)' : 'Uncommitted changes';
+            note($label . "\n" . trim($output));
         }
     }
 
