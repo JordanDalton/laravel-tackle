@@ -45,7 +45,7 @@ class HealthCommand extends Command
         if (file_exists(config_path('ai-code.php'))) {
             $this->pass('config/ai-code.php published');
         } else {
-            $this->check('config/ai-code.php not found', 'Run: php artisan vendor:publish --tag="laravel-tackle-config"');
+            $this->check('config/ai-code.php not found', 'Run: php artisan vendor:publish --tag="tackle-config"');
         }
     }
 
@@ -115,7 +115,7 @@ class HealthCommand extends Command
         } catch (\Throwable) {
             $this->check(
                 'tackle_healing_log table not found',
-                'Run: php artisan vendor:publish --tag="laravel-tackle-migrations" && php artisan migrate'
+                'Run: php artisan vendor:publish --tag="tackle-migrations" && php artisan migrate'
             );
         }
 

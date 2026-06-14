@@ -32,7 +32,7 @@ The healer listens to `JobFailed` and `ScheduledTaskFailed` events. Enable it, p
 
 @verbatim
 <code-snippet name="Self-healing setup" lang="bash">
-php artisan vendor:publish --tag="laravel-tackle-migrations"
+php artisan vendor:publish --tag="tackle-migrations"
 php artisan migrate
 
 # .env
@@ -105,6 +105,6 @@ Stubs can be published and customised:
 
 @verbatim
 <code-snippet name="Publish stubs" lang="bash">
-php artisan vendor:publish --tag="laravel-tackle-stubs"
+php artisan vendor:publish --tag="tackle-stubs"
 </code-snippet>
 @endverbatim

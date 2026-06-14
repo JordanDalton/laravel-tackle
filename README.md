@@ -81,7 +81,7 @@ Run through this checklist once before your first session:
       clean git state is your undo button.
 - [ ] Set `ANTHROPIC_API_KEY` in `.env` (or the key for your chosen provider).
 - [ ] Publish the `laravel/ai` config: `php artisan vendor:publish --provider="Laravel\Ai\AiServiceProvider"`
-- [ ] Publish the Tackle config: `php artisan vendor:publish --tag="laravel-tackle-config"`
+- [ ] Publish the Tackle config: `php artisan vendor:publish --tag="tackle-config"`
 - [ ] Run `php artisan ai:code` and type a small test task to confirm everything connects.
 
 ---
@@ -99,7 +99,7 @@ Run through this checklist once before your first session:
 ```bash
 composer require jordandalton/laravel-tackle
 php artisan vendor:publish --provider="Laravel\Ai\AiServiceProvider"
-php artisan vendor:publish --tag="laravel-tackle-config"
+php artisan vendor:publish --tag="tackle-config"
 ```
 
 The service provider and `ai:code` command register automatically via Laravel
@@ -514,7 +514,7 @@ all without you lifting a finger.
 Publish and run the migration, then enable via `.env`:
 
 ```bash
-php artisan vendor:publish --tag="laravel-tackle-migrations"
+php artisan vendor:publish --tag="tackle-migrations"
 php artisan migrate
 ```
 
@@ -673,7 +673,7 @@ php artisan tackle:healing-log --limit=50
 The audit log requires the migration to have been run:
 
 ```bash
-php artisan vendor:publish --tag="laravel-tackle-migrations"
+php artisan vendor:publish --tag="tackle-migrations"
 php artisan migrate
 ```
 
@@ -870,7 +870,7 @@ php artisan tackle:agent MyAgent --full
 To customise the generated stubs, publish them first:
 
 ```bash
-php artisan vendor:publish --tag="laravel-tackle-stubs"
+php artisan vendor:publish --tag="tackle-stubs"
 ```
 
 This copies the stubs to `stubs/tackle/` in your project root. Both commands

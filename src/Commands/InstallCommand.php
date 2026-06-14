@@ -37,19 +37,19 @@ class InstallCommand extends Command
 
     private function publishConfig(): void
     {
-        $this->callSilently('vendor:publish', ['--tag' => 'laravel-tackle-config']);
+        $this->callSilently('vendor:publish', ['--tag' => 'tackle-config']);
         $this->line('  <fg=green>✓</> Config published → <fg=cyan>config/ai-code.php</>');
     }
 
     private function publishMigrations(): void
     {
-        $this->callSilently('vendor:publish', ['--tag' => 'laravel-tackle-migrations']);
+        $this->callSilently('vendor:publish', ['--tag' => 'tackle-migrations']);
         $this->line('  <fg=green>✓</> Migrations published → <fg=cyan>database/migrations/</>');
     }
 
     private function publishStubs(): void
     {
-        $this->callSilently('vendor:publish', ['--tag' => 'laravel-tackle-stubs']);
+        $this->callSilently('vendor:publish', ['--tag' => 'tackle-stubs']);
         $this->line('  <fg=green>✓</> Stubs published → <fg=cyan>stubs/tackle/</>');
     }
 

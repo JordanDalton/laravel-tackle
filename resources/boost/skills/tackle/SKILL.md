@@ -25,7 +25,7 @@ Use this skill when:
 ```bash
 composer require jordandalton/laravel-tackle
 php artisan vendor:publish --provider="Laravel\Ai\AiServiceProvider"
-php artisan vendor:publish --tag="laravel-tackle-config"
+php artisan vendor:publish --tag="tackle-config"
 ```
 
 Add your API key to `.env`:
@@ -74,7 +74,7 @@ php artisan tackle:agent MyAgent --full  # → bare CodingAgent implementation
 Stubs can be published and customised:
 
 ```bash
-php artisan vendor:publish --tag="laravel-tackle-stubs"
+php artisan vendor:publish --tag="tackle-stubs"
 # publishes to stubs/tackle/ — commands pick up published stubs automatically
 ```
 
@@ -194,7 +194,7 @@ $this->app->bind(\Tackle\Contracts\CodingAgent::class, MyAgent::class);
 ### Setup
 
 ```bash
-php artisan vendor:publish --tag="laravel-tackle-migrations"
+php artisan vendor:publish --tag="tackle-migrations"
 php artisan migrate
 ```
 

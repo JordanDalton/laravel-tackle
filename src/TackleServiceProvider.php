@@ -55,7 +55,7 @@ class TackleServiceProvider extends PackageServiceProvider
     {
         $this->publishes([
             __DIR__ . '/../resources/stubs' => base_path('stubs/tackle'),
-        ], 'laravel-tackle-stubs');
+        ], 'tackle-stubs');
 
         if (config('ai-code.healing.enabled', false)) {
             Event::listen(JobFailed::class, JobFailureListener::class);
