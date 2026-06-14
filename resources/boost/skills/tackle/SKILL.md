@@ -36,6 +36,26 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 ---
 
+## Available tools (DefaultCodingAgent)
+
+| Tool | What it does |
+|---|---|
+| `ReadFile` | Read any file in the workspace |
+| `Glob` | List files by pattern |
+| `SearchCode` | Grep-style search — file, line, snippet |
+| `EditFile` | str_replace edit — unique match required |
+| `WriteFile` | Create a new file |
+| `RunArtisan` | Run an artisan command (allowlist-gated) |
+| `RunTests` | Run Pest / PHPUnit |
+| `RunPint` | Format files with Laravel Pint |
+| `RunShell` | General shell (governed by shell mode) |
+| `QueryDatabase` | Read-only SELECT query → JSON (100 row cap) |
+| `ReadLog` | Tail `storage/logs/laravel.log` with optional filter |
+| `ListRoutes` | Registered routes — method, URI, name, action |
+| `GitDiff` | Git diff — supports staged, commit, against, path, stat |
+
+---
+
 ## Generating tools and agents
 
 Use the built-in generators to scaffold new classes:

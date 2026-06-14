@@ -331,6 +331,8 @@ prompting. Add your own patterns here if your project has additional secrets.
 
 These tools are available to the agent in every session.
 
+**Filesystem**
+
 | Tool | What it does |
 |---|---|
 | `ReadFile` | Reads a file's contents. Always runs through `PathGuard` first. |
@@ -338,10 +340,24 @@ These tools are available to the agent in every session.
 | `SearchCode` | Grep-style search returning file + line + snippet. Capped at 50 results. |
 | `EditFile` | `str_replace` edit — `old_str` must appear exactly once or the edit is refused. |
 | `WriteFile` | Creates a new file. Refuses if the path already exists. |
+
+**Execution**
+
+| Tool | What it does |
+|---|---|
 | `RunArtisan` | Runs `php artisan <command>` in a subprocess. Allowlist-gated. |
 | `RunTests` | Runs Pest or `php artisan test` in a subprocess. Returns full output. |
 | `RunPint` | Runs Laravel Pint to format files. Called before finishing a task. |
 | `RunShell` | General shell — governed by the `shell` config mode. |
+
+**Observability**
+
+| Tool | What it does |
+|---|---|
+| `ReadLog` | Returns the last N lines of `storage/logs/laravel.log`. Accepts an optional filter string. |
+| `QueryDatabase` | Runs a read-only `SELECT` query and returns results as JSON. Capped at 100 rows. |
+| `ListRoutes` | Returns a formatted table of all registered routes with method, URI, name, and action. |
+| `GitDiff` | Shows a git diff — supports staged, a specific commit, a branch range, or a path. |
 
 All file reads happen in-process. Everything that executes code runs as a
 subprocess, so a broken generated file cannot crash the agent session.

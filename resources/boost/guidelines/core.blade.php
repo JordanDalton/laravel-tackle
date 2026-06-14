@@ -63,6 +63,17 @@ Tackle ships three Laravel contextual attributes for constructor injection:
 - `#[AiModel]` — injects `config('ai-code.model')`
 - `#[Workspace]` — injects a `PathGuard` configured for the application workspace
 
+### Built-in tools
+
+The coding agent has access to these tools:
+
+- `ReadFile`, `Glob`, `SearchCode`, `EditFile`, `WriteFile` — filesystem access through `PathGuard`
+- `RunArtisan`, `RunTests`, `RunPint`, `RunShell` — subprocess execution
+- `QueryDatabase` — read-only SELECT queries, results as JSON (100 row cap)
+- `ReadLog` — tail `storage/logs/laravel.log` with optional filter string
+- `ListRoutes` — formatted route table with method, URI, name, action
+- `GitDiff` — git diff with support for `staged`, `commit`, `against`, `path`, and `stat` options
+
 ### Customization
 
 Use the generator commands to scaffold new tools and agents:

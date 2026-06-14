@@ -13,8 +13,12 @@ use Tackle\Attributes\Workspace;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Support\PathGuard;
 use Tackle\Tools\EditFile;
+use Tackle\Tools\GitDiff;
 use Tackle\Tools\Glob;
+use Tackle\Tools\ListRoutes;
+use Tackle\Tools\QueryDatabase;
 use Tackle\Tools\ReadFile;
+use Tackle\Tools\ReadLog;
 use Tackle\Tools\RunArtisan;
 use Tackle\Tools\RunPint;
 use Tackle\Tools\RunShell;
@@ -44,6 +48,10 @@ class DefaultCodingAgent implements CodingAgent
         private readonly RunTests $runTests,
         private readonly RunPint $runPint,
         private readonly RunShell $runShell,
+        private readonly QueryDatabase $queryDatabase,
+        private readonly ReadLog $readLog,
+        private readonly GitDiff $gitDiff,
+        private readonly ListRoutes $listRoutes,
     ) {}
 
     protected function provider(): string
@@ -120,6 +128,10 @@ class DefaultCodingAgent implements CodingAgent
             $this->runTests,
             $this->runPint,
             $this->runShell,
+            $this->queryDatabase,
+            $this->readLog,
+            $this->gitDiff,
+            $this->listRoutes,
         ];
     }
 }
