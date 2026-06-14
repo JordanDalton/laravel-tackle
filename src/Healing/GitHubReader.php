@@ -2,38 +2,32 @@
 
 namespace Tackle\Healing;
 
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Process;
+use Tackle\Support\GitHubClient;
 use Throwable;
 
 class GitHubReader
 {
+    public function __construct(private GitHubClient $client) {}
+
     public function forIssue(int $issueNumber): string
     {
-        [$token, $repo] = $this->credentials();
-
-        if (! $token || ! $repo) {
+        if (! $this->client->configured()) {
             return '';
         }
 
+        $repo = $this->client->repo();
+
         try {
-            $issueResponse = Http::withToken($token)
-                ->withHeaders(['Accept' => 'application/vnd.github+json', 'X-GitHub-Api-Version' => '2022-11-28'])
-                ->get("https://api.github.com/repos/{$repo}/issues/{$issueNumber}");
+            $issueResponse = $this->client->get("repos/{$repo}/issues/{$issueNumber}");
 
             if (! $issueResponse->successful()) {
                 return '';
             }
 
-            $issue = $issueResponse->json();
-
-            $commentsResponse = Http::withToken($token)
-                ->withHeaders(['Accept' => 'application/vnd.github+json', 'X-GitHub-Api-Version' => '2022-11-28'])
-                ->get("https://api.github.com/repos/{$repo}/issues/{$issueNumber}/comments", ['per_page' => 25]);
-
+            $commentsResponse = $this->client->get("repos/{$repo}/issues/{$issueNumber}/comments", ['per_page' => 25]);
             $comments = $commentsResponse->successful() ? $commentsResponse->json() : [];
 
-            return $this->formatIssue($issue, $comments);
+            return $this->formatIssue($issueResponse->json(), $comments);
         } catch (Throwable) {
             return '';
         }
@@ -41,21 +35,19 @@ class GitHubReader
 
     public function recent(int $limit = 10): string
     {
-        [$token, $repo] = $this->credentials();
-
-        if (! $token || ! $repo) {
+        if (! $this->client->configured()) {
             return '';
         }
 
+        $repo = $this->client->repo();
+
         try {
-            $response = Http::withToken($token)
-                ->withHeaders(['Accept' => 'application/vnd.github+json', 'X-GitHub-Api-Version' => '2022-11-28'])
-                ->get("https://api.github.com/repos/{$repo}/issues", [
-                    'state'    => 'open',
-                    'per_page' => min($limit, 25),
-                    'sort'     => 'updated',
-                    'direction' => 'desc',
-                ]);
+            $response = $this->client->get("repos/{$repo}/issues", [
+                'state'     => 'open',
+                'per_page'  => min($limit, 25),
+                'sort'      => 'updated',
+                'direction' => 'desc',
+            ]);
 
             if (! $response->successful()) {
                 return '';
@@ -82,11 +74,11 @@ class GitHubReader
 
     private function formatIssue(array $issue, array $comments): string
     {
-        $number  = $issue['number']    ?? '?';
-        $title   = $issue['title']     ?? '?';
-        $state   = $issue['state']     ?? '?';
+        $number  = $issue['number']        ?? '?';
+        $title   = $issue['title']         ?? '?';
+        $state   = $issue['state']         ?? '?';
         $author  = $issue['user']['login'] ?? '?';
-        $body    = trim($issue['body'] ?? '');
+        $body    = trim($issue['body']     ?? '');
         $labels  = collect($issue['labels'] ?? [])->pluck('name')->implode(', ');
 
         $output  = "GitHub Issue #{$number} — {$title}";
@@ -111,26 +103,5 @@ class GitHubReader
         }
 
         return trim($output);
-    }
-
-    private function credentials(): array
-    {
-        $token = config('ai-code.github.token') ?: $this->resolveGhToken();
-
-        return [
-            $token ?: null,
-            config('ai-code.github.repo') ?: null,
-        ];
-    }
-
-    private function resolveGhToken(): ?string
-    {
-        try {
-            $result = Process::run(['gh', 'auth', 'token']);
-            $token  = trim($result->output());
-            return ($result->successful() && $token !== '') ? $token : null;
-        } catch (Throwable) {
-            return null;
-        }
     }
 }

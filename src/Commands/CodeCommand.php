@@ -205,6 +205,7 @@ class CodeCommand extends Command
             'ReadTelescopeEntry' => '🔭 reading telescope',
             'ReadSentryIssue'    => '🪲 reading sentry',
             'ReadGitHubIssue'    => '🐙 reading github issue',
+            'CreatePullRequest'  => '🚀 opening pull request',
             default              => '→ ' . $tool,
         };
 
