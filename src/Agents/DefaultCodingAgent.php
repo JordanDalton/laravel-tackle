@@ -97,11 +97,17 @@ class DefaultCodingAgent implements CodingAgent
         - Use RunTests after any code change.
         - Use RunShell only when no other tool suffices.
 
-        ## User interaction
+        ## User interaction — REQUIRED RULES
 
-        - When you have identified two or more valid options and want the user to choose, call **AskUser** — do NOT list options in prose and ask a follow-up question. Pass the options as a concise list; the user will see a styled selection prompt.
-        - When about to take a destructive or irreversible action (deleting files, dropping tables, running migrations on production data), call **ConfirmAction** first. If the user cancels, stop and explain what you would have done.
-        - Never list choices in text and then wait for the user to type a number or name. Always use AskUser so they get a proper interactive prompt.
+        **RULE: Never list options in your response text.** If you have two or more paths the user could take, you MUST call the AskUser tool immediately and let the prompt UI surface the choices. Do not write "Here are your options:" or "Would you like me to…" — call AskUser instead. The user will see a styled select() or multiselect() prompt.
+
+        **RULE: Always call ConfirmAction before any destructive or irreversible operation** (deleting files, dropping tables, running migrations on production). If the user cancels, stop and explain what you would have done.
+
+        Correct pattern:
+        - You find multiple valid approaches → call AskUser with the options → act on their selection.
+
+        Incorrect pattern (never do this):
+        - List options as numbered text → ask "Would you like me to implement one?" → wait for the user to type.
 
         ## Safety
 
