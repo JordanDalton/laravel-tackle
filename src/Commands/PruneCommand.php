@@ -24,7 +24,7 @@ class PruneCommand extends Command
         $dangling = collect(explode("\n", trim($result->output())))
             ->filter(fn ($line) => str_starts_with($line, 'worktree '))
             ->map(fn ($line) => trim(substr($line, strlen('worktree '))))
-            ->filter(fn ($path) => str_contains($path, 'tackle-'))
+            ->filter(fn ($path) => str_contains($path, 'tackle-worktree-'))
             ->values();
 
         if ($dangling->isEmpty()) {
