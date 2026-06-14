@@ -13,7 +13,9 @@ it('returns empty string when token is not configured', function () {
     config()->set('ai-code.github.token', null);
     config()->set('ai-code.github.repo', 'acme/app');
 
-    $reader = new GitHubReader();
+    \Illuminate\Support\Facades\Process::fake(['gh*' => \Illuminate\Support\Facades\Process::result('', '', 1)]);
+
+    $reader = app(GitHubReader::class);
 
     expect($reader->forIssue(42))->toBe('');
     expect($reader->recent())->toBe('');
@@ -23,7 +25,9 @@ it('returns empty string when repo is not configured', function () {
     config()->set('ai-code.github.token', 'ghp_token');
     config()->set('ai-code.github.repo', null);
 
-    $reader = new GitHubReader();
+    \Illuminate\Support\Facades\Process::fake(['gh*' => \Illuminate\Support\Facades\Process::result('', '', 1)]);
+
+    $reader = app(GitHubReader::class);
 
     expect($reader->forIssue(42))->toBe('');
     expect($reader->recent())->toBe('');
@@ -41,7 +45,7 @@ it('returns empty string when GitHub API returns a non-2xx response for forIssue
         'api.github.com/*' => Http::response([], 401),
     ]);
 
-    $reader = new GitHubReader();
+    $reader = app(GitHubReader::class);
 
     expect($reader->forIssue(42))->toBe('');
 });
@@ -68,7 +72,7 @@ it('formats a GitHub issue with body and comments correctly', function () {
         ], 200),
     ]);
 
-    $reader = new GitHubReader();
+    $reader = app(GitHubReader::class);
     $result = $reader->forIssue(42);
 
     expect($result)
@@ -99,7 +103,7 @@ it('formats an issue without labels or comments', function () {
         ], 200),
     ]);
 
-    $reader = new GitHubReader();
+    $reader = app(GitHubReader::class);
     $result = $reader->forIssue(7);
 
     expect($result)
@@ -120,7 +124,7 @@ it('returns empty string when GitHub API returns a non-2xx response for recent()
         'api.github.com/*' => Http::response([], 403),
     ]);
 
-    $reader = new GitHubReader();
+    $reader = app(GitHubReader::class);
 
     expect($reader->recent())->toBe('');
 });
@@ -136,7 +140,7 @@ it('formats recent issues correctly and excludes pull requests', function () {
         ], 200),
     ]);
 
-    $reader = new GitHubReader();
+    $reader = app(GitHubReader::class);
     $result = $reader->recent();
 
     expect($result)
@@ -154,7 +158,7 @@ it('returns no issues message when API returns empty array', function () {
         'api.github.com/*' => Http::response([], 200),
     ]);
 
-    $reader = new GitHubReader();
+    $reader = app(GitHubReader::class);
 
     expect($reader->recent())->toBe('No open GitHub issues found.');
 });
@@ -167,7 +171,9 @@ it('ReadGitHubIssue returns not-configured message when credentials are missing'
     config()->set('ai-code.github.token', null);
     config()->set('ai-code.github.repo', null);
 
-    $tool   = new ReadGitHubIssue(new GitHubReader());
+    \Illuminate\Support\Facades\Process::fake(['gh*' => \Illuminate\Support\Facades\Process::result('', '', 1)]);
+
+    $tool   = app(ReadGitHubIssue::class);
     $result = $tool->handle(new Request(['issue_number' => 42]));
 
     expect($result)->toContain('GITHUB_TOKEN');
@@ -177,7 +183,9 @@ it('ReadGitHubIssue routes to recent() when no issue_number is given', function 
     config()->set('ai-code.github.token', null);
     config()->set('ai-code.github.repo', null);
 
-    $tool   = new ReadGitHubIssue(new GitHubReader());
+    \Illuminate\Support\Facades\Process::fake(['gh*' => \Illuminate\Support\Facades\Process::result('', '', 1)]);
+
+    $tool   = app(ReadGitHubIssue::class);
     $result = $tool->handle(new Request([]));
 
     expect($result)->toContain('GITHUB_TOKEN');
@@ -191,7 +199,7 @@ it('ReadGitHubIssue clamps limit between 1 and 25', function () {
         'api.github.com/*' => Http::response([], 200),
     ]);
 
-    $tool   = new ReadGitHubIssue(new GitHubReader());
+    $tool   = app(ReadGitHubIssue::class);
     $result = $tool->handle(new Request(['limit' => 999]));
 
     expect($result)->toBeString();

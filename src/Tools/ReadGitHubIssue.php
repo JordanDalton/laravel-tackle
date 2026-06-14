@@ -5,10 +5,11 @@ namespace Tackle\Tools;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Tools\Request;
 use Tackle\Healing\GitHubReader;
+use Tackle\Support\GitHubClient;
 
 class ReadGitHubIssue extends AbstractTool
 {
-    public function __construct(private GitHubReader $reader) {}
+    public function __construct(private GitHubReader $reader, private GitHubClient $client) {}
 
     public function description(): string
     {
@@ -27,6 +28,10 @@ class ReadGitHubIssue extends AbstractTool
 
     public function handle(Request $request): string
     {
+        if (! $this->client->configured()) {
+            return 'GitHub is not configured. Set GITHUB_TOKEN (or run: gh auth login) and GITHUB_REPO in .env.';
+        }
+
         $issueNumber = $request->integer('issue_number', 0);
 
         if ($issueNumber > 0) {

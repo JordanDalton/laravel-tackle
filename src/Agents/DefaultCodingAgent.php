@@ -21,6 +21,7 @@ use Tackle\Tools\ListRoutes;
 use Tackle\Tools\QueryDatabase;
 use Tackle\Tools\ReadFile;
 use Tackle\Tools\ReadLog;
+use Tackle\Tools\CreatePullRequest;
 use Tackle\Tools\ReadGitHubIssue;
 use Tackle\Tools\ReadSentryIssue;
 use Tackle\Tools\ReadTelescopeEntry;
@@ -60,6 +61,7 @@ class DefaultCodingAgent implements CodingAgent
         private readonly ReadTelescopeEntry $readTelescopeEntry,
         private readonly ReadSentryIssue $readSentryIssue,
         private readonly ReadGitHubIssue $readGitHubIssue,
+        private readonly CreatePullRequest $createPullRequest,
         private readonly AskUser $askUser,
         private readonly ConfirmAction $confirmAction,
     ) {}
@@ -114,6 +116,8 @@ class DefaultCodingAgent implements CodingAgent
         NEVER do this: research → write a numbered list in text → end with "Would you like me to implement one?"
         ALWAYS do this: research → call AskUser with the options → act on the returned selection.
 
+        **RULE: After completing work that was sourced from a GitHub issue (fetched via ReadGitHubIssue), always offer to open a pull request. Call ConfirmAction first ("Open a pull request for issue #N?"), then call CreatePullRequest with a descriptive branch name (e.g. tackle/issue-3-fix-login), a clear title, and a summary of what was changed and why. Pass the issue_number so the PR auto-closes the issue on merge.**
+
         **RULE: Always call ConfirmAction before any destructive or irreversible operation** (deleting files, dropping tables, running migrations on production). If the user cancels, stop and explain what you would have done.
 
         ## Safety
@@ -160,6 +164,7 @@ class DefaultCodingAgent implements CodingAgent
             $this->readTelescopeEntry,
             $this->readSentryIssue,
             $this->readGitHubIssue,
+            $this->createPullRequest,
             $this->askUser,
             $this->confirmAction,
         ];
