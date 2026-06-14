@@ -395,7 +395,7 @@ class CodeCommand extends Command
 
     private function expandAtMentions(string $task): string
     {
-        return preg_replace_callback('/@([\w./\-]+)/', function ($matches) {
+        return preg_replace_callback('#@([\w./_-]+)#', function ($matches) {
             $path = base_path($matches[1]);
 
             if (! file_exists($path) || is_dir($path)) {
