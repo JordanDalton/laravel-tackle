@@ -22,6 +22,7 @@ Built on top of [`laravel/ai`](https://github.com/laravel/ai).
 - [Configuration](#configuration)
 - [Built-in tools](#built-in-tools)
 - [Self-healing queue workers](#self-healing-queue-workers)
+- [Code review](#code-review)
 - [Limitations](#limitations)
 - [Customization](#customization)
   - [Adding your own tools](#adding-your-own-tools)
@@ -438,6 +439,64 @@ not present.
   same path guards apply as in interactive mode.
 - `HealJobFailure` itself has `$tries = 1`. A failing healer does not create a
   healing loop.
+
+---
+
+## Code review
+
+`php artisan ai:review` feeds your git diff to a read-only AI agent that reads
+the surrounding codebase for context, then surfaces real issues grouped by file
+with severity levels.
+
+```bash
+# Review everything since your last commit (staged + unstaged)
+php artisan ai:review
+
+# Review only staged changes
+php artisan ai:review --staged
+
+# PR-style review — your branch vs. another branch
+php artisan ai:review --against=main
+
+# Review a specific commit
+php artisan ai:review --commit=abc1234
+
+# Tell the agent what to prioritise
+php artisan ai:review --against=main --focus=security,performance
+```
+
+### Output format
+
+Findings are grouped by file with three severity levels:
+
+| Level | Meaning |
+|---|---|
+| 🔴 Critical | Bugs that will cause failures, security vulnerabilities, data loss risks |
+| 🟡 Warning | Edge cases, missing error handling, performance concerns, breaking changes |
+| 🟢 Suggestion | Improvements worth considering but not blocking |
+
+The review ends with a one-line verdict: **LGTM** / **LGTM with minor notes** /
+**Needs changes**.
+
+### How it works
+
+The `ReviewAgent` is a read-only agent — it has access to `ReadFile`, `Glob`,
+and `SearchCode` but no editing tools. Before commenting on any changed function
+or class it reads the full file for context, so findings are grounded in the
+actual codebase rather than the diff alone.
+
+### Focus areas
+
+Pass `--focus` with a comma-separated list to direct the agent's attention:
+
+```bash
+php artisan ai:review --focus=security
+php artisan ai:review --focus=performance,tests
+php artisan ai:review --staged --focus=bugs,security
+```
+
+Any plain-language description works — `security`, `performance`, `n+1 queries`,
+`missing tests`, `breaking changes`, etc.
 
 ---
 
