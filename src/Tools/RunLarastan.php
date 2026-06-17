@@ -43,7 +43,7 @@ class RunLarastan extends AbstractTool
             ? 'php -d memory_limit=' . escapeshellarg($memoryLimit)
             : 'php';
 
-        $args = [$phpBin, './vendor/bin/phpstan', 'analyse', '--no-progress', '--no-interaction'];
+        $args = [$phpBin, './vendor/bin/phpstan', 'analyse', '--no-progress', '--no-interaction', '--no-ansi'];
 
         $level = $request->integer('level', -1);
         if ($level >= 0) {
@@ -60,6 +60,19 @@ class RunLarastan extends AbstractTool
             ->run(implode(' ', $args));
 
         $output = trim($result->output() . $result->errorOutput());
+
+        if ($output === '') {
+            return '(PHPStan ran with no output.)';
+        }
+
+        // Auto-retry with a higher memory limit when the process runs out of memory.
+        if ($memoryLimit === '' && str_contains($output, 'memory_limit')) {
+            $args[0] = 'php -d memory_limit=1G';
+            $result  = Process::path($workspace)
+                ->timeout(120)
+                ->run(implode(' ', $args));
+            $output = trim($result->output() . $result->errorOutput());
+        }
 
         return $output !== '' ? $output : '(PHPStan ran with no output.)';
     }
