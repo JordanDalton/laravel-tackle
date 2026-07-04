@@ -1,5 +1,19 @@
 <?php
 
+use Tackle\Tools\GitDiff;
+use Tackle\Tools\Glob;
+use Tackle\Tools\ListRoutes;
+use Tackle\Tools\QueryDatabase;
+use Tackle\Tools\ReadFile;
+use Tackle\Tools\ReadGitHubIssue;
+use Tackle\Tools\ReadLog;
+use Tackle\Tools\ReadPullRequest;
+use Tackle\Tools\ReadSentryIssue;
+use Tackle\Tools\ReadTelescopeEntry;
+use Tackle\Tools\RunLarastan;
+use Tackle\Tools\RunTests;
+use Tackle\Tools\SearchCode;
+
 return [
 
     /*
@@ -64,8 +78,8 @@ return [
     |
     */
     'shell' => [
-        'local'      => env('AI_CODE_SHELL', 'approve'),
-        'staging'    => env('AI_CODE_SHELL', 'approve'),
+        'local' => env('AI_CODE_SHELL', 'approve'),
+        'staging' => env('AI_CODE_SHELL', 'approve'),
         'production' => env('AI_CODE_SHELL', 'off'),
     ],
 
@@ -122,7 +136,7 @@ return [
             'migrate:refresh',
             'db:wipe',
         ],
-        'staging'    => [],
+        'staging' => [],
         'production' => [],
     ],
 
@@ -158,8 +172,8 @@ return [
     |
     */
     'worktree' => [
-        'local'      => env('AI_CODE_WORKTREE', false),
-        'staging'    => env('AI_CODE_WORKTREE', false),
+        'local' => env('AI_CODE_WORKTREE', false),
+        'staging' => env('AI_CODE_WORKTREE', false),
         'production' => env('AI_CODE_WORKTREE', true),
     ],
 
@@ -251,24 +265,61 @@ return [
     */
     'github' => [
         'token' => env('GITHUB_TOKEN'),
-        'repo'  => env('GITHUB_REPO'),
+        'repo' => env('GITHUB_REPO'),
     ],
 
     'sentry' => [
         'auth_token' => env('SENTRY_AUTH_TOKEN'),
-        'org'        => env('SENTRY_ORG'),
-        'project'    => env('SENTRY_PROJECT'),
+        'org' => env('SENTRY_ORG'),
+        'project' => env('SENTRY_PROJECT'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | MCP Server
+    |--------------------------------------------------------------------------
+    |
+    | `php artisan tackle:mcp` serves the tools listed below over the Model
+    | Context Protocol (stdio), so external agents — Claude Code, Cursor,
+    | Zed, or any MCP client — can use Tackle's Laravel-aware tools with the
+    | same safety guards (protected paths, artisan allowlist, SELECT-only
+    | queries) enforced in PHP.
+    |
+    | The default set is read/inspect + analysis only. You may add write
+    | tools (Tackle\Tools\EditFile, WriteFile, RunPint, ...) if you trust
+    | the connected client — but never AskUser or ConfirmAction (they need
+    | an interactive terminal and are refused by tackle:mcp), and avoid
+    | tools that prompt for terminal confirmation, such as CommitAndPush,
+    | which would hang the stdio session.
+    |
+    */
+    'mcp' => [
+        'tools' => [
+            ReadFile::class,
+            Glob::class,
+            SearchCode::class,
+            GitDiff::class,
+            ListRoutes::class,
+            ReadLog::class,
+            QueryDatabase::class,
+            ReadTelescopeEntry::class,
+            ReadSentryIssue::class,
+            ReadGitHubIssue::class,
+            ReadPullRequest::class,
+            RunLarastan::class,
+            RunTests::class,
+        ],
     ],
 
     'healing' => [
-        'enabled'       => env('AI_CODE_HEALING_ENABLED', false),
-        'mode'          => env('AI_CODE_HEALING_MODE', 'pr'),
-        'queue'         => env('AI_CODE_HEALING_QUEUE', 'healer'),
-        'threshold'     => (int) env('AI_CODE_HEALING_THRESHOLD', 1),
+        'enabled' => env('AI_CODE_HEALING_ENABLED', false),
+        'mode' => env('AI_CODE_HEALING_MODE', 'pr'),
+        'queue' => env('AI_CODE_HEALING_QUEUE', 'healer'),
+        'threshold' => (int) env('AI_CODE_HEALING_THRESHOLD', 1),
         'branch_prefix' => env('AI_CODE_HEALING_BRANCH_PREFIX', 'tackle/heal-'),
-        'base_branch'   => env('AI_CODE_HEALING_BASE_BRANCH', 'main'),
-        'github_token'  => env('GITHUB_TOKEN', null),
-        'telescope'     => env('AI_CODE_HEALING_TELESCOPE', true),
+        'base_branch' => env('AI_CODE_HEALING_BASE_BRANCH', 'main'),
+        'github_token' => env('GITHUB_TOKEN', null),
+        'telescope' => env('AI_CODE_HEALING_TELESCOPE', true),
     ],
 
 ];

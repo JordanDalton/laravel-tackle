@@ -37,6 +37,7 @@ Built on top of [`laravel/ai`](https://github.com/laravel/ai).
 - [Session memory](#session-memory)
 - [Configuration](#configuration)
 - [Built-in tools](#built-in-tools)
+- [MCP server](#mcp-server)
 - [Self-healing queue workers](#self-healing-queue-workers)
   - [Scheduled command healing](#scheduled-command-healing)
   - [Per-class opt-out](#per-class-opt-out)
@@ -459,6 +460,45 @@ These tools are available to the agent in every session.
 
 All file reads happen in-process. Everything that executes code runs as a
 subprocess, so a broken generated file cannot crash the agent session.
+
+---
+
+## MCP server
+
+Tackle's tools aren't only for Tackle's agents. `tackle:mcp` serves them over
+the [Model Context Protocol](https://modelcontextprotocol.io) (stdio), so any
+MCP client — Claude Code, Cursor, Zed — can use Laravel-aware tools like
+`ListRoutes`, `QueryDatabase`, `ReadTelescopeEntry`, and `RunLarastan` against
+your app, with Tackle's safety layer still enforced in PHP: protected paths,
+the artisan allowlist, and SELECT-only database queries all apply exactly as
+they do for Tackle's own agents.
+
+Register it with Claude Code from your app directory:
+
+```bash
+claude mcp add tackle -- php artisan tackle:mcp
+```
+
+Or add it to `.mcp.json` manually:
+
+```json
+{
+  "mcpServers": {
+    "tackle": {
+      "command": "php",
+      "args": ["artisan", "tackle:mcp"]
+    }
+  }
+}
+```
+
+The exposed tool set is controlled by `config('tackle.mcp.tools')` and
+defaults to read/inspect and analysis tools only — no file writes, no shell.
+Add write tools (`EditFile`, `WriteFile`, `RunPint`, …) to the list if you
+trust the connected client. Interactive tools (`AskUser`, `ConfirmAction`)
+are refused outright: an MCP client has no terminal to answer their prompts.
+Avoid tools that ask for terminal confirmation, such as `CommitAndPush` —
+they would hang the stdio session.
 
 ---
 

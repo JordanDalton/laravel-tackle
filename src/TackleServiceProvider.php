@@ -11,19 +11,20 @@ use Tackle\Agents\DefaultCodingAgent;
 use Tackle\Commands\CodeCommand;
 use Tackle\Commands\ExplainCommand;
 use Tackle\Commands\FixCommand;
-use Tackle\Commands\HealthCommand;
 use Tackle\Commands\HealingLogCommand;
+use Tackle\Commands\HealthCommand;
 use Tackle\Commands\InstallCommand;
 use Tackle\Commands\MakeAgentCommand;
 use Tackle\Commands\MakeToolCommand;
+use Tackle\Commands\McpCommand;
 use Tackle\Commands\PruneCommand;
 use Tackle\Commands\ReplayCommand;
 use Tackle\Commands\ReviewCommand;
 use Tackle\Commands\TestCommand;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Healing\JobFailureListener;
-use Tackle\Support\WorktreeManager;
 use Tackle\Healing\ScheduledTaskFailureListener;
+use Tackle\Support\WorktreeManager;
 
 class TackleServiceProvider extends PackageServiceProvider
 {
@@ -46,6 +47,7 @@ class TackleServiceProvider extends PackageServiceProvider
                 PruneCommand::class,
                 MakeToolCommand::class,
                 MakeAgentCommand::class,
+                McpCommand::class,
             ]);
     }
 
@@ -58,7 +60,7 @@ class TackleServiceProvider extends PackageServiceProvider
     public function packageBooted(): void
     {
         $this->publishes([
-            __DIR__ . '/../resources/stubs' => base_path('stubs/tackle'),
+            __DIR__.'/../resources/stubs' => base_path('stubs/tackle'),
         ], 'tackle-stubs');
 
         if (config('tackle.healing.enabled', false)) {
