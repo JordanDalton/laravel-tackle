@@ -47,8 +47,6 @@ class DefaultCodingAgent implements CodingAgent
     private array $conversationMessages = [];
 
     public function __construct(
-        #[AiProvider] private string $provider = 'anthropic',
-        #[AiModel]    private string $model    = 'claude-sonnet-4-6',
         #[Workspace] private readonly PathGuard $pathGuard,
         private readonly ReadFile $readFile,
         private readonly Glob $glob,
@@ -73,6 +71,8 @@ class DefaultCodingAgent implements CodingAgent
         private readonly CommitAndPush $commitAndPush,
         private readonly AskUser $askUser,
         private readonly ConfirmAction $confirmAction,
+        #[AiProvider] private string $provider = 'anthropic',
+        #[AiModel]    private string $model    = 'claude-sonnet-4-6',
     ) {}
 
     protected function provider(): string
