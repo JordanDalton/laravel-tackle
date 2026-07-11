@@ -44,6 +44,10 @@ class PathGuard
 
     private function check(string $path): ?string
     {
+        if (trim($path) === '') {
+            return 'No path was provided.';
+        }
+
         $ws       = $this->workspace();
         $resolved = $this->resolve($path, $ws);
 

@@ -35,6 +35,10 @@ class WriteFile extends AbstractTool
 
         $absolute = $this->absolute($path);
 
+        if (File::isDirectory($absolute)) {
+            return "'{$path}' is a directory, not a file.";
+        }
+
         if (File::exists($absolute)) {
             return "File '{$path}' already exists. Use EditFile to modify it.";
         }

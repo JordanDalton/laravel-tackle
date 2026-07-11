@@ -237,3 +237,52 @@ it('RunShell runs commands in yolo mode', function () {
     $result = (new RunShell(makeGuard(), new CommandGuard()))->handle(req(['command' => 'echo yolo-works']));
     expect($result)->toContain('yolo-works');
 });
+
+// ──────────────────────────────────────────────────────────────────────
+// Directory / empty paths must refuse, never throw
+//
+// A model that reaches for EditFile with a directory path (or an empty
+// one, which resolves to the workspace root) used to hit File::get() on
+// a directory. That throws FileNotFoundException — an uncaught exception
+// inside a tool aborts the whole agent run instead of handing the model
+// a message it can recover from.
+// ──────────────────────────────────────────────────────────────────────
+
+it('refuses to edit a directory instead of throwing', function () {
+    @mkdir(workspace() . '/app', 0755, true);
+
+    $result = (new EditFile(makeGuard()))->handle(req([
+        'path'    => 'app',
+        'old_str' => 'foo',
+        'new_str' => 'bar',
+    ]));
+
+    expect($result)->toContain('is a directory, not a file');
+});
+
+it('refuses an empty path on edit', function () {
+    $result = (new EditFile(makeGuard()))->handle(req([
+        'path'    => '',
+        'old_str' => 'foo',
+        'new_str' => 'bar',
+    ]));
+
+    expect($result)->toContain('No path was provided');
+});
+
+it('refuses an empty path on read', function () {
+    $result = (new ReadFile(makeGuard()))->handle(req(['path' => '']));
+
+    expect($result)->toContain('No path was provided');
+});
+
+it('refuses to write over a directory', function () {
+    @mkdir(workspace() . '/app', 0755, true);
+
+    $result = (new WriteFile(makeGuard()))->handle(req([
+        'path'    => 'app',
+        'content' => 'nope',
+    ]));
+
+    expect($result)->toContain('is a directory, not a file');
+});
