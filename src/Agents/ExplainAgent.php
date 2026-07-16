@@ -19,12 +19,12 @@ class ExplainAgent implements CodingAgent
     use Promptable;
 
     public function __construct(
-        #[AiProvider] private string $provider = 'anthropic',
-        #[AiModel]    private string $model    = 'claude-sonnet-4-6',
         #[Workspace] private readonly PathGuard $pathGuard,
         private readonly ReadFile $readFile,
         private readonly Glob $glob,
         private readonly SearchCode $searchCode,
+        #[AiProvider] private string $provider = 'anthropic',
+        #[AiModel]    private string $model    = 'claude-sonnet-4-6',
     ) {}
 
     protected function provider(): string { return $this->provider; }

@@ -41,6 +41,10 @@ class EditFile extends AbstractTool
             return "File '{$path}' does not exist. Use WriteFile to create a new file.";
         }
 
+        if (! File::isFile($absolute)) {
+            return "'{$path}' is a directory, not a file.";
+        }
+
         $contents = File::get($absolute);
         $count    = substr_count($contents, $oldStr);
 

@@ -61,7 +61,7 @@ class HealthCommand extends Command
     private function checkApiKey(): void
     {
         $provider = config('tackle.provider', 'anthropic');
-        $key      = config("ai.providers.{$provider}.api_key");
+        $key      = config("ai.providers.{$provider}.api_key") ?? config("ai.providers.{$provider}.key");
 
         if (! empty($key)) {
             $this->pass("API key configured for provider [{$provider}]");
