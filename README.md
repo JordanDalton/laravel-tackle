@@ -93,7 +93,7 @@ Run through this checklist once before your first session:
 
 - PHP ^8.3
 - Laravel ^12.0
-- [`laravel/ai`](https://github.com/laravel/ai) ^0.1 (pinned — fast-moving package, see [Known Risks](#known-risks))
+- [`laravel/ai`](https://github.com/laravel/ai) ^0.1 || ^0.3 (pinned — fast-moving package, see [Known Risks](#known-risks))
 
 ---
 
@@ -1342,7 +1342,7 @@ AI_CODE_HEALING_ENABLED=false
 
 ## Known Risks
 
-> **`laravel/ai` is new and fast-moving.** The version is pinned to `^0.1`.
+> **`laravel/ai` is new and fast-moving.** The version is pinned to `^0.1 || ^0.3`.
 > Breaking changes upstream are likely. Check the changelog before upgrading.
 
 > **This tool modifies your codebase and runs commands.** Always run it inside a
