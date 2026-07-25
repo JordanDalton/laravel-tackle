@@ -13,6 +13,7 @@ use Tackle\Commands\ExplainCommand;
 use Tackle\Commands\FixCommand;
 use Tackle\Commands\HealingLogCommand;
 use Tackle\Commands\HealthCommand;
+use Tackle\Commands\InitCommand;
 use Tackle\Commands\InstallCommand;
 use Tackle\Commands\MakeAgentCommand;
 use Tackle\Commands\MakeToolCommand;
@@ -36,6 +37,7 @@ class TackleServiceProvider extends PackageServiceProvider
             ->hasMigration('create_tackle_healing_log_table')
             ->hasCommands([
                 InstallCommand::class,
+                InitCommand::class,
                 HealthCommand::class,
                 CodeCommand::class,
                 FixCommand::class,

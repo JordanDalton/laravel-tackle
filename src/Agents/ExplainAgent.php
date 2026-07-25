@@ -9,6 +9,7 @@ use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Support\PathGuard;
+use Tackle\Support\ProjectMemory;
 use Tackle\Tools\Glob;
 use Tackle\Tools\ReadFile;
 use Tackle\Tools\SearchCode;
@@ -24,13 +25,23 @@ class ExplainAgent implements CodingAgent
         private readonly Glob $glob,
         private readonly SearchCode $searchCode,
         #[AiProvider] private string $provider = 'anthropic',
-        #[AiModel]    private string $model    = 'claude-sonnet-4-6',
+        #[AiModel] private string $model = 'claude-sonnet-4-6',
     ) {}
 
-    protected function provider(): string { return $this->provider; }
-    protected function model(): string    { return $this->model; }
+    protected function provider(): string
+    {
+        return $this->provider;
+    }
 
-    public function messages(): iterable { return []; }
+    protected function model(): string
+    {
+        return $this->model;
+    }
+
+    public function messages(): iterable
+    {
+        return [];
+    }
 
     public function tools(): iterable
     {
@@ -40,6 +51,8 @@ class ExplainAgent implements CodingAgent
     public function instructions(): string
     {
         $workspace = $this->pathGuard->workspace();
+
+        $projectMemory = (new ProjectMemory($workspace))->section();
 
         return <<<INSTRUCTIONS
         You are an expert Laravel developer explaining code to a colleague inside the project at: {$workspace}
@@ -65,7 +78,7 @@ class ExplainAgent implements CodingAgent
 
         - Read the full file before explaining any part of it.
         - If asked about a specific method, read the whole class to understand context.
-        - Do not suggest changes — this is an explanation, not a review.
+        - Do not suggest changes — this is an explanation, not a review.{$projectMemory}
         INSTRUCTIONS;
     }
 }

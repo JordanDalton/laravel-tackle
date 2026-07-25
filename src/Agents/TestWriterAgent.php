@@ -9,6 +9,7 @@ use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Support\PathGuard;
+use Tackle\Support\ProjectMemory;
 use Tackle\Tools\Glob;
 use Tackle\Tools\ReadFile;
 use Tackle\Tools\RunTests;
@@ -28,13 +29,23 @@ class TestWriterAgent implements CodingAgent
         private readonly WriteFile $writeFile,
         private readonly RunTests $runTests,
         #[AiProvider] private string $provider = 'anthropic',
-        #[AiModel]    private string $model    = 'claude-sonnet-4-6',
+        #[AiModel] private string $model = 'claude-sonnet-4-6',
     ) {}
 
-    protected function provider(): string { return $this->provider; }
-    protected function model(): string    { return $this->model; }
+    protected function provider(): string
+    {
+        return $this->provider;
+    }
 
-    public function messages(): iterable { return []; }
+    protected function model(): string
+    {
+        return $this->model;
+    }
+
+    public function messages(): iterable
+    {
+        return [];
+    }
 
     public function tools(): iterable
     {
@@ -50,6 +61,8 @@ class TestWriterAgent implements CodingAgent
     public function instructions(): string
     {
         $workspace = $this->pathGuard->workspace();
+
+        $projectMemory = (new ProjectMemory($workspace))->section();
 
         return <<<INSTRUCTIONS
         You are an expert Laravel test writer operating inside the project at: {$workspace}
@@ -76,7 +89,7 @@ class TestWriterAgent implements CodingAgent
 
         ## Output
 
-        Create the test file using WriteFile. Finish by running the tests to confirm they pass.
+        Create the test file using WriteFile. Finish by running the tests to confirm they pass.{$projectMemory}
         INSTRUCTIONS;
     }
 }

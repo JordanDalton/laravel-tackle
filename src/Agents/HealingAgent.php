@@ -9,6 +9,7 @@ use Tackle\Attributes\AiProvider;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Healing\TelescopeReader;
 use Tackle\Support\PathGuard;
+use Tackle\Support\ProjectMemory;
 use Tackle\Tools\EditFile;
 use Tackle\Tools\Glob;
 use Tackle\Tools\ReadFile;
@@ -26,16 +27,25 @@ class HealingAgent implements CodingAgent
     public function __construct(
         private readonly string $workspace,
         #[AiProvider] private string $provider = 'anthropic',
-        #[AiModel]    private string $model    = 'claude-sonnet-4-6',
+        #[AiModel] private string $model = 'claude-sonnet-4-6',
     ) {
         $this->guard = new PathGuard($workspace);
     }
 
-    protected function provider(): string { return $this->provider; }
-    protected function model(): string    { return $this->model; }
+    protected function provider(): string
+    {
+        return $this->provider;
+    }
+
+    protected function model(): string
+    {
+        return $this->model;
+    }
 
     public function instructions(): string
     {
+        $projectMemory = (new ProjectMemory($this->workspace))->section();
+
         return <<<INSTRUCTIONS
         You are the Tackle Healer — a specialist AI that diagnoses and repairs failing Laravel queue jobs.
 
@@ -65,7 +75,7 @@ class HealingAgent implements CodingAgent
         - Do not create new files.
         - Do not modify .env, vendor/, storage/, or .git/.
         - If the root cause is ambiguous, make your best attempt and explain your uncertainty in the summary.
-        - If you cannot find a safe fix, say so clearly — do not guess.
+        - If you cannot find a safe fix, say so clearly — do not guess.{$projectMemory}
         INSTRUCTIONS;
     }
 
@@ -82,7 +92,7 @@ class HealingAgent implements CodingAgent
             new SearchCode($this->guard),
             new EditFile($this->guard),
             new RunTests($this->guard),
-            new ReadTelescopeEntry(new TelescopeReader()),
+            new ReadTelescopeEntry(new TelescopeReader),
         ];
     }
 }

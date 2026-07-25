@@ -13,19 +13,20 @@ use Tackle\Attributes\Workspace;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Support\CommandGuard;
 use Tackle\Support\PathGuard;
+use Tackle\Support\ProjectMemory;
 use Tackle\Tools\AskUser;
+use Tackle\Tools\CommitAndPush;
 use Tackle\Tools\ConfirmAction;
+use Tackle\Tools\CreateGitHubIssue;
+use Tackle\Tools\CreatePullRequest;
 use Tackle\Tools\EditFile;
 use Tackle\Tools\GitDiff;
 use Tackle\Tools\Glob;
 use Tackle\Tools\ListRoutes;
 use Tackle\Tools\QueryDatabase;
 use Tackle\Tools\ReadFile;
-use Tackle\Tools\ReadLog;
-use Tackle\Tools\CommitAndPush;
-use Tackle\Tools\CreateGitHubIssue;
-use Tackle\Tools\CreatePullRequest;
 use Tackle\Tools\ReadGitHubIssue;
+use Tackle\Tools\ReadLog;
 use Tackle\Tools\ReadPullRequest;
 use Tackle\Tools\ReadSentryIssue;
 use Tackle\Tools\ReadTelescopeEntry;
@@ -72,7 +73,7 @@ class DefaultCodingAgent implements CodingAgent
         private readonly AskUser $askUser,
         private readonly ConfirmAction $confirmAction,
         #[AiProvider] private string $provider = 'anthropic',
-        #[AiModel]    private string $model    = 'claude-sonnet-4-6',
+        #[AiModel] private string $model = 'claude-sonnet-4-6',
     ) {}
 
     protected function provider(): string
@@ -89,12 +90,14 @@ class DefaultCodingAgent implements CodingAgent
     {
         $workspace = $this->pathGuard->workspace();
 
-        $guard       = app(CommandGuard::class);
-        $allowlist   = $guard->resolveList(config('tackle.artisan_allowlist', []));
+        $guard = app(CommandGuard::class);
+        $allowlist = $guard->resolveList(config('tackle.artisan_allowlist', []));
         $destructive = $guard->resolveList(config('tackle.artisan_destructive', []));
 
-        $allowlistStr   = $allowlist   ? implode(', ', $allowlist)   : '(none)';
+        $allowlistStr = $allowlist ? implode(', ', $allowlist) : '(none)';
         $destructiveStr = $destructive ? implode(', ', $destructive) : '(none)';
+
+        $projectMemory = (new ProjectMemory($workspace))->section();
 
         return <<<INSTRUCTIONS
         You are an expert Laravel coding assistant running inside the project at: {$workspace}
@@ -143,7 +146,7 @@ class DefaultCodingAgent implements CodingAgent
 
         - You cannot read or write .env files, storage/, vendor/, or .git/. This is enforced in PHP, not advisory.
         - All edits are left unstaged. The user can review them with `git diff`.
-        - Do not auto-commit or push changes.
+        - Do not auto-commit or push changes.{$projectMemory}
         INSTRUCTIONS;
     }
 

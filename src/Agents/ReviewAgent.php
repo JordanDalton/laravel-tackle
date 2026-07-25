@@ -9,6 +9,7 @@ use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Support\PathGuard;
+use Tackle\Support\ProjectMemory;
 use Tackle\Tools\Glob;
 use Tackle\Tools\ReadFile;
 use Tackle\Tools\SearchCode;
@@ -24,13 +25,23 @@ class ReviewAgent implements CodingAgent
         private readonly Glob $glob,
         private readonly SearchCode $searchCode,
         #[AiProvider] private string $provider = 'anthropic',
-        #[AiModel]    private string $model    = 'claude-sonnet-4-6',
+        #[AiModel] private string $model = 'claude-sonnet-4-6',
     ) {}
 
-    protected function provider(): string { return $this->provider; }
-    protected function model(): string    { return $this->model; }
+    protected function provider(): string
+    {
+        return $this->provider;
+    }
 
-    public function messages(): iterable { return []; }
+    protected function model(): string
+    {
+        return $this->model;
+    }
+
+    public function messages(): iterable
+    {
+        return [];
+    }
 
     public function tools(): iterable
     {
@@ -44,6 +55,8 @@ class ReviewAgent implements CodingAgent
     public function instructions(): string
     {
         $workspace = $this->pathGuard->workspace();
+
+        $projectMemory = (new ProjectMemory($workspace))->section();
 
         return <<<INSTRUCTIONS
         You are an expert Laravel code reviewer operating inside the project at: {$workspace}
@@ -76,7 +89,7 @@ class ReviewAgent implements CodingAgent
         - If the diff is clean, say "LGTM" and briefly explain why — do not invent issues.
         - Do not suggest rewriting things that work correctly and are not in the diff.
         - Do not comment on whitespace-only changes.
-        - Be direct. One precise sentence beats a vague paragraph every time.
+        - Be direct. One precise sentence beats a vague paragraph every time.{$projectMemory}
         INSTRUCTIONS;
     }
 }
