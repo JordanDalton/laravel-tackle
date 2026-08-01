@@ -9,9 +9,11 @@ use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolCall;
 use Laravel\Ai\Streaming\Events\ToolResult;
 use Laravel\Prompts\Stream;
+use Tackle\Commands\Concerns\ResolvesSessionOptions;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Prompts\TackleSuggestPrompt;
 use Tackle\Support\BudgetTracker;
+use Tackle\Support\ToolSummary;
 use Tackle\Support\WorktreeManager;
 
 use function Laravel\Prompts\error as promptError;
@@ -24,6 +26,8 @@ use function Laravel\Prompts\warning;
 
 class CodeCommand extends Command
 {
+    use ResolvesSessionOptions;
+
     protected $signature = 'ai:code
         {--session= : Resume a named session}
         {--shell= : Override the shell mode for this session (off|allowlist|approve|yolo)}
@@ -56,21 +60,8 @@ class CodeCommand extends Command
             return self::FAILURE;
         }
 
-        $shell = match (true) {
-            (bool) $this->option('off') => 'off',
-            (bool) $this->option('allowlist') => 'allowlist',
-            (bool) $this->option('approve') => 'approve',
-            (bool) $this->option('yolo') => 'yolo',
-            default => $this->option('shell'),
-        };
-
-        if ($shell !== null) {
-            if (! in_array($shell, ['off', 'allowlist', 'approve', 'yolo'], strict: true)) {
-                $this->error("Invalid --shell value '{$shell}'. Must be one of: off, allowlist, approve, yolo.");
-
-                return self::FAILURE;
-            }
-            config(['tackle.shell' => $shell]);
+        if (! $this->applyShellOverride()) {
+            return self::FAILURE;
         }
 
         $useWorktree = $this->resolveWorktreeMode();
@@ -156,27 +147,6 @@ class CodeCommand extends Command
         }
     }
 
-    private function resolveWorktreeMode(): bool
-    {
-        if ($this->option('worktree')) {
-            return true;
-        }
-
-        if ($this->option('no-worktree')) {
-            return false;
-        }
-
-        $config = config('tackle.worktree', false);
-
-        if (is_array($config)) {
-            $env = app()->environment();
-
-            return (bool) ($config[$env] ?? $config['*'] ?? false);
-        }
-
-        return (bool) $config;
-    }
-
     private function runAgentTurn(CodingAgent $agent, BudgetTracker $budget, string $task): void
     {
         try {
@@ -249,30 +219,7 @@ class CodeCommand extends Command
             return;
         }
 
-        $summary = match ($tool) {
-            'ReadFile' => '📖 reading '.($args['path'] ?? '?'),
-            'Glob' => '🔍 listing '.($args['pattern'] ?? '?'),
-            'SearchCode' => '🔍 searching for '.($args['query'] ?? '?'),
-            'EditFile' => '✏️  editing '.($args['path'] ?? '?'),
-            'WriteFile' => '📝 creating '.($args['path'] ?? '?'),
-            'RunArtisan' => '⚡ artisan '.($args['command'] ?? '?'),
-            'RunTests' => '🧪 running tests'.(! empty($args['filter']) ? ' (filter: '.$args['filter'].')' : ''),
-            'RunPint' => '✨ formatting with pint',
-            'RunLarastan' => '🔎 running larastan'.(! empty($args['path']) ? ' on '.$args['path'] : ''),
-            'RunShell' => '💻 shell: '.($args['command'] ?? '?'),
-            'QueryDatabase' => '🗄️  querying database',
-            'ReadLog' => '📋 reading log'.(! empty($args['filter']) ? ' (filter: '.$args['filter'].')' : ''),
-            'GitDiff' => '🔀 git diff'.(! empty($args['path']) ? ' '.$args['path'] : ''),
-            'ListRoutes' => '🗺️  listing routes',
-            'ReadTelescopeEntry' => '🔭 reading telescope',
-            'ReadSentryIssue' => '🪲 reading sentry',
-            'ReadGitHubIssue' => '🐙 reading github issue',
-            'ReadPullRequest' => '🐙 reading pull request',
-            'CreateGitHubIssue' => '🐙 creating github issue',
-            'CreatePullRequest' => '🚀 opening pull request',
-            'CommitAndPush' => '📤 committing and pushing',
-            default => '→ '.$tool,
-        };
+        $summary = ToolSummary::for($tool, $args);
 
         title('Tackle — '.strip_tags($summary));
         $this->line("<fg=cyan>  {$summary}</>");
@@ -478,19 +425,6 @@ class CodeCommand extends Command
                 rtrim($content),
             );
         }, $task);
-    }
-
-    private function resolveShellMode(): string
-    {
-        $config = config('tackle.shell', 'approve');
-
-        if (is_array($config)) {
-            $env = app()->environment();
-
-            return $config[$env] ?? $config['*'] ?? 'approve';
-        }
-
-        return $config;
     }
 
     private function isTty(): bool

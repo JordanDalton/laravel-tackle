@@ -21,6 +21,7 @@ use Tackle\Commands\McpCommand;
 use Tackle\Commands\PruneCommand;
 use Tackle\Commands\ReplayCommand;
 use Tackle\Commands\ReviewCommand;
+use Tackle\Commands\RunCommand;
 use Tackle\Commands\TestCommand;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Contracts\InteractionPolicy;
@@ -42,6 +43,7 @@ class TackleServiceProvider extends PackageServiceProvider
                 InitCommand::class,
                 HealthCommand::class,
                 CodeCommand::class,
+                RunCommand::class,
                 FixCommand::class,
                 ReviewCommand::class,
                 ExplainCommand::class,
