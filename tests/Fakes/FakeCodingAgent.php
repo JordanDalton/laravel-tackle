@@ -3,7 +3,6 @@
 namespace Tackle\Tests\Fakes;
 
 use BadMethodCallException;
-use Illuminate\Broadcasting\Channel;
 use Laravel\Ai\Responses\AgentResponse;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\QueuedAgentResponse;
@@ -27,10 +26,11 @@ class FakeCodingAgent implements CodingAgent
     ) {}
 
     public function stream(
-        string $prompt,
+        mixed $prompt,
         array $attachments = [],
-        array|string|null $provider = null,
+        mixed $provider = null,
         ?string $model = null,
+        ?int $timeout = null,
     ): StreamableAgentResponse {
         return new StreamableAgentResponse('fake-invocation', function () {
             if ($this->throw !== null) {
@@ -65,49 +65,50 @@ class FakeCodingAgent implements CodingAgent
     }
 
     public function prompt(
-        string $prompt,
+        mixed $prompt,
         array $attachments = [],
-        ?string $provider = null,
+        mixed $provider = null,
         ?string $model = null,
+        ?int $timeout = null,
     ): AgentResponse {
         throw new BadMethodCallException('FakeCodingAgent only supports stream().');
     }
 
     public function queue(
-        string $prompt,
+        mixed $prompt,
         array $attachments = [],
-        array|string|null $provider = null,
+        mixed $provider = null,
         ?string $model = null,
     ): QueuedAgentResponse {
         throw new BadMethodCallException('FakeCodingAgent only supports stream().');
     }
 
     public function broadcast(
-        string $prompt,
-        Channel|array $channels,
+        mixed $prompt,
+        mixed $channels,
         array $attachments = [],
         bool $now = false,
-        ?string $provider = null,
+        mixed $provider = null,
         ?string $model = null,
     ): StreamableAgentResponse {
         throw new BadMethodCallException('FakeCodingAgent only supports stream().');
     }
 
     public function broadcastNow(
-        string $prompt,
-        Channel|array $channels,
+        mixed $prompt,
+        mixed $channels,
         array $attachments = [],
-        ?string $provider = null,
+        mixed $provider = null,
         ?string $model = null,
     ): StreamableAgentResponse {
         throw new BadMethodCallException('FakeCodingAgent only supports stream().');
     }
 
     public function broadcastOnQueue(
-        string $prompt,
-        Channel|array $channels,
+        mixed $prompt,
+        mixed $channels,
         array $attachments = [],
-        ?string $provider = null,
+        mixed $provider = null,
         ?string $model = null,
     ): QueuedAgentResponse {
         throw new BadMethodCallException('FakeCodingAgent only supports stream().');
