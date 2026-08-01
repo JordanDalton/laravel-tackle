@@ -4,11 +4,12 @@ namespace Tackle\Tools;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Tools\Request;
-
-use function Laravel\Prompts\confirm;
+use Tackle\Contracts\InteractionPolicy;
 
 class ConfirmAction extends AbstractTool
 {
+    public function __construct(private ?InteractionPolicy $interaction = null) {}
+
     public function description(): string
     {
         return 'Ask the user to confirm before taking an action. Use before destructive or irreversible operations such as deleting files, dropping tables, or running migrations on production. Returns "confirmed" or "cancelled" — stop and explain if cancelled.';
@@ -27,11 +28,14 @@ class ConfirmAction extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $action = $request->string('action', 'Proceed?');
+        $action = (string) $request->string('action', 'Proceed?');
         $default = $request->boolean('default', true);
 
-        echo PHP_EOL;
+        return $this->interaction()->confirm($action, $default) ? 'confirmed' : 'cancelled';
+    }
 
-        return confirm(label: $action, default: $default) ? 'confirmed' : 'cancelled';
+    private function interaction(): InteractionPolicy
+    {
+        return $this->interaction ??= app(InteractionPolicy::class);
     }
 }

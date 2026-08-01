@@ -9,9 +9,11 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Tackle\Agents\HealingAgent;
+use Tackle\Contracts\InteractionPolicy;
 use Tackle\Healing\GitHubTokenReader;
 use Tackle\Healing\SandboxRunner;
 use Tackle\Models\HealingLog;
+use Tackle\Support\DenyInteraction;
 use Throwable;
 
 abstract class AbstractHealJob implements ShouldQueue
@@ -61,6 +63,10 @@ abstract class AbstractHealJob implements ShouldQueue
 
     public function handle(SandboxRunner $runner, GitHubTokenReader $tokenReader): void
     {
+        // A queue worker has no terminal. Without this, any prompting tool added
+        // to a custom healing agent would block the worker indefinitely.
+        app()->instance(InteractionPolicy::class, new DenyInteraction);
+
         $branchName = config('tackle.healing.branch_prefix', 'tackle/heal-').$this->branchSuffix();
         $worktreePath = null;
         $outcome = 'failed';

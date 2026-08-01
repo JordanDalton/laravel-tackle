@@ -5,16 +5,18 @@ namespace Tackle\Tools;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
+use Tackle\Contracts\InteractionPolicy;
 use Tackle\Support\PathGuard;
-
-use function Laravel\Prompts\confirm;
 
 class CommitAndPush extends AbstractTool
 {
     /** Override in tests: set to true/false to skip the interactive prompt. */
     public static ?bool $confirmOverride = null;
 
-    public function __construct(private PathGuard $pathGuard) {}
+    public function __construct(
+        private PathGuard $pathGuard,
+        private ?InteractionPolicy $interaction = null,
+    ) {}
 
     public function description(): string
     {
@@ -89,6 +91,26 @@ class CommitAndPush extends AbstractTool
 
     private function previewAndConfirm(string $path, string $branch): bool
     {
+        $interaction = $this->interaction();
+
+        // The preview exists so a human can eyeball the diff before it is pushed.
+        // With no terminal there is nobody to read it, and echoing it would corrupt
+        // stdout for callers parsing structured output.
+        if ($interaction->isInteractive()) {
+            $this->printPreview($path);
+        }
+
+        if (static::$confirmOverride !== null) {
+            return static::$confirmOverride;
+        }
+
+        $label = $branch !== '' ? "Push these changes to {$branch}?" : 'Push these changes?';
+
+        return $interaction->confirm($label, default: false);
+    }
+
+    private function printPreview(string $path): void
+    {
         $stat = trim(Process::path($path)->run('git diff HEAD --stat')->output());
         $diff = trim(Process::path($path)->run('git diff HEAD')->output());
 
@@ -107,13 +129,10 @@ class CommitAndPush extends AbstractTool
                 echo PHP_EOL.$diff.PHP_EOL;
             }
         }
+    }
 
-        if (static::$confirmOverride !== null) {
-            return static::$confirmOverride;
-        }
-
-        $label = $branch !== '' ? "Push these changes to {$branch}?" : 'Push these changes?';
-
-        return confirm($label, default: false);
+    private function interaction(): InteractionPolicy
+    {
+        return $this->interaction ??= app(InteractionPolicy::class);
     }
 }
