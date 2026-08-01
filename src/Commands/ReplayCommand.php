@@ -34,13 +34,14 @@ class ReplayCommand extends Command
 
         if (! $this->confirm('Re-dispatch this healing job?', true)) {
             $this->line('Cancelled.');
+
             return self::SUCCESS;
         }
 
         $this->dispatch($entry);
 
         $this->line('');
-        $this->line('<fg=green>✓</> Healing job dispatched to the <fg=cyan>' . config('tackle.healing.queue', 'healer') . '</> queue.');
+        $this->line('<fg=green>✓</> Healing job dispatched to the <fg=cyan>'.config('tackle.healing.queue', 'healer').'</> queue.');
         $this->line('');
 
         return self::SUCCESS;
@@ -53,6 +54,7 @@ class ReplayCommand extends Command
             if (! $entry) {
                 $this->error("No healing log entry found with ID {$id}.");
             }
+
             return $entry;
         }
 
@@ -61,6 +63,7 @@ class ReplayCommand extends Command
             if (! $entry) {
                 $this->error("No healing log entries found for class [{$class}].");
             }
+
             return $entry;
         }
 
@@ -68,6 +71,7 @@ class ReplayCommand extends Command
         if (! $entry) {
             $this->error('No healing log entries found. Has the healer run yet?');
         }
+
         return $entry;
     }
 
@@ -75,22 +79,23 @@ class ReplayCommand extends Command
     {
         if ($entry->subject_type === 'scheduled_task') {
             HealScheduledTask::dispatch(
-                taskCommand:      $entry->subject_class,
-                taskDescription:  $entry->subject_class,
-                exceptionClass:   $entry->exception_class,
+                taskCommand: $entry->subject_class,
+                taskDescription: $entry->subject_class,
+                exceptionClass: $entry->exception_class,
                 exceptionMessage: $entry->exception_message,
-                exceptionTrace:   '',
+                exceptionTrace: '',
             );
+
             return;
         }
 
         HealJobFailure::dispatch(
-            jobUuid:          uniqid('replay-', more_entropy: true),
-            jobClass:         $entry->subject_class,
-            jobPayload:       '{}',
-            exceptionClass:   $entry->exception_class,
+            jobUuid: uniqid('replay-', more_entropy: true),
+            jobClass: $entry->subject_class,
+            jobPayload: '{}',
+            exceptionClass: $entry->exception_class,
             exceptionMessage: $entry->exception_message,
-            exceptionTrace:   '',
+            exceptionTrace: '',
         );
     }
 }

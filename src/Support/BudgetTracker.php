@@ -7,11 +7,14 @@ use Illuminate\Container\Attributes\Config;
 class BudgetTracker
 {
     // Pricing per million tokens (approximate Sonnet 4 rates; overrideable).
-    private const INPUT_COST_PER_M  = 3.00;
+    private const INPUT_COST_PER_M = 3.00;
+
     private const OUTPUT_COST_PER_M = 15.00;
 
-    private int   $inputTokens  = 0;
-    private int   $outputTokens = 0;
+    private int $inputTokens = 0;
+
+    private int $outputTokens = 0;
+
     private float $budgetUsd;
 
     public function __construct(
@@ -22,13 +25,13 @@ class BudgetTracker
 
     public function record(int $inputTokens, int $outputTokens): void
     {
-        $this->inputTokens  += $inputTokens;
+        $this->inputTokens += $inputTokens;
         $this->outputTokens += $outputTokens;
     }
 
     public function estimatedCost(): float
     {
-        return ($this->inputTokens  / 1_000_000 * self::INPUT_COST_PER_M)
+        return ($this->inputTokens / 1_000_000 * self::INPUT_COST_PER_M)
              + ($this->outputTokens / 1_000_000 * self::OUTPUT_COST_PER_M);
     }
 

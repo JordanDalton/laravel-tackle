@@ -59,6 +59,6 @@ class CommandGuard
         }
 
         return "Command '{$command}' is not in the allowlist. Allowed patterns: "
-            . implode(', ', $allowlist);
+            .implode(', ', $allowlist);
     }
 }

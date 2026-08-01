@@ -8,11 +8,12 @@ function makeRunLarastanTool(?string $workspace = null): RunLarastan
 {
     $workspace ??= base_path();
     config()->set('tackle.workspace', $workspace);
+
     return new RunLarastan(new PathGuard($workspace));
 }
 
 it('returns a not-installed message when phpstan binary is absent', function () {
-    $workspace = sys_get_temp_dir() . '/tackle-larastan-test-' . uniqid();
+    $workspace = sys_get_temp_dir().'/tackle-larastan-test-'.uniqid();
     @mkdir($workspace, 0755, true);
 
     $result = makeRunLarastanTool($workspace)->handle(new Request([]));

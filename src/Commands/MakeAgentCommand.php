@@ -20,6 +20,7 @@ class MakeAgentCommand extends Command
 
         if (file_exists($path)) {
             $this->error("Agent already exists: {$path}");
+
             return self::FAILURE;
         }
 
@@ -42,9 +43,9 @@ class MakeAgentCommand extends Command
 
     private function resolveStub(string $class): string
     {
-        $stubKey  = $this->option('full') ? 'agent.full' : 'agent.extend';
+        $stubKey = $this->option('full') ? 'agent.full' : 'agent.extend';
         $published = base_path("stubs/tackle/{$stubKey}.stub");
-        $default   = __DIR__ . "/../../resources/stubs/{$stubKey}.stub";
+        $default = __DIR__."/../../resources/stubs/{$stubKey}.stub";
 
         $stub = file_exists($published) ? $published : $default;
 

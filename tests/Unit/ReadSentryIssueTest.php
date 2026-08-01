@@ -1,9 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Http;
+use Laravel\Ai\Tools\Request;
 use Tackle\Healing\SentryReader;
 use Tackle\Tools\ReadSentryIssue;
-use Laravel\Ai\Tools\Request;
 
 // ---------------------------------------------------------------------------
 // SentryReader — credential resolution
@@ -13,7 +13,7 @@ it('returns empty string when auth token is not configured', function () {
     config()->set('tackle.sentry.auth_token', null);
     config()->set('tackle.sentry.org', 'my-org');
 
-    $reader = new SentryReader();
+    $reader = new SentryReader;
 
     expect($reader->forIssue('123'))->toBe('');
     expect($reader->recent())->toBe('');
@@ -23,7 +23,7 @@ it('returns empty string when org is not configured', function () {
     config()->set('tackle.sentry.auth_token', 'sntrys_token');
     config()->set('tackle.sentry.org', null);
 
-    $reader = new SentryReader();
+    $reader = new SentryReader;
 
     expect($reader->forIssue('123'))->toBe('');
     expect($reader->recent())->toBe('');
@@ -41,7 +41,7 @@ it('returns empty string when Sentry API returns a non-2xx response for forIssue
         'sentry.io/*' => Http::response([], 401),
     ]);
 
-    $reader = new SentryReader();
+    $reader = new SentryReader;
 
     expect($reader->forIssue('123'))->toBe('');
 });
@@ -53,7 +53,7 @@ it('formats a Sentry issue event correctly', function () {
     Http::fake([
         'sentry.io/*' => Http::response([
             'groupID' => '4821',
-            'title'   => 'DivisionByZeroError: Division by zero',
+            'title' => 'DivisionByZeroError: Division by zero',
             'entries' => [
                 [
                     'type' => 'request',
@@ -63,7 +63,7 @@ it('formats a Sentry issue event correctly', function () {
                     'type' => 'exception',
                     'data' => [
                         'values' => [[
-                            'type'  => 'DivisionByZeroError',
+                            'type' => 'DivisionByZeroError',
                             'value' => 'Division by zero',
                             'stacktrace' => [
                                 'frames' => [
@@ -77,7 +77,7 @@ it('formats a Sentry issue event correctly', function () {
         ], 200),
     ]);
 
-    $reader = new SentryReader();
+    $reader = new SentryReader;
     $result = $reader->forIssue('4821');
 
     expect($result)
@@ -97,7 +97,7 @@ it('returns empty string when project is not configured for recent()', function 
     config()->set('tackle.sentry.org', 'my-org');
     config()->set('tackle.sentry.project', null);
 
-    $reader = new SentryReader();
+    $reader = new SentryReader;
 
     expect($reader->recent())->toBe('');
 });
@@ -111,7 +111,7 @@ it('returns empty string when Sentry API returns a non-2xx response for recent()
         'sentry.io/*' => Http::response([], 403),
     ]);
 
-    $reader = new SentryReader();
+    $reader = new SentryReader;
 
     expect($reader->recent())->toBe('');
 });
@@ -128,7 +128,7 @@ it('formats recent issues correctly', function () {
         ], 200),
     ]);
 
-    $reader = new SentryReader();
+    $reader = new SentryReader;
     $result = $reader->recent();
 
     expect($result)
@@ -147,7 +147,7 @@ it('returns no issues message when API returns empty array', function () {
         'sentry.io/*' => Http::response([], 200),
     ]);
 
-    $reader = new SentryReader();
+    $reader = new SentryReader;
 
     expect($reader->recent())->toBe('No unresolved Sentry issues found.');
 });
@@ -160,7 +160,7 @@ it('ReadSentryIssue returns not-configured message when credentials are missing'
     config()->set('tackle.sentry.auth_token', null);
     config()->set('tackle.sentry.org', null);
 
-    $tool   = new ReadSentryIssue(new SentryReader());
+    $tool = new ReadSentryIssue(new SentryReader);
     $result = $tool->handle(new Request(['issue_id' => '4821']));
 
     expect($result)->toContain('SENTRY_AUTH_TOKEN');
@@ -171,7 +171,7 @@ it('ReadSentryIssue routes to recent() when no issue_id is given', function () {
     config()->set('tackle.sentry.org', 'my-org');
     config()->set('tackle.sentry.project', null); // no project → empty from recent()
 
-    $tool   = new ReadSentryIssue(new SentryReader());
+    $tool = new ReadSentryIssue(new SentryReader);
     $result = $tool->handle(new Request([]));
 
     expect($result)->toContain('SENTRY_AUTH_TOKEN');
@@ -186,7 +186,7 @@ it('ReadSentryIssue clamps limit between 1 and 25', function () {
         'sentry.io/*' => Http::response([], 200),
     ]);
 
-    $tool   = new ReadSentryIssue(new SentryReader());
+    $tool = new ReadSentryIssue(new SentryReader);
     $result = $tool->handle(new Request(['limit' => 999]));
 
     // Should not throw — limit is clamped internally in SentryReader

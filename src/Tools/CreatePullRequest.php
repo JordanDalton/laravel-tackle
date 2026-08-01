@@ -46,10 +46,10 @@ class CreatePullRequest extends AbstractTool
             return 'GitHub is not configured. Set GITHUB_TOKEN (or run: gh auth login) and GITHUB_REPO in .env.';
         }
 
-        $title       = (string) $request->string('title', '');
-        $body        = (string) $request->string('body', '');
-        $branch      = (string) $request->string('branch', '');
-        $base        = (string) $request->string('base', 'main');
+        $title = (string) $request->string('title', '');
+        $body = (string) $request->string('body', '');
+        $branch = (string) $request->string('branch', '');
+        $base = (string) $request->string('base', 'main');
         $issueNumber = $request->integer('issue_number', 0);
 
         if (trim($title) === '' || trim($branch) === '') {
@@ -60,7 +60,7 @@ class CreatePullRequest extends AbstractTool
         $repo = $this->client->repo();
 
         $escapedBranch = escapeshellarg($branch);
-        $escapedTitle  = escapeshellarg($title);
+        $escapedTitle = escapeshellarg($title);
 
         // Check there's something to commit
         $status = Process::path($this->pathGuard->workspace())->run('git status --porcelain');
@@ -72,7 +72,7 @@ class CreatePullRequest extends AbstractTool
             // Create and switch to the new branch
             $checkout = Process::path($this->pathGuard->workspace())->run("git checkout -b {$escapedBranch}");
             if (! $checkout->successful()) {
-                return 'Failed to create branch: ' . trim($checkout->errorOutput());
+                return 'Failed to create branch: '.trim($checkout->errorOutput());
             }
 
             // Stage all changes (respects .gitignore)
@@ -81,13 +81,13 @@ class CreatePullRequest extends AbstractTool
             // Commit
             $commit = Process::path($this->pathGuard->workspace())->run("git commit -m {$escapedTitle}");
             if (! $commit->successful()) {
-                return 'Commit failed: ' . trim($commit->errorOutput());
+                return 'Commit failed: '.trim($commit->errorOutput());
             }
 
             // Push
             $push = Process::path($this->pathGuard->workspace())->run("git push origin {$escapedBranch}");
             if (! $push->successful()) {
-                return 'Push failed: ' . trim($push->errorOutput());
+                return 'Push failed: '.trim($push->errorOutput());
             }
 
             // Build PR body
@@ -99,13 +99,14 @@ class CreatePullRequest extends AbstractTool
             // Open PR via GitHub API
             $response = $this->client->post("repos/{$repo}/pulls", [
                 'title' => $title,
-                'body'  => $prBody,
-                'head'  => $branch,
-                'base'  => $base,
+                'body' => $prBody,
+                'head' => $branch,
+                'base' => $base,
             ]);
 
             if (! $response->successful()) {
                 $error = $response->json('message', 'unknown error');
+
                 return "PR creation failed: {$error}";
             }
 
@@ -113,7 +114,7 @@ class CreatePullRequest extends AbstractTool
 
             return "Pull request opened: {$prUrl}";
         } catch (Throwable $e) {
-            return 'Error opening pull request: ' . $e->getMessage();
+            return 'Error opening pull request: '.$e->getMessage();
         }
     }
 }

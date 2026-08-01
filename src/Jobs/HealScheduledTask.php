@@ -14,12 +14,35 @@ class HealScheduledTask extends AbstractHealJob
         parent::__construct();
     }
 
-    protected function subjectType(): string { return 'scheduled_task'; }
-    protected function subjectClass(): string { return $this->taskDescription ?: $this->taskCommand; }
-    protected function branchSuffix(): string { return 'sched-' . substr(md5($this->taskCommand), 0, 6); }
-    protected function getExceptionClass(): string { return $this->exceptionClass; }
-    protected function getExceptionMessage(): string { return $this->exceptionMessage; }
-    protected function getExceptionTrace(): string { return $this->exceptionTrace; }
+    protected function subjectType(): string
+    {
+        return 'scheduled_task';
+    }
+
+    protected function subjectClass(): string
+    {
+        return $this->taskDescription ?: $this->taskCommand;
+    }
+
+    protected function branchSuffix(): string
+    {
+        return 'sched-'.substr(md5($this->taskCommand), 0, 6);
+    }
+
+    protected function getExceptionClass(): string
+    {
+        return $this->exceptionClass;
+    }
+
+    protected function getExceptionMessage(): string
+    {
+        return $this->exceptionMessage;
+    }
+
+    protected function getExceptionTrace(): string
+    {
+        return $this->exceptionTrace;
+    }
 
     protected function commitMessage(): string
     {

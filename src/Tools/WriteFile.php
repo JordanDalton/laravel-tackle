@@ -19,14 +19,14 @@ class WriteFile extends AbstractTool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'path'    => $schema->string()->description('Path for the new file (relative or absolute).')->required(),
+            'path' => $schema->string()->description('Path for the new file (relative or absolute).')->required(),
             'content' => $schema->string()->description('Full content to write to the new file.')->required(),
         ];
     }
 
     public function handle(Request $request): string
     {
-        $path    = $request->string('path', '');
+        $path = $request->string('path', '');
         $content = $request->string('content', '');
 
         if ($refusal = $this->guard->checkWrite($path)) {
@@ -53,6 +53,6 @@ class WriteFile extends AbstractTool
     {
         return str_starts_with($path, DIRECTORY_SEPARATOR)
             ? $path
-            : $this->guard->workspace() . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
+            : $this->guard->workspace().DIRECTORY_SEPARATOR.ltrim($path, DIRECTORY_SEPARATOR);
     }
 }

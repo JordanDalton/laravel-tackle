@@ -41,9 +41,9 @@ class CreateGitHubIssue extends AbstractTool
             return 'title is required.';
         }
 
-        $body   = (string) $request->string('body', '');
+        $body = (string) $request->string('body', '');
         $labels = $request->array('labels', []);
-        $repo   = $this->client->repo();
+        $repo = $this->client->repo();
 
         $payload = ['title' => $title];
 
@@ -60,15 +60,16 @@ class CreateGitHubIssue extends AbstractTool
 
             if (! $response->successful()) {
                 $error = $response->json('message', 'unknown error');
+
                 return "Failed to create issue: {$error}";
             }
 
             $number = $response->json('number');
-            $url    = $response->json('html_url');
+            $url = $response->json('html_url');
 
             return "Created GitHub issue #{$number}: {$url}";
         } catch (Throwable $e) {
-            return 'Error creating issue: ' . $e->getMessage();
+            return 'Error creating issue: '.$e->getMessage();
         }
     }
 }

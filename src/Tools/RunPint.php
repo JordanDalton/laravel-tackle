@@ -28,17 +28,17 @@ class RunPint extends AbstractTool
     {
         $workspace = $this->guard->workspace();
 
-        if (! file_exists($workspace . '/vendor/bin/pint')) {
+        if (! file_exists($workspace.'/vendor/bin/pint')) {
             return "Pint is not installed. Run 'composer require laravel/pint --dev' first.";
         }
 
         $target = $request->string('path', '');
-        $arg    = $target !== '' ? ' ' . escapeshellarg($target) : '';
+        $arg = $target !== '' ? ' '.escapeshellarg($target) : '';
 
         $result = Process::path($workspace)
             ->timeout(60)
             ->run("./vendor/bin/pint{$arg}");
 
-        return ($result->output() . $result->errorOutput()) ?: "(Pint ran with no output.)";
+        return ($result->output().$result->errorOutput()) ?: '(Pint ran with no output.)';
     }
 }

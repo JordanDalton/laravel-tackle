@@ -18,11 +18,12 @@ class TestCommand extends Command
 
     public function handle(TestWriterAgent $agent): int
     {
-        $path   = $this->argument('path');
+        $path = $this->argument('path');
         $method = $this->option('method');
 
         if (! file_exists(base_path($path))) {
             $this->error("File not found: {$path}");
+
             return self::FAILURE;
         }
 
@@ -30,7 +31,7 @@ class TestCommand extends Command
 
         $this->line('');
         $this->line('<fg=green;options=bold>Laravel Tackle — AI Test Writer</>');
-        $this->line("<fg=gray>Target: {$path}" . ($method ? " → {$method}()" : '') . " | Type: {$type}</>");
+        $this->line("<fg=gray>Target: {$path}".($method ? " → {$method}()" : '')." | Type: {$type}</>");
         $this->line('');
 
         $prompt = $this->buildPrompt($path, $method, $type);
@@ -55,9 +56,9 @@ class TestCommand extends Command
             : "`{$path}`";
 
         return "Write {$type} tests for {$target}. "
-            . "Read the class and any related classes before writing. "
-            . "Check the tests/ directory for existing conventions. "
-            . "Run the tests after writing to confirm they pass.";
+            .'Read the class and any related classes before writing. '
+            .'Check the tests/ directory for existing conventions. '
+            .'Run the tests after writing to confirm they pass.';
     }
 
     private function resolveTestType(string $path): string

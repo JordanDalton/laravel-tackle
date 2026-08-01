@@ -19,7 +19,7 @@ class EditFile extends AbstractTool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'path'    => $schema->string()->description('Path to the file to edit (relative or absolute).')->required(),
+            'path' => $schema->string()->description('Path to the file to edit (relative or absolute).')->required(),
             'old_str' => $schema->string()->description('The exact string to replace. Must appear exactly once in the file.')->required(),
             'new_str' => $schema->string()->description('The string to replace old_str with.')->required(),
         ];
@@ -27,7 +27,7 @@ class EditFile extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $path   = $request->string('path', '');
+        $path = $request->string('path', '');
         $oldStr = $request->string('old_str', '');
         $newStr = $request->string('new_str', '');
 
@@ -46,7 +46,7 @@ class EditFile extends AbstractTool
         }
 
         $contents = File::get($absolute);
-        $count    = substr_count($contents, $oldStr);
+        $count = substr_count($contents, $oldStr);
 
         if ($count === 0) {
             return "old_str not found in '{$path}'. Read the file to get the exact current text before editing.";
@@ -65,6 +65,6 @@ class EditFile extends AbstractTool
     {
         return str_starts_with($path, DIRECTORY_SEPARATOR)
             ? $path
-            : $this->guard->workspace() . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
+            : $this->guard->workspace().DIRECTORY_SEPARATOR.ltrim($path, DIRECTORY_SEPARATOR);
     }
 }

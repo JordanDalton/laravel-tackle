@@ -34,17 +34,17 @@ class RunTests extends AbstractTool
 
         $workspace = $this->guard->workspace();
 
-        if (app()->environment('production') && ! file_exists($workspace . '/.env.testing')) {
+        if (app()->environment('production') && ! file_exists($workspace.'/.env.testing')) {
             return 'RunTests is disabled: the application is running in the production environment '
-                . 'and no .env.testing file was found. Running tests without an isolated test '
-                . 'database could modify or destroy production data. Create a .env.testing file '
-                . 'that points to a separate test database before running tests here.';
+                .'and no .env.testing file was found. Running tests without an isolated test '
+                .'database could modify or destroy production data. Create a .env.testing file '
+                .'that points to a separate test database before running tests here.';
         }
 
-        $filter    = $request->string('filter', '');
-        $filterArg = $filter !== '' ? ' --filter=' . escapeshellarg($filter) : '';
+        $filter = $request->string('filter', '');
+        $filterArg = $filter !== '' ? ' --filter='.escapeshellarg($filter) : '';
 
-        $binary = file_exists($workspace . '/vendor/bin/pest')
+        $binary = file_exists($workspace.'/vendor/bin/pest')
             ? "./vendor/bin/pest{$filterArg}"
             : "php artisan test{$filterArg}";
 
@@ -53,6 +53,6 @@ class RunTests extends AbstractTool
             ->timeout(120)
             ->run($binary);
 
-        return ($result->output() . $result->errorOutput()) ?: '(Tests ran with no output.)';
+        return ($result->output().$result->errorOutput()) ?: '(Tests ran with no output.)';
     }
 }

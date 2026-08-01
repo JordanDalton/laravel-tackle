@@ -51,7 +51,8 @@ class GitHubClient
     {
         try {
             $result = Process::run(['gh', 'auth', 'token']);
-            $token  = trim($result->output());
+            $token = trim($result->output());
+
             return ($result->successful() && $token !== '') ? $token : null;
         } catch (Throwable) {
             return null;

@@ -2,8 +2,6 @@
 
 namespace Tackle\Support;
 
-use Tackle\Support\WorktreeManager;
-
 class PathGuard
 {
     private string $configuredWorkspace;
@@ -48,14 +46,14 @@ class PathGuard
             return 'No path was provided.';
         }
 
-        $ws       = $this->workspace();
+        $ws = $this->workspace();
         $resolved = $this->resolve($path, $ws);
 
         if ($resolved === null) {
             return "Path '{$path}' could not be resolved to a real location.";
         }
 
-        if (! str_starts_with($resolved, $ws . DIRECTORY_SEPARATOR)
+        if (! str_starts_with($resolved, $ws.DIRECTORY_SEPARATOR)
             && $resolved !== $ws) {
             return "Path '{$path}' is outside the workspace root '{$ws}'.";
         }
@@ -82,7 +80,7 @@ class PathGuard
     {
         // Absolute path provided directly.
         if (! str_starts_with($path, DIRECTORY_SEPARATOR)) {
-            $path = $ws . DIRECTORY_SEPARATOR . $path;
+            $path = $ws.DIRECTORY_SEPARATOR.$path;
         }
 
         // realpath() only works for existing paths.
@@ -101,7 +99,8 @@ class PathGuard
                 if ($real === false) {
                     return null;
                 }
-                return $real . (empty($suffix) ? '' : DIRECTORY_SEPARATOR . implode(DIRECTORY_SEPARATOR, array_reverse($suffix)));
+
+                return $real.(empty($suffix) ? '' : DIRECTORY_SEPARATOR.implode(DIRECTORY_SEPARATOR, array_reverse($suffix)));
             }
             $suffix[] = array_pop($parts);
         }
@@ -129,6 +128,7 @@ class PathGuard
                 return true;
             }
         }
+
         return false;
     }
 }

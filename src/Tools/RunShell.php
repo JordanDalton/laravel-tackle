@@ -42,11 +42,11 @@ class RunShell extends AbstractTool
         $mode = $this->resolveShellMode();
 
         return match ($mode) {
-            'off'       => $this->refuseAll($command),
+            'off' => $this->refuseAll($command),
             'allowlist' => $this->runIfAllowed($command),
-            'approve'   => $this->runWithApproval($command),
-            'yolo'      => $this->runUnrestricted($command),
-            default     => "Unknown shell mode '{$mode}'. Check your tackle config.",
+            'approve' => $this->runWithApproval($command),
+            'yolo' => $this->runUnrestricted($command),
+            default => "Unknown shell mode '{$mode}'. Check your tackle config.",
         };
     }
 
@@ -56,6 +56,7 @@ class RunShell extends AbstractTool
 
         if (is_array($config)) {
             $env = app()->environment();
+
             return $config[$env] ?? $config['*'] ?? 'approve';
         }
 
@@ -105,9 +106,9 @@ class RunShell extends AbstractTool
             ->run($command);
 
         if ($result->failed()) {
-            return "Command failed (exit {$result->exitCode()}):\n" . $result->errorOutput();
+            return "Command failed (exit {$result->exitCode()}):\n".$result->errorOutput();
         }
 
-        return $result->output() ?: "(Command ran successfully with no output.)";
+        return $result->output() ?: '(Command ran successfully with no output.)';
     }
 }

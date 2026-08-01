@@ -31,6 +31,7 @@ class HealingLogCommand extends Command
         if ($entries->isEmpty()) {
             $this->info('No healing attempts recorded yet.');
             $this->line('<fg=gray>Run the healer queue worker to start: php artisan queue:work --queue=healer</>');
+
             return self::SUCCESS;
         }
 
@@ -60,9 +61,9 @@ class HealingLogCommand extends Command
     {
         return match ($outcome) {
             'pr_opened' => '<fg=cyan>PR opened</>',
-            'patched'   => '<fg=green>patched</>',
-            'failed'    => '<fg=red>failed</>',
-            default     => $outcome,
+            'patched' => '<fg=green>patched</>',
+            'failed' => '<fg=red>failed</>',
+            default => $outcome,
         };
     }
 }

@@ -13,24 +13,24 @@ class ScheduledTaskFailureListener
         try {
             $this->process($event);
         } catch (Throwable $e) {
-            logger()->error('Tackle Healer scheduled-task listener error: ' . $e->getMessage());
+            logger()->error('Tackle Healer scheduled-task listener error: '.$e->getMessage());
         }
     }
 
     private function process(ScheduledTaskFailed $event): void
     {
-        $task      = $event->task;
+        $task = $event->task;
         $exception = $event->exception;
 
-        $command     = $task->command     ?? 'unknown';
+        $command = $task->command ?? 'unknown';
         $description = $task->description ?? $command;
 
         HealScheduledTask::dispatch(
-            taskCommand:      $command,
-            taskDescription:  $description,
-            exceptionClass:   get_class($exception),
+            taskCommand: $command,
+            taskDescription: $description,
+            exceptionClass: get_class($exception),
             exceptionMessage: $exception->getMessage(),
-            exceptionTrace:   $exception->getTraceAsString(),
+            exceptionTrace: $exception->getTraceAsString(),
         );
     }
 }

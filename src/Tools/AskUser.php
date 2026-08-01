@@ -32,7 +32,7 @@ class AskUser extends AbstractTool
     public function handle(Request $request): string
     {
         $question = $request->string('question', 'Choose an option:');
-        $options  = $request->array('options');
+        $options = $request->array('options');
         $multiple = $request->boolean('multiple', false);
 
         if (empty($options)) {
@@ -43,6 +43,7 @@ class AskUser extends AbstractTool
 
         if ($multiple) {
             $selected = multiselect(label: $question, options: $options, required: true);
+
             return implode(', ', $selected);
         }
 

@@ -16,7 +16,7 @@ class JobFailureListener
             $this->process($event);
         } catch (Throwable $e) {
             // Never let the listener crash the worker.
-            logger()->error('Tackle Healer listener error: ' . $e->getMessage());
+            logger()->error('Tackle Healer listener error: '.$e->getMessage());
         }
     }
 
@@ -25,7 +25,7 @@ class JobFailureListener
         $payload = json_decode($event->job->getRawBody(), true) ?? [];
 
         $jobClass = $payload['displayName'] ?? ($payload['job'] ?? 'unknown');
-        $jobUuid  = $payload['uuid']        ?? uniqid('heal-', more_entropy: true);
+        $jobUuid = $payload['uuid'] ?? uniqid('heal-', more_entropy: true);
 
         // Skip jobs that are themselves part of the healer to avoid loops.
         if (is_a($jobClass, HealJobFailure::class, allow_string: true)) {
@@ -37,6 +37,7 @@ class JobFailureListener
             $attrs = (new \ReflectionClass($jobClass))->getAttributes(Healable::class);
             if ($attrs && $attrs[0]->newInstance()->enabled === false) {
                 logger()->info("Tackle Healer: skipping {$jobClass} — #[Healable(false)] is set.");
+
                 return;
             }
         }
@@ -45,7 +46,7 @@ class JobFailureListener
         $threshold = (int) config('tackle.healing.threshold', 1);
         if ($threshold > 1) {
             $count = DB::table('failed_jobs')
-                ->where('payload', 'like', '%' . addslashes($jobClass) . '%')
+                ->where('payload', 'like', '%'.addslashes($jobClass).'%')
                 ->count();
 
             if ($count < $threshold) {
@@ -56,12 +57,12 @@ class JobFailureListener
         $exception = $event->exception;
 
         HealJobFailure::dispatch(
-            jobUuid:          $jobUuid,
-            jobClass:         $jobClass,
-            jobPayload:       $event->job->getRawBody(),
-            exceptionClass:   get_class($exception),
+            jobUuid: $jobUuid,
+            jobClass: $jobClass,
+            jobPayload: $event->job->getRawBody(),
+            exceptionClass: get_class($exception),
             exceptionMessage: $exception->getMessage(),
-            exceptionTrace:   $exception->getTraceAsString(),
+            exceptionTrace: $exception->getTraceAsString(),
         );
     }
 }

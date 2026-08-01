@@ -39,7 +39,7 @@ class RunArtisan extends AbstractTool
             return 'A non-empty command is required.';
         }
 
-        $allowlist   = $this->commandGuard->resolveList(config('tackle.artisan_allowlist', []));
+        $allowlist = $this->commandGuard->resolveList(config('tackle.artisan_allowlist', []));
         $destructive = $this->commandGuard->resolveList(config('tackle.artisan_destructive', []));
 
         if ($this->commandGuard->matches($command, $destructive)) {

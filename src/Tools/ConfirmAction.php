@@ -27,7 +27,7 @@ class ConfirmAction extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $action  = $request->string('action', 'Proceed?');
+        $action = $request->string('action', 'Proceed?');
         $default = $request->boolean('default', true);
 
         echo PHP_EOL;

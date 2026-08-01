@@ -1,5 +1,8 @@
 <?php
 
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Process;
 use Tackle\Agents\ReviewAgent;
 use Tackle\Tools\EditFile;
 use Tackle\Tools\Glob;
@@ -50,17 +53,17 @@ it('ReviewAgent instructions prohibit editing', function () {
 // ---------------------------------------------------------------------------
 
 it('ai:review command is registered', function () {
-    expect(app()->make(\Illuminate\Contracts\Console\Kernel::class))
+    expect(app()->make(Kernel::class))
         ->toBeObject();
 
-    $commands = \Illuminate\Support\Facades\Artisan::all();
+    $commands = Artisan::all();
     expect($commands)->toHaveKey('ai:review');
 });
 
 it('ai:review reports nothing when there are no changes', function () {
-    \Illuminate\Support\Facades\Process::fake([
-        '*git diff HEAD*'      => \Illuminate\Support\Facades\Process::result(''),
-        '*git diff HEAD --stat*' => \Illuminate\Support\Facades\Process::result(''),
+    Process::fake([
+        '*git diff HEAD*' => Process::result(''),
+        '*git diff HEAD --stat*' => Process::result(''),
     ]);
 
     // When the diff is empty the command exits SUCCESS without calling the agent.

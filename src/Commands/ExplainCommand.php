@@ -16,19 +16,20 @@ class ExplainCommand extends Command
 
     public function handle(ExplainAgent $agent): int
     {
-        $path   = $this->argument('path');
+        $path = $this->argument('path');
         $method = $this->option('method');
 
         $fullPath = base_path($path);
 
         if (! file_exists($fullPath)) {
             $this->error("File not found: {$path}");
+
             return self::FAILURE;
         }
 
         $this->line('');
         $this->line('<fg=green;options=bold>Laravel Tackle — AI Explain</>');
-        $this->line("<fg=gray>Target: {$path}" . ($method ? " → {$method}()" : '') . '</>' );
+        $this->line("<fg=gray>Target: {$path}".($method ? " → {$method}()" : '').'</>');
         $this->line('');
 
         $prompt = $method

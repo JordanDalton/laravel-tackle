@@ -2,6 +2,8 @@
 
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Scheduling\Event as SchedulingEvent;
+use Illuminate\Contracts\Queue\Job;
+use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Queue;
 use Tackle\Attributes\Healable;
 use Tackle\Healing\JobFailureListener;
@@ -15,7 +17,7 @@ beforeEach(function () {
     config()->set('tackle.healing.queue', 'healer');
     config()->set('database.default', 'sqlite');
     config()->set('database.connections.sqlite', [
-        'driver'   => 'sqlite',
+        'driver' => 'sqlite',
         'database' => ':memory:',
     ]);
 });
@@ -28,18 +30,18 @@ it('dispatches HealScheduledTask when a scheduled task fails', function () {
     Queue::fake();
 
     $task = Mockery::mock(SchedulingEvent::class);
-    $task->command     = "'artisan' emails:send";
+    $task->command = "'artisan' emails:send";
     $task->description = 'Send daily emails';
 
     $event = new ScheduledTaskFailed($task, new RuntimeException('SMTP connection refused'));
 
-    $listener = new ScheduledTaskFailureListener();
+    $listener = new ScheduledTaskFailureListener;
     $listener->handle($event);
 
     Queue::assertPushed(HealScheduledTask::class, function ($job) {
-        return $job->taskCommand     === "'artisan' emails:send"
+        return $job->taskCommand === "'artisan' emails:send"
             && $job->taskDescription === 'Send daily emails'
-            && $job->exceptionClass  === RuntimeException::class
+            && $job->exceptionClass === RuntimeException::class
             && str_contains($job->exceptionMessage, 'SMTP');
     });
 });
@@ -48,12 +50,12 @@ it('dispatches HealScheduledTask to the healer queue', function () {
     Queue::fake();
 
     $task = Mockery::mock(SchedulingEvent::class);
-    $task->command     = "'artisan' reports:generate";
+    $task->command = "'artisan' reports:generate";
     $task->description = 'Generate weekly report';
 
     $event = new ScheduledTaskFailed($task, new LogicException('Division by zero'));
 
-    (new ScheduledTaskFailureListener())->handle($event);
+    (new ScheduledTaskFailureListener)->handle($event);
 
     Queue::assertPushed(HealScheduledTask::class, fn ($j) => $j->queue === 'healer');
 });
@@ -62,12 +64,12 @@ it('uses command as description when task has no description', function () {
     Queue::fake();
 
     $task = Mockery::mock(SchedulingEvent::class);
-    $task->command     = "'artisan' cache:prune-stale-tags";
+    $task->command = "'artisan' cache:prune-stale-tags";
     $task->description = null;
 
     $event = new ScheduledTaskFailed($task, new RuntimeException('Table not found'));
 
-    (new ScheduledTaskFailureListener())->handle($event);
+    (new ScheduledTaskFailureListener)->handle($event);
 
     Queue::assertPushed(HealScheduledTask::class, function ($job) {
         return $job->taskDescription === "'artisan' cache:prune-stale-tags";
@@ -81,20 +83,20 @@ it('uses command as description when task has no description', function () {
 it('skips healing when job class declares #[Healable(false)]', function () {
     Queue::fake();
 
-    $jobClass      = new #[Healable(false)] class {};
+    $jobClass = new #[Healable(false)] class {};
     $concreteClass = get_class($jobClass);
 
     $payload = json_encode([
         'displayName' => $concreteClass,
-        'uuid'        => 'opt-out-uuid',
-        'data'        => ['command' => ''],
+        'uuid' => 'opt-out-uuid',
+        'data' => ['command' => ''],
     ]);
 
-    $job = Mockery::mock(\Illuminate\Contracts\Queue\Job::class);
+    $job = Mockery::mock(Job::class);
     $job->allows('getRawBody')->andReturn($payload);
 
-    $event = new \Illuminate\Queue\Events\JobFailed('database', $job, new RuntimeException('oops'));
-    (new JobFailureListener())->handle($event);
+    $event = new JobFailed('database', $job, new RuntimeException('oops'));
+    (new JobFailureListener)->handle($event);
 
     Queue::assertNothingPushed();
 });
@@ -102,20 +104,20 @@ it('skips healing when job class declares #[Healable(false)]', function () {
 it('heals a job class that has no #[Healable] attribute', function () {
     Queue::fake();
 
-    $jobClass      = new class {};
+    $jobClass = new class {};
     $concreteClass = get_class($jobClass);
 
     $payload = json_encode([
         'displayName' => $concreteClass,
-        'uuid'        => 'no-attribute-uuid',
-        'data'        => ['command' => ''],
+        'uuid' => 'no-attribute-uuid',
+        'data' => ['command' => ''],
     ]);
 
-    $job = Mockery::mock(\Illuminate\Contracts\Queue\Job::class);
+    $job = Mockery::mock(Job::class);
     $job->allows('getRawBody')->andReturn($payload);
 
-    $event = new \Illuminate\Queue\Events\JobFailed('database', $job, new RuntimeException('boom'));
-    (new JobFailureListener())->handle($event);
+    $event = new JobFailed('database', $job, new RuntimeException('boom'));
+    (new JobFailureListener)->handle($event);
 
     Queue::assertPushed(HealJobFailure::class);
 });
@@ -123,20 +125,20 @@ it('heals a job class that has no #[Healable] attribute', function () {
 it('heals a job class that has #[Healable(true)]', function () {
     Queue::fake();
 
-    $jobClass      = new #[Healable(true)] class {};
+    $jobClass = new #[Healable(true)] class {};
     $concreteClass = get_class($jobClass);
 
     $payload = json_encode([
         'displayName' => $concreteClass,
-        'uuid'        => 'healable-true-uuid',
-        'data'        => ['command' => ''],
+        'uuid' => 'healable-true-uuid',
+        'data' => ['command' => ''],
     ]);
 
-    $job = Mockery::mock(\Illuminate\Contracts\Queue\Job::class);
+    $job = Mockery::mock(Job::class);
     $job->allows('getRawBody')->andReturn($payload);
 
-    $event = new \Illuminate\Queue\Events\JobFailed('database', $job, new RuntimeException('err'));
-    (new JobFailureListener())->handle($event);
+    $event = new JobFailed('database', $job, new RuntimeException('err'));
+    (new JobFailureListener)->handle($event);
 
     Queue::assertPushed(HealJobFailure::class);
 });

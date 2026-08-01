@@ -4,6 +4,7 @@ namespace Tackle\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Process;
 
 class HealthCommand extends Command
 {
@@ -11,8 +12,10 @@ class HealthCommand extends Command
 
     protected $description = 'Check that Laravel Tackle is correctly configured.';
 
-    private array $passed  = [];
-    private array $failed  = [];
+    private array $passed = [];
+
+    private array $failed = [];
+
     private array $warnings = [];
 
     public function handle(): int
@@ -61,7 +64,7 @@ class HealthCommand extends Command
     private function checkApiKey(): void
     {
         $provider = config('tackle.provider', 'anthropic');
-        $key      = config("ai.providers.{$provider}.api_key") ?? config("ai.providers.{$provider}.key");
+        $key = config("ai.providers.{$provider}.api_key") ?? config("ai.providers.{$provider}.key");
 
         if (! empty($key)) {
             $this->pass("API key configured for provider [{$provider}]");
@@ -77,14 +80,15 @@ class HealthCommand extends Command
     {
         $base = base_path();
 
-        if (! is_dir($base . '/.git')) {
+        if (! is_dir($base.'/.git')) {
             $this->check('Not a git repository', 'Run: git init && git add -A && git commit -m "initial"');
+
             return;
         }
 
         $this->pass('Git repository detected');
 
-        $result = \Illuminate\Support\Facades\Process::path($base)->run(['git', 'rev-parse', 'HEAD']);
+        $result = Process::path($base)->run(['git', 'rev-parse', 'HEAD']);
 
         if (! $result->successful()) {
             $this->notice('No commits yet', 'The self-healer requires at least one commit. Run: git add -A && git commit -m "initial"');
@@ -139,7 +143,7 @@ class HealthCommand extends Command
     private function checkGitHub(): void
     {
         $token = config('tackle.github.token') ?: $this->resolveGhToken();
-        $repo  = config('tackle.github.repo');
+        $repo = config('tackle.github.repo');
 
         if ($token && $repo) {
             $source = config('tackle.github.token') ? 'GITHUB_TOKEN' : 'gh CLI';
@@ -160,7 +164,7 @@ class HealthCommand extends Command
     private function checkSentry(): void
     {
         $token = config('tackle.sentry.auth_token');
-        $org   = config('tackle.sentry.org');
+        $org = config('tackle.sentry.org');
 
         if ($token && $org) {
             $this->pass('Sentry configured — ReadSentryIssue tool is active');
@@ -174,7 +178,7 @@ class HealthCommand extends Command
 
     private function checkWorktrees(): void
     {
-        $result = \Illuminate\Support\Facades\Process::path(base_path())
+        $result = Process::path(base_path())
             ->run(['git', 'worktree', 'list', '--porcelain']);
 
         if (! $result->successful()) {
@@ -201,8 +205,9 @@ class HealthCommand extends Command
 
     private function resolveGhToken(): ?string
     {
-        $result = \Illuminate\Support\Facades\Process::run(['gh', 'auth', 'token']);
-        $token  = trim($result->output());
+        $result = Process::run(['gh', 'auth', 'token']);
+        $token = trim($result->output());
+
         return ($result->successful() && $token !== '') ? $token : null;
     }
 

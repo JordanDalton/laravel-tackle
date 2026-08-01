@@ -16,7 +16,7 @@ class TestCase extends Orchestra
 
     protected function getEnvironmentSetUp($app): void
     {
-        config()->set('tackle.workspace', sys_get_temp_dir() . '/tackle-tests');
+        config()->set('tackle.workspace', sys_get_temp_dir().'/tackle-tests');
         config()->set('tackle.protected_paths', ['.env', '.env.*', 'storage/*', 'vendor/*', '.git/*']);
         config()->set('tackle.shell', 'off');
         config()->set('tackle.artisan_allowlist', ['make:*', 'route:list', 'migrate', 'test']);

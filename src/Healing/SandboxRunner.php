@@ -23,14 +23,14 @@ class SandboxRunner
      */
     public function prepare(string $branchName): string
     {
-        $path = sys_get_temp_dir() . '/tackle-' . md5($branchName . microtime());
+        $path = sys_get_temp_dir().'/tackle-'.md5($branchName.microtime());
 
         // Ensure there is at least one commit before attempting a worktree.
         $headCheck = Process::path($this->repoRoot)->timeout(10)->run(['git', 'rev-parse', 'HEAD']);
-        if (!$headCheck->successful()) {
+        if (! $headCheck->successful()) {
             throw new RuntimeException(
-                "Cannot create a healing worktree — the repository has no commits yet. " .
-                "Run: git add -A && git commit -m \"initial commit\""
+                'Cannot create a healing worktree — the repository has no commits yet. '.
+                'Run: git add -A && git commit -m "initial commit"'
             );
         }
 
@@ -38,25 +38,25 @@ class SandboxRunner
             ->timeout(60)
             ->run(['git', 'worktree', 'add', '-b', $branchName, $path, 'HEAD']);
 
-        if (!$result->successful()) {
+        if (! $result->successful()) {
             throw new RuntimeException(
-                "git worktree add failed: " . $result->errorOutput()
+                'git worktree add failed: '.$result->errorOutput()
             );
         }
 
         // Symlink vendor so tests run without a full composer install
-        $vendorSrc = $this->repoRoot . '/vendor';
-        $vendorDst = $path . '/vendor';
-        if (is_dir($vendorSrc) && !file_exists($vendorDst)) {
+        $vendorSrc = $this->repoRoot.'/vendor';
+        $vendorDst = $path.'/vendor';
+        if (is_dir($vendorSrc) && ! file_exists($vendorDst)) {
             symlink($vendorSrc, $vendorDst);
         }
 
         // Symlink env files so the test suite can connect to the database.
         // These are gitignored and therefore absent from the worktree.
         foreach (['.env', '.env.testing'] as $envFile) {
-            $src = $this->repoRoot . '/' . $envFile;
-            $dst = $path . '/' . $envFile;
-            if (file_exists($src) && !file_exists($dst)) {
+            $src = $this->repoRoot.'/'.$envFile;
+            $dst = $path.'/'.$envFile;
+            if (file_exists($src) && ! file_exists($dst)) {
                 symlink($src, $dst);
             }
         }
@@ -69,7 +69,7 @@ class SandboxRunner
      */
     public function runTests(string $worktreePath): bool
     {
-        $binary = file_exists($worktreePath . '/vendor/bin/pest')
+        $binary = file_exists($worktreePath.'/vendor/bin/pest')
             ? './vendor/bin/pest'
             : 'php artisan test';
 
@@ -89,9 +89,9 @@ class SandboxRunner
             ->timeout(60)
             ->run(['git', 'push', '-u', 'origin', $branchName]);
 
-        if (!$result->successful()) {
+        if (! $result->successful()) {
             throw new RuntimeException(
-                "git push failed: " . $result->errorOutput()
+                'git push failed: '.$result->errorOutput()
             );
         }
     }
@@ -107,9 +107,9 @@ class SandboxRunner
             ->timeout(30)
             ->run(['git', 'commit', '-m', $message]);
 
-        if (!$result->successful()) {
+        if (! $result->successful()) {
             throw new RuntimeException(
-                "git commit failed: " . $result->errorOutput()
+                'git commit failed: '.$result->errorOutput()
             );
         }
     }
@@ -123,9 +123,9 @@ class SandboxRunner
             ->timeout(30)
             ->run(['git', 'merge', '--no-ff', $branchName, '-m', "tackle: apply healer fix from {$branchName}"]);
 
-        if (!$result->successful()) {
+        if (! $result->successful()) {
             throw new RuntimeException(
-                "git merge failed: " . $result->errorOutput()
+                'git merge failed: '.$result->errorOutput()
             );
         }
     }
@@ -137,7 +137,7 @@ class SandboxRunner
     {
         try {
             // Remove vendor symlink before removing the worktree
-            $vendorLink = $worktreePath . '/vendor';
+            $vendorLink = $worktreePath.'/vendor';
             if (is_link($vendorLink)) {
                 unlink($vendorLink);
             }
@@ -164,13 +164,13 @@ class SandboxRunner
         string $body,
         ?string $token,
     ): ?string {
-        if (!$token) {
+        if (! $token) {
             return null;
         }
 
         [$owner, $repo] = $this->parseRemote();
 
-        if (!$owner || !$repo) {
+        if (! $owner || ! $repo) {
             return null;
         }
 
@@ -181,9 +181,9 @@ class SandboxRunner
                 ->withHeaders(['Accept' => 'application/vnd.github+json'])
                 ->post("https://api.github.com/repos/{$owner}/{$repo}/pulls", [
                     'title' => $title,
-                    'body'  => $body,
-                    'head'  => $branchName,
-                    'base'  => $baseBranch,
+                    'body' => $body,
+                    'head' => $branchName,
+                    'base' => $baseBranch,
                 ]);
 
             return $response->json('html_url');
@@ -201,7 +201,7 @@ class SandboxRunner
             ->timeout(10)
             ->run(['git', 'remote', 'get-url', 'origin']);
 
-        if (!$result->successful()) {
+        if (! $result->successful()) {
             return [null, null];
         }
 

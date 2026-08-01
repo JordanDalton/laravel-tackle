@@ -18,12 +18,35 @@ class HealJobFailure extends AbstractHealJob
         parent::__construct();
     }
 
-    protected function subjectType(): string { return 'job'; }
-    protected function subjectClass(): string { return $this->jobClass; }
-    protected function branchSuffix(): string { return substr($this->jobUuid, 0, 8); }
-    protected function getExceptionClass(): string { return $this->exceptionClass; }
-    protected function getExceptionMessage(): string { return $this->exceptionMessage; }
-    protected function getExceptionTrace(): string { return $this->exceptionTrace; }
+    protected function subjectType(): string
+    {
+        return 'job';
+    }
+
+    protected function subjectClass(): string
+    {
+        return $this->jobClass;
+    }
+
+    protected function branchSuffix(): string
+    {
+        return substr($this->jobUuid, 0, 8);
+    }
+
+    protected function getExceptionClass(): string
+    {
+        return $this->exceptionClass;
+    }
+
+    protected function getExceptionMessage(): string
+    {
+        return $this->exceptionMessage;
+    }
+
+    protected function getExceptionTrace(): string
+    {
+        return $this->exceptionTrace;
+    }
 
     protected function commitMessage(): string
     {
@@ -62,7 +85,7 @@ class HealJobFailure extends AbstractHealJob
     protected function prTitle(bool $testsPassed): string
     {
         $status = $testsPassed ? '' : '[tests failing] ';
-        $short  = class_basename($this->jobClass);
+        $short = class_basename($this->jobClass);
 
         return "tackle(healer): {$status}fix {$short} — {$this->exceptionClass}";
     }
@@ -110,7 +133,7 @@ class HealJobFailure extends AbstractHealJob
             $job = unserialize($payload['data']['command']);
             dispatch($job);
         } catch (Throwable $e) {
-            Log::warning("Tackle Healer: could not re-dispatch job after patch: " . $e->getMessage());
+            Log::warning('Tackle Healer: could not re-dispatch job after patch: '.$e->getMessage());
         }
     }
 }

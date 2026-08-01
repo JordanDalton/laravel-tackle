@@ -42,7 +42,7 @@ class ReadGitHubIssue extends AbstractTool
                 : 'Could not fetch GitHub issue. Check that GITHUB_TOKEN and GITHUB_REPO are set and the issue number is correct.';
         }
 
-        $limit  = max(1, min(25, (int) $request->integer('limit', 10)));
+        $limit = max(1, min(25, (int) $request->integer('limit', 10)));
         $result = $this->reader->recent($limit);
 
         return $result !== ''
