@@ -96,7 +96,7 @@ Run through this checklist once before your first session:
 
 - PHP ^8.3
 - Laravel ^12.0
-- [`laravel/ai`](https://github.com/laravel/ai) ^0.1 || ^0.3 (pinned — fast-moving package, see [Known Risks](#known-risks))
+- [`laravel/ai`](https://github.com/laravel/ai) `>=0.1 <0.11` — every 0.x minor in that range is exercised in CI (see [Known Risks](#known-risks))
 
 ---
 
@@ -1545,8 +1545,12 @@ AI_CODE_HEALING_ENABLED=false
 
 ## Known Risks
 
-> **`laravel/ai` is new and fast-moving.** The version is pinned to `^0.1 || ^0.3`.
-> Breaking changes upstream are likely. Check the changelog before upgrading.
+> **`laravel/ai` is new and fast-moving.** It reshapes its `Agent` contract on
+> most 0.x minors, and an incompatible method signature is a *compile-time*
+> fatal — the agent class cannot be declared at all, taking down every command
+> with it. Tackle supports `>=0.1 <0.11` and CI runs the suite against the
+> oldest, middle, and newest of that range on PHP 8.3 and 8.4. A release beyond
+> 0.10 is not covered until the matrix is extended.
 
 > **This tool modifies your codebase and runs commands.** Always run it inside a
 > committed git working tree so you have a clear undo path (`git checkout -- .`).
