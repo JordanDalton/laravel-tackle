@@ -96,7 +96,8 @@ Run through this checklist once before your first session:
 
 - PHP ^8.3
 - Laravel ^12.0
-- [`laravel/ai`](https://github.com/laravel/ai) `>=0.1 <0.11` — every 0.x minor in that range is exercised in CI (see [Known Risks](#known-risks))
+- [`laravel/ai`](https://github.com/laravel/ai) `>=0.1 <0.11` (see [Known Risks](#known-risks))
+  - `laravel/ai` 0.1.x itself requires PHP ^8.4; on PHP 8.3 Composer will resolve 0.2 or newer
 
 ---
 

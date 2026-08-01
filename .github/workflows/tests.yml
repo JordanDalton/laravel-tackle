@@ -23,6 +23,11 @@ jobs:
         # 0.1.5 while the package could not be declared on anything newer.
         # Oldest, middle, and newest supported.
         ai: ['>=0.1 <0.2', '>=0.5 <0.6', '>=0.10 <0.11']
+        exclude:
+          # laravel/ai 0.1.x requires PHP ^8.4 — composer refuses this pairing,
+          # so there is no combination here to exercise.
+          - php: '8.3'
+            ai: '>=0.1 <0.2'
 
     steps:
       - uses: actions/checkout@v4
