@@ -150,12 +150,27 @@ class DefaultCodingAgent implements CodingAgent
         INSTRUCTIONS;
     }
 
-    public function stream(string $prompt, array $attachments = [], mixed $provider = null, ?string $model = null, ?int $timeout = null): StreamableAgentResponse
+    /**
+     * Stream a turn, keeping a transcript of it for the next one.
+     *
+     * $prompt and $provider are deliberately `mixed`. laravel/ai has narrowed
+     * this contract across releases — 0.1 declares `string $prompt`, 0.3
+     * declares `Decisions|string` and adds `Enums\Lab` to $provider — and a
+     * child may widen a parameter type but never narrow it. Accepting `mixed`
+     * satisfies every version in the composer constraint without naming classes
+     * that only exist in some of them.
+     */
+    public function stream(mixed $prompt, array $attachments = [], mixed $provider = null, ?string $model = null, ?int $timeout = null): StreamableAgentResponse
     {
         $response = $this->traitStream($prompt, $attachments, $provider, $model, $timeout);
 
         $response->then(function ($completed) use ($prompt) {
-            $this->conversationMessages[] = new UserMessage($prompt);
+            // Approval decisions resume an existing turn rather than starting a
+            // new one, so there is no user message to record for them.
+            if (is_string($prompt)) {
+                $this->conversationMessages[] = new UserMessage($prompt);
+            }
+
             $this->conversationMessages[] = new AssistantMessage($completed->text);
         });
 

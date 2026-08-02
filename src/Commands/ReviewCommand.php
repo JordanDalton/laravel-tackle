@@ -21,6 +21,7 @@ class ReviewCommand extends Command
     {
         if (! is_dir(base_path('.git'))) {
             $this->error('ai:review requires a git repository.');
+
             return self::FAILURE;
         }
 
@@ -28,11 +29,13 @@ class ReviewCommand extends Command
 
         if ($diff === null) {
             $this->error('Could not read git diff. Check that git is installed and this is a repository.');
+
             return self::FAILURE;
         }
 
         if ($diff === '') {
             $this->info('Nothing to review — no changes detected for the selected scope.');
+
             return self::SUCCESS;
         }
 
@@ -84,9 +87,9 @@ class ReviewCommand extends Command
 
     private function buildPrompt(string $diff): string
     {
-        $scope   = $this->scopeDescription();
-        $focus   = $this->focusInstruction();
-        $stat    = $this->diffStat();
+        $scope = $this->scopeDescription();
+        $focus = $this->focusInstruction();
+        $stat = $this->diffStat();
 
         return <<<PROMPT
         Please review the following git diff.
@@ -140,7 +143,7 @@ class ReviewCommand extends Command
         );
 
         // Replace the base diff command args with --stat variant
-        $statCmd   = $this->diffCommand();
+        $statCmd = $this->diffCommand();
         $statCmd[] = '--stat';
 
         $result = Process::path(base_path())->timeout(15)->run($statCmd);

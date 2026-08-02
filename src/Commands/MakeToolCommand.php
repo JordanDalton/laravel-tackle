@@ -18,6 +18,7 @@ class MakeToolCommand extends Command
 
         if (file_exists($path)) {
             $this->error("Tool already exists: {$path}");
+
             return self::FAILURE;
         }
 
@@ -42,7 +43,7 @@ class MakeToolCommand extends Command
     private function resolveStub(string $class): string
     {
         $published = base_path('stubs/tackle/tool.stub');
-        $default   = __DIR__ . '/../../resources/stubs/tool.stub';
+        $default = __DIR__.'/../../resources/stubs/tool.stub';
 
         $stub = file_exists($published) ? $published : $default;
 

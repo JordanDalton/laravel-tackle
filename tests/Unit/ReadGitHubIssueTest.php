@@ -1,9 +1,10 @@
 <?php
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
+use Laravel\Ai\Tools\Request;
 use Tackle\Healing\GitHubReader;
 use Tackle\Tools\ReadGitHubIssue;
-use Laravel\Ai\Tools\Request;
 
 // ---------------------------------------------------------------------------
 // GitHubReader — credential resolution
@@ -13,7 +14,7 @@ it('returns empty string when token is not configured', function () {
     config()->set('tackle.github.token', null);
     config()->set('tackle.github.repo', 'acme/app');
 
-    \Illuminate\Support\Facades\Process::fake(['gh*' => \Illuminate\Support\Facades\Process::result('', '', 1)]);
+    Process::fake(['gh*' => Process::result('', '', 1)]);
 
     $reader = app(GitHubReader::class);
 
@@ -25,7 +26,7 @@ it('returns empty string when repo is not configured', function () {
     config()->set('tackle.github.token', 'ghp_token');
     config()->set('tackle.github.repo', null);
 
-    \Illuminate\Support\Facades\Process::fake(['gh*' => \Illuminate\Support\Facades\Process::result('', '', 1)]);
+    Process::fake(['gh*' => Process::result('', '', 1)]);
 
     $reader = app(GitHubReader::class);
 
@@ -57,18 +58,18 @@ it('formats a GitHub issue with body and comments correctly', function () {
     Http::fake([
         '*issues/42/comments*' => Http::response([
             [
-                'user'       => ['login' => 'reviewer'],
+                'user' => ['login' => 'reviewer'],
                 'created_at' => '2026-06-14T09:00:00Z',
-                'body'       => 'This is a comment.',
+                'body' => 'This is a comment.',
             ],
         ], 200),
         '*issues/42*' => Http::response([
-            'number'  => 42,
-            'title'   => 'Fix the payment flow',
-            'state'   => 'open',
-            'user'    => ['login' => 'jordan'],
-            'body'    => 'The payment flow is broken when the cart is empty.',
-            'labels'  => [['name' => 'bug'], ['name' => 'high-priority']],
+            'number' => 42,
+            'title' => 'Fix the payment flow',
+            'state' => 'open',
+            'user' => ['login' => 'jordan'],
+            'body' => 'The payment flow is broken when the cart is empty.',
+            'labels' => [['name' => 'bug'], ['name' => 'high-priority']],
         ], 200),
     ]);
 
@@ -94,12 +95,12 @@ it('formats an issue without labels or comments', function () {
     Http::fake([
         '*issues/7/comments*' => Http::response([], 200),
         '*issues/7*' => Http::response([
-            'number'  => 7,
-            'title'   => 'Simple issue',
-            'state'   => 'open',
-            'user'    => ['login' => 'alice'],
-            'body'    => 'Some description.',
-            'labels'  => [],
+            'number' => 7,
+            'title' => 'Simple issue',
+            'state' => 'open',
+            'user' => ['login' => 'alice'],
+            'body' => 'Some description.',
+            'labels' => [],
         ], 200),
     ]);
 
@@ -171,9 +172,9 @@ it('ReadGitHubIssue returns not-configured message when credentials are missing'
     config()->set('tackle.github.token', null);
     config()->set('tackle.github.repo', null);
 
-    \Illuminate\Support\Facades\Process::fake(['gh*' => \Illuminate\Support\Facades\Process::result('', '', 1)]);
+    Process::fake(['gh*' => Process::result('', '', 1)]);
 
-    $tool   = app(ReadGitHubIssue::class);
+    $tool = app(ReadGitHubIssue::class);
     $result = $tool->handle(new Request(['issue_number' => 42]));
 
     expect($result)->toContain('GITHUB_TOKEN');
@@ -183,9 +184,9 @@ it('ReadGitHubIssue routes to recent() when no issue_number is given', function 
     config()->set('tackle.github.token', null);
     config()->set('tackle.github.repo', null);
 
-    \Illuminate\Support\Facades\Process::fake(['gh*' => \Illuminate\Support\Facades\Process::result('', '', 1)]);
+    Process::fake(['gh*' => Process::result('', '', 1)]);
 
-    $tool   = app(ReadGitHubIssue::class);
+    $tool = app(ReadGitHubIssue::class);
     $result = $tool->handle(new Request([]));
 
     expect($result)->toContain('GITHUB_TOKEN');
@@ -199,7 +200,7 @@ it('ReadGitHubIssue clamps limit between 1 and 25', function () {
         'api.github.com/*' => Http::response([], 200),
     ]);
 
-    $tool   = app(ReadGitHubIssue::class);
+    $tool = app(ReadGitHubIssue::class);
     $result = $tool->handle(new Request(['limit' => 999]));
 
     expect($result)->toBeString();

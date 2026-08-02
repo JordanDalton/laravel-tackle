@@ -13,11 +13,12 @@ class PruneCommand extends Command
 
     public function handle(): int
     {
-        $base   = base_path();
+        $base = base_path();
         $result = Process::path($base)->run(['git', 'worktree', 'list', '--porcelain']);
 
         if (! $result->successful()) {
             $this->error('Could not list git worktrees — is this a git repository?');
+
             return self::FAILURE;
         }
 
@@ -29,19 +30,21 @@ class PruneCommand extends Command
 
         if ($dangling->isEmpty()) {
             $this->info('No dangling Tackle worktrees found.');
+
             return self::SUCCESS;
         }
 
         foreach ($dangling as $path) {
             if ($this->option('dry-run')) {
                 $this->line("  <fg=yellow>would remove:</> {$path}");
+
                 continue;
             }
 
             $this->line("  <fg=cyan>removing:</> {$path}");
 
             // Drop vendor symlink first so git doesn't choke on the broken link.
-            $vendorLink = $path . '/vendor';
+            $vendorLink = $path.'/vendor';
             if (is_link($vendorLink)) {
                 unlink($vendorLink);
             }
@@ -53,7 +56,7 @@ class PruneCommand extends Command
             if ($remove->successful()) {
                 $this->line("  <fg=green>✓</> removed {$path}");
             } else {
-                $this->line("  <fg=red>✗</> failed to remove {$path}: " . trim($remove->errorOutput()));
+                $this->line("  <fg=red>✗</> failed to remove {$path}: ".trim($remove->errorOutput()));
             }
         }
 

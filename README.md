@@ -12,6 +12,7 @@ The harness ships with three built-in agents and a full tool infrastructure you
 can extend or build on top of:
 
 - **`ai:code`** — an interactive coding agent that reads your codebase, edits files, runs tests, and formats code
+- **`ai:run`** — the same agent with no terminal attached: one task, a JSON result, and an exit code, for CI and cron
 - **`ai:fix`** — a focused fix session: paste an exception, point it at a Sentry issue (`--sentry=ID`) or GitHub issue (`--issue=N`), and the agent diagnoses, patches, and verifies the fix. Runs in worktree mode by default.
 - **`ai:review`** — a read-only agent that reviews git diffs and surfaces real issues with severity levels
 - **`ai:explain`** — explains what a file, class, or method does in plain English
@@ -38,6 +39,7 @@ Built on top of [`laravel/ai`](https://github.com/laravel/ai).
 - [Session memory](#session-memory)
 - [Configuration](#configuration)
 - [Built-in tools](#built-in-tools)
+- [Headless mode (CI, cron, scripts)](#headless-mode-ci-cron-scripts)
 - [MCP server](#mcp-server)
 - [Self-healing queue workers](#self-healing-queue-workers)
   - [Scheduled command healing](#scheduled-command-healing)
@@ -94,7 +96,8 @@ Run through this checklist once before your first session:
 
 - PHP ^8.3
 - Laravel ^12.0
-- [`laravel/ai`](https://github.com/laravel/ai) ^0.1 || ^0.3 (pinned — fast-moving package, see [Known Risks](#known-risks))
+- [`laravel/ai`](https://github.com/laravel/ai) `>=0.1 <0.11` (see [Known Risks](#known-risks))
+  - `laravel/ai` 0.1.x itself requires PHP ^8.4; on PHP 8.3 Composer will resolve 0.2 or newer
 
 ---
 
@@ -131,7 +134,7 @@ All config options can be set via `.env`. Nothing requires editing a PHP file.
 | `ANTHROPIC_API_KEY` | — | Your Anthropic API key (required for the default provider) |
 | `AI_CODE_PROVIDER` | `anthropic` | Provider name — must match a key in `config/ai.php` |
 | `AI_CODE_MODEL` | `claude-sonnet-4-6` | Model to use |
-| `AI_CODE_MAX_STEPS` | `40` | Max tool-call cycles per agent turn |
+| `AI_CODE_MAX_STEPS` | `40` | Tool-call ceiling for `ai:run` — cannot exceed the agent's own `#[MaxSteps]` |
 | `AI_CODE_BUDGET` | `1.00` | Hard spend limit in USD per session |
 | `AI_CODE_SHELL` | `approve` | Shell mode: `off` \| `allowlist` \| `approve` \| `yolo`. Can be set per-environment in `config/tackle.php` — production defaults to `off`. |
 | `AI_CODE_WORKTREE` | `false` | Enable worktree isolation (production defaults to `true`). |
@@ -155,6 +158,10 @@ Type a task at the prompt. The agent maintains full conversation history within 
 session, so you can follow up, ask questions, and give corrections naturally.
 
 Type `exit` or `quit` to end the session.
+
+For CI, cron, or anything without a terminal, use
+[`ai:run`](#headless-mode-ci-cron-scripts) — the same agent, run once, with a
+structured result and an exit code.
 
 ### Shell mode flag
 
@@ -383,7 +390,8 @@ return [
     // Model to use
     'model' => env('AI_CODE_MODEL', 'claude-sonnet-4-6'),
 
-    // Maximum agent steps per turn (tool calls + reasoning cycles)
+    // Tool-call ceiling for ai:run — a cap, not a grant; it cannot raise
+    // the agent's own #[MaxSteps] attribute
     'max_steps' => env('AI_CODE_MAX_STEPS', 40),
 
     // Hard spend limit for the session in USD — aborts when exceeded
@@ -509,6 +517,149 @@ These tools are available to the agent in every session.
 
 All file reads happen in-process. Everything that executes code runs as a
 subprocess, so a broken generated file cannot crash the agent session.
+
+---
+
+## Headless mode (CI, cron, scripts)
+
+`ai:code` is a REPL and needs a terminal. `ai:run` is the same agent, the same
+tools, and the same safety layer — run once, to completion, with nothing
+attached to stdin.
+
+```bash
+php artisan ai:run "Add a scopeActive to the Subscription model and a test for it"
+```
+
+It streams a plain-text log while it works and prints a summary at the end.
+
+### Machine-readable output
+
+`--output=json` prints one JSON document on stdout. Diagnostics go to stderr, so
+you can pipe stdout straight into `jq` without filtering.
+
+```bash
+php artisan ai:run "Fix the failing SubscriptionTest" --output=json | jq -r '.pr_url'
+```
+
+```json
+{
+  "ok": true,
+  "outcome": "completed",
+  "text": "Added the scope and a test covering both branches.",
+  "steps": 12,
+  "files_changed": ["app/Models/Subscription.php", "tests/Feature/SubscriptionTest.php"],
+  "diff_stat": "2 files changed, 24 insertions(+)",
+  "interactions_denied": 0,
+  "usage": { "input_tokens": 41233, "output_tokens": 2210, "estimated_cost_usd": 0.1563 },
+  "budget_usd": 1.0,
+  "worktree": "/tmp/tackle-worktree-9f2ab1c4",
+  "pr_url": "https://github.com/acme/app/pull/218",
+  "events": [
+    { "type": "tool_call", "tool": "EditFile", "args": { "path": "app/Models/Subscription.php" } }
+  ]
+}
+```
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Completed |
+| `1`  | Agent or provider error, or an invalid option |
+| `2`  | Stopped — the spend limit was reached |
+| `3`  | A confirmation was auto-denied (only with `--fail-on-denied`) |
+| `4`  | Hit the step ceiling without finishing |
+
+### Confirmations without a user
+
+Five tools ask before they act: `AskUser`, `ConfirmAction`, `RunArtisan` (for
+destructive commands), `RunShell` (under `shell=approve`), and `CommitAndPush`.
+With no terminal there is nobody to answer, so **every confirmation is denied by
+default** — nothing that would have needed a human "yes" happens without one.
+
+`AskUser` is the exception, because it is a choice rather than a confirmation:
+the agent is told to pick the option it judges best, say which it chose and why,
+and carry on. A denied *choice* would just stall the run.
+
+Pass `--yes` to approve automatically instead. Only do that where you would have
+clicked through the prompts yourself — it green-lights destructive Artisan
+commands and pushes.
+
+`--fail-on-denied` turns any auto-denial into exit code 3, for pipelines that
+would rather fail loudly than get a partial result. Either way, the count is in
+the JSON as `interactions_denied`.
+
+### Shell in unattended runs
+
+`shell=approve` — the config default for `local` and `staging` — has no meaning
+with no one to approve. Rather than silently promote it to `yolo`, `ai:run`
+refuses those commands and says why. For a run that genuinely needs a shell,
+choose the policy deliberately:
+
+```bash
+php artisan ai:run "..." --allowlist   # only shell_allowlist commands
+php artisan ai:run "..." --yolo        # unrestricted — trusted environments only
+```
+
+### Bounding a run
+
+`--budget` and `--max-steps` override `budget_usd` and `max_steps` for one run.
+Both are hard stops: the run aborts and reports the outcome rather than
+continuing past the limit.
+
+```bash
+php artisan ai:run "..." --budget=0.50 --max-steps=25
+```
+
+> `max_steps` is a ceiling, not a grant. Each agent also declares its own
+> `#[MaxSteps]` attribute, which `laravel/ai` reads by reflection and which
+> cannot be raised at runtime — setting `max_steps` above it has no effect.
+
+### In GitHub Actions
+
+Worktree mode is worth forcing here: the agent edits an isolated copy and the
+live checkout is never touched.
+
+```yaml
+name: Tackle
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: What should Tackle do?
+        required: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+      - run: composer install --no-interaction --prefer-dist
+      - name: Run Tackle
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+        run: |
+          php artisan ai:run "${{ inputs.task }}" \
+            --output=json \
+            --worktree \
+            --allowlist \
+            --budget=2.00 \
+            --max-steps=60 > result.json
+      - run: jq -r '.text' result.json >> $GITHUB_STEP_SUMMARY
+        if: always()
+```
+
+The job fails on any non-zero exit, so a run that blows the budget or hits the
+step ceiling fails the workflow rather than reporting success with half the work
+done.
 
 ---
 
@@ -1318,9 +1469,13 @@ The default $1.00 limit is intentionally conservative.
 
 ### `ai:code requires an interactive TTY`
 
-The command must be run in a real terminal — not piped, not in a CI job, not
-through a non-interactive shell. This is required because the approval prompts
-need user input.
+`ai:code` is an interactive REPL and must be run in a real terminal — not piped,
+not in a CI job, not through a non-interactive shell, because its approval
+prompts need user input.
+
+For pipes, CI jobs, and cron, use
+[`ai:run`](#headless-mode-ci-cron-scripts) instead. It runs the same agent with
+the same tools and reports a structured result and an exit code.
 
 ### `Path '...' is outside the workspace root`
 
@@ -1391,8 +1546,12 @@ AI_CODE_HEALING_ENABLED=false
 
 ## Known Risks
 
-> **`laravel/ai` is new and fast-moving.** The version is pinned to `^0.1 || ^0.3`.
-> Breaking changes upstream are likely. Check the changelog before upgrading.
+> **`laravel/ai` is new and fast-moving.** It reshapes its `Agent` contract on
+> most 0.x minors, and an incompatible method signature is a *compile-time*
+> fatal — the agent class cannot be declared at all, taking down every command
+> with it. Tackle supports `>=0.1 <0.11` and CI runs the suite against the
+> oldest, middle, and newest of that range on PHP 8.3 and 8.4. A release beyond
+> 0.10 is not covered until the matrix is extended.
 
 > **This tool modifies your codebase and runs commands.** Always run it inside a
 > committed git working tree so you have a clear undo path (`git checkout -- .`).

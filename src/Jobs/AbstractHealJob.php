@@ -9,17 +9,21 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Tackle\Agents\HealingAgent;
+use Tackle\Contracts\InteractionPolicy;
 use Tackle\Healing\GitHubTokenReader;
 use Tackle\Healing\SandboxRunner;
 use Tackle\Models\HealingLog;
+use Tackle\Support\DenyInteraction;
 use Throwable;
 
 abstract class AbstractHealJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, SerializesModels;
 
-    public int $tries   = 1;
+    public int $tries = 1;
+
     public int $timeout = 600;
+
     public string $queue;
 
     public function __construct()
@@ -32,15 +36,25 @@ abstract class AbstractHealJob implements ShouldQueue
     // -----------------------------------------------------------------------
 
     abstract protected function subjectType(): string;    // 'job' | 'scheduled_task'
+
     abstract protected function subjectClass(): string;
+
     abstract protected function branchSuffix(): string;
+
     abstract protected function agentPrompt(): string;
+
     abstract protected function commitMessage(): string;
+
     abstract protected function onPatched(): void;
+
     abstract protected function prTitle(bool $testsPassed): string;
+
     abstract protected function prBody(string $agentSummary, bool $testsPassed): string;
+
     abstract protected function getExceptionClass(): string;
+
     abstract protected function getExceptionMessage(): string;
+
     abstract protected function getExceptionTrace(): string;
 
     // -----------------------------------------------------------------------
@@ -49,17 +63,21 @@ abstract class AbstractHealJob implements ShouldQueue
 
     public function handle(SandboxRunner $runner, GitHubTokenReader $tokenReader): void
     {
-        $branchName   = config('tackle.healing.branch_prefix', 'tackle/heal-') . $this->branchSuffix();
+        // A queue worker has no terminal. Without this, any prompting tool added
+        // to a custom healing agent would block the worker indefinitely.
+        app()->instance(InteractionPolicy::class, new DenyInteraction);
+
+        $branchName = config('tackle.healing.branch_prefix', 'tackle/heal-').$this->branchSuffix();
         $worktreePath = null;
-        $outcome      = 'failed';
-        $prUrl        = null;
-        $testsPassed  = false;
-        $mode         = config('tackle.healing.mode', 'pr');
+        $outcome = 'failed';
+        $prUrl = null;
+        $testsPassed = false;
+        $mode = config('tackle.healing.mode', 'pr');
 
         try {
             $worktreePath = $runner->prepare($branchName);
 
-            $agent   = new HealingAgent($worktreePath);
+            $agent = new HealingAgent($worktreePath);
             $summary = '';
 
             $agent->stream($this->agentPrompt())->each(function ($event) use (&$summary) {
@@ -82,11 +100,11 @@ abstract class AbstractHealJob implements ShouldQueue
 
                 $runner->push($branchName, $worktreePath);
 
-                $prUrl  = $runner->createPullRequest(
+                $prUrl = $runner->createPullRequest(
                     branchName: $branchName,
-                    title:      $this->prTitle($testsPassed),
-                    body:       $this->prBody($summary, $testsPassed),
-                    token:      $tokenReader->token(),
+                    title: $this->prTitle($testsPassed),
+                    body: $this->prBody($summary, $testsPassed),
+                    token: $tokenReader->token(),
                 );
                 $outcome = 'pr_opened';
 
@@ -96,7 +114,7 @@ abstract class AbstractHealJob implements ShouldQueue
                 );
             }
         } catch (Throwable $e) {
-            Log::error("Tackle Healer: failed to process {$this->subjectClass()}: " . $e->getMessage());
+            Log::error("Tackle Healer: failed to process {$this->subjectClass()}: ".$e->getMessage());
         } finally {
             $this->writeAuditLog($branchName, $prUrl, $testsPassed, $outcome, $mode);
 
@@ -115,15 +133,15 @@ abstract class AbstractHealJob implements ShouldQueue
     ): void {
         try {
             HealingLog::create([
-                'subject_type'      => $this->subjectType(),
-                'subject_class'     => $this->subjectClass(),
-                'exception_class'   => $this->getExceptionClass(),
+                'subject_type' => $this->subjectType(),
+                'subject_class' => $this->subjectClass(),
+                'exception_class' => $this->getExceptionClass(),
                 'exception_message' => $this->getExceptionMessage(),
-                'branch'            => $branchName,
-                'pr_url'            => $prUrl,
-                'mode'              => $mode,
-                'tests_passed'      => $testsPassed,
-                'outcome'           => $outcome,
+                'branch' => $branchName,
+                'pr_url' => $prUrl,
+                'mode' => $mode,
+                'tests_passed' => $testsPassed,
+                'outcome' => $outcome,
             ]);
         } catch (Throwable) {
             // Degrade gracefully if the migration has not been run.

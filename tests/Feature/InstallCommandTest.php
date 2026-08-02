@@ -1,7 +1,5 @@
 <?php
 
-use Illuminate\Support\Facades\Artisan;
-
 beforeEach(function () {
     // Create a blank .env for tests
     file_put_contents(base_path('.env'), '');

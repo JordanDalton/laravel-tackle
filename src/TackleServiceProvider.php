@@ -21,10 +21,13 @@ use Tackle\Commands\McpCommand;
 use Tackle\Commands\PruneCommand;
 use Tackle\Commands\ReplayCommand;
 use Tackle\Commands\ReviewCommand;
+use Tackle\Commands\RunCommand;
 use Tackle\Commands\TestCommand;
 use Tackle\Contracts\CodingAgent;
+use Tackle\Contracts\InteractionPolicy;
 use Tackle\Healing\JobFailureListener;
 use Tackle\Healing\ScheduledTaskFailureListener;
+use Tackle\Support\TerminalInteraction;
 use Tackle\Support\WorktreeManager;
 
 class TackleServiceProvider extends PackageServiceProvider
@@ -40,6 +43,7 @@ class TackleServiceProvider extends PackageServiceProvider
                 InitCommand::class,
                 HealthCommand::class,
                 CodeCommand::class,
+                RunCommand::class,
                 FixCommand::class,
                 ReviewCommand::class,
                 ExplainCommand::class,
@@ -57,6 +61,10 @@ class TackleServiceProvider extends PackageServiceProvider
     {
         $this->app->bind(CodingAgent::class, DefaultCodingAgent::class);
         $this->app->singleton(WorktreeManager::class);
+
+        // Prompting through the terminal is the default. Contexts without one
+        // (ai:run, tackle:mcp, the healer) rebind this before resolving an agent.
+        $this->app->singleton(InteractionPolicy::class, TerminalInteraction::class);
     }
 
     public function packageBooted(): void

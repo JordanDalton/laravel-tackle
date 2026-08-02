@@ -39,14 +39,14 @@ it('creates an issue and returns the URL', function () {
 
     Http::fake([
         '*api.github.com*' => Http::response([
-            'number'   => 7,
+            'number' => 7,
             'html_url' => 'https://github.com/acme/app/issues/7',
         ], 201),
     ]);
 
     $result = makeIssueTool()->handle(new Request([
         'title' => 'Bug: payment fails on empty cart',
-        'body'  => 'Steps to reproduce: add nothing to cart, proceed to checkout.',
+        'body' => 'Steps to reproduce: add nothing to cart, proceed to checkout.',
     ]));
 
     expect($result)
@@ -63,12 +63,11 @@ it('sends labels when provided', function () {
     ]);
 
     makeIssueTool()->handle(new Request([
-        'title'  => 'Improve logging',
+        'title' => 'Improve logging',
         'labels' => ['enhancement', 'logging'],
     ]));
 
-    Http::assertSent(fn ($request) =>
-        str_contains($request->body(), 'enhancement') &&
+    Http::assertSent(fn ($request) => str_contains($request->body(), 'enhancement') &&
         str_contains($request->body(), 'logging')
     );
 });

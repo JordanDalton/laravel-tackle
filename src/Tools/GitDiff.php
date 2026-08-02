@@ -60,7 +60,7 @@ class GitDiff extends AbstractTool
         $result = Process::path($workspace)->timeout(30)->run($cmd);
 
         if (! $result->successful() && $result->exitCode() !== 1) {
-            return 'git diff failed: ' . trim($result->errorOutput());
+            return 'git diff failed: '.trim($result->errorOutput());
         }
 
         $output = trim($result->output());

@@ -26,12 +26,12 @@ class Glob extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $pattern   = $request->string('pattern', '*');
+        $pattern = $request->string('pattern', '*');
         $workspace = $this->guard->workspace();
 
         $files = str_contains($pattern, '**')
             ? $this->globRecursive($workspace, $pattern)
-            : (glob($workspace . DIRECTORY_SEPARATOR . ltrim($pattern, DIRECTORY_SEPARATOR), GLOB_BRACE | GLOB_NOSORT) ?: []);
+            : (glob($workspace.DIRECTORY_SEPARATOR.ltrim($pattern, DIRECTORY_SEPARATOR), GLOB_BRACE | GLOB_NOSORT) ?: []);
 
         $results = [];
         foreach ($files as $file) {
@@ -56,14 +56,14 @@ class Glob extends AbstractTool
     private function globRecursive(string $workspace, string $pattern): array
     {
         [$prefix, $suffix] = explode('**', $pattern, 2);
-        $baseDir = rtrim($workspace . DIRECTORY_SEPARATOR . ltrim($prefix, DIRECTORY_SEPARATOR), DIRECTORY_SEPARATOR);
+        $baseDir = rtrim($workspace.DIRECTORY_SEPARATOR.ltrim($prefix, DIRECTORY_SEPARATOR), DIRECTORY_SEPARATOR);
 
         if (! is_dir($baseDir)) {
             return [];
         }
 
         $suffix = ltrim($suffix, DIRECTORY_SEPARATOR);
-        $files  = [];
+        $files = [];
 
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($baseDir, \FilesystemIterator::SKIP_DOTS)

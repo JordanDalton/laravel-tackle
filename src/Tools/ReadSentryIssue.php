@@ -37,7 +37,7 @@ class ReadSentryIssue extends AbstractTool
                 : 'Could not fetch Sentry issue. Check that SENTRY_AUTH_TOKEN and SENTRY_ORG are set and the issue ID is correct.';
         }
 
-        $limit  = max(1, min(25, (int) $request->integer('limit', 10)));
+        $limit = max(1, min(25, (int) $request->integer('limit', 10)));
         $result = $this->reader->recent($limit);
 
         return $result !== ''

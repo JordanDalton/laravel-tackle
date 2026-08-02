@@ -57,7 +57,7 @@ class ReadPullRequest extends AbstractTool
 
             return $this->format($prResponse->json(), $comments);
         } catch (Throwable $e) {
-            return 'Error fetching pull request: ' . $e->getMessage();
+            return 'Error fetching pull request: '.$e->getMessage();
         }
     }
 
@@ -67,9 +67,9 @@ class ReadPullRequest extends AbstractTool
 
         try {
             $response = $this->client->get("repos/{$repo}/pulls", [
-                'state'     => 'open',
-                'per_page'  => $limit,
-                'sort'      => 'updated',
+                'state' => 'open',
+                'per_page' => $limit,
+                'sort' => 'updated',
                 'direction' => 'desc',
             ]);
 
@@ -84,31 +84,32 @@ class ReadPullRequest extends AbstractTool
             }
 
             return collect($prs)->map(function (array $pr): string {
-                $number  = $pr['number']        ?? '?';
-                $title   = $pr['title']         ?? '?';
-                $branch  = $pr['head']['ref']   ?? '?';
-                $base    = $pr['base']['ref']   ?? '?';
-                $author  = $pr['user']['login'] ?? '?';
-                $updated = $pr['updated_at']    ?? '';
+                $number = $pr['number'] ?? '?';
+                $title = $pr['title'] ?? '?';
+                $branch = $pr['head']['ref'] ?? '?';
+                $base = $pr['base']['ref'] ?? '?';
+                $author = $pr['user']['login'] ?? '?';
+                $updated = $pr['updated_at'] ?? '';
+
                 return "[{$updated}] #{$number} [{$branch} → {$base}] {$title} (by {$author})";
             })->implode("\n");
         } catch (Throwable $e) {
-            return 'Error listing pull requests: ' . $e->getMessage();
+            return 'Error listing pull requests: '.$e->getMessage();
         }
     }
 
     private function format(array $pr, array $comments): string
     {
-        $number = $pr['number']            ?? '?';
-        $title  = $pr['title']             ?? '?';
-        $state  = $pr['state']             ?? '?';
-        $author = $pr['user']['login']     ?? '?';
-        $branch = $pr['head']['ref']       ?? '?';
-        $base   = $pr['base']['ref']       ?? '?';
-        $url    = $pr['html_url']          ?? '';
-        $body   = trim($pr['body']         ?? '');
+        $number = $pr['number'] ?? '?';
+        $title = $pr['title'] ?? '?';
+        $state = $pr['state'] ?? '?';
+        $author = $pr['user']['login'] ?? '?';
+        $branch = $pr['head']['ref'] ?? '?';
+        $base = $pr['base']['ref'] ?? '?';
+        $url = $pr['html_url'] ?? '';
+        $body = trim($pr['body'] ?? '');
 
-        $output  = "GitHub PR #{$number} — {$title}";
+        $output = "GitHub PR #{$number} — {$title}";
         $output .= "\nState: {$state} | Author: {$author}";
         $output .= "\nBranch: {$branch} → {$base}";
 
@@ -123,9 +124,9 @@ class ReadPullRequest extends AbstractTool
         if (! empty($comments)) {
             $output .= "\n\n--- Comments ---";
             foreach ($comments as $comment) {
-                $login   = $comment['user']['login'] ?? '?';
-                $created = $comment['created_at']    ?? '';
-                $text    = trim($comment['body']     ?? '');
+                $login = $comment['user']['login'] ?? '?';
+                $created = $comment['created_at'] ?? '';
+                $text = trim($comment['body'] ?? '');
                 $output .= "\n\n[{$created}] {$login}:\n{$text}";
             }
         }

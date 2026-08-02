@@ -5,16 +5,16 @@ namespace Tackle\Tools;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
+use Tackle\Contracts\InteractionPolicy;
 use Tackle\Support\CommandGuard;
 use Tackle\Support\PathGuard;
-
-use function Laravel\Prompts\confirm;
 
 class RunArtisan extends AbstractTool
 {
     public function __construct(
         private PathGuard $pathGuard,
         private CommandGuard $commandGuard,
+        private ?InteractionPolicy $interaction = null,
     ) {}
 
     public function description(): string
@@ -39,12 +39,11 @@ class RunArtisan extends AbstractTool
             return 'A non-empty command is required.';
         }
 
-        $allowlist   = $this->commandGuard->resolveList(config('tackle.artisan_allowlist', []));
+        $allowlist = $this->commandGuard->resolveList(config('tackle.artisan_allowlist', []));
         $destructive = $this->commandGuard->resolveList(config('tackle.artisan_destructive', []));
 
         if ($this->commandGuard->matches($command, $destructive)) {
-            echo PHP_EOL;
-            if (! confirm("⚠ Destructive: php artisan {$command} — proceed?", default: false)) {
+            if (! $this->interaction()->confirm("⚠ Destructive: php artisan {$command} — proceed?", default: false)) {
                 return 'Cancelled by user.';
             }
         } elseif ($refusal = $this->commandGuard->check($command, $allowlist)) {
@@ -59,5 +58,10 @@ class RunArtisan extends AbstractTool
         }
 
         return $result->output() ?: '(Command ran successfully with no output.)';
+    }
+
+    private function interaction(): InteractionPolicy
+    {
+        return $this->interaction ??= app(InteractionPolicy::class);
     }
 }

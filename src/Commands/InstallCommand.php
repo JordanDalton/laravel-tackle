@@ -72,10 +72,10 @@ class InstallCommand extends Command
 
         $defaults = [
             'AI_CODE_HEALING_ENABLED' => 'false',
-            'GITHUB_TOKEN'            => '',
-            'GITHUB_REPO'             => '',
-            'SENTRY_AUTH_TOKEN'       => '',
-            'SENTRY_ORG'              => '',
+            'GITHUB_TOKEN' => '',
+            'GITHUB_REPO' => '',
+            'SENTRY_AUTH_TOKEN' => '',
+            'SENTRY_ORG' => '',
         ];
 
         foreach ($defaults as $key => $value) {
@@ -85,7 +85,7 @@ class InstallCommand extends Command
         }
 
         if ($appended) {
-            file_put_contents($envPath, $contents . "\n" . implode("\n", $appended) . "\n");
+            file_put_contents($envPath, $contents."\n".implode("\n", $appended)."\n");
             $this->line('  <fg=green>✓</> Environment variables added to <fg=cyan>.env</>');
         }
     }

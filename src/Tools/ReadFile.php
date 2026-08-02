@@ -50,6 +50,6 @@ class ReadFile extends AbstractTool
     {
         return str_starts_with($path, DIRECTORY_SEPARATOR)
             ? $path
-            : $this->guard->workspace() . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
+            : $this->guard->workspace().DIRECTORY_SEPARATOR.ltrim($path, DIRECTORY_SEPARATOR);
     }
 }

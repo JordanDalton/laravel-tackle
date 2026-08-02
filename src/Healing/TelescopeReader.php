@@ -31,9 +31,10 @@ class TelescopeReader
 
             return $rows->map(function ($row) {
                 $content = json_decode($row->content ?? '{}', true) ?? [];
-                $class   = $content['class']   ?? '';
+                $class = $content['class'] ?? '';
                 $message = $content['message'] ?? '';
-                $when    = $row->created_at    ?? '';
+                $when = $row->created_at ?? '';
+
                 return "[{$when}] {$class}: {$message}";
             })->implode("\n");
         } catch (Throwable) {
@@ -43,31 +44,31 @@ class TelescopeReader
 
     public function forJob(string $jobUuid): string
     {
-        if (!config('tackle.healing.telescope', true)) {
+        if (! config('tackle.healing.telescope', true)) {
             return '';
         }
 
-        if (!class_exists('Laravel\Telescope\Telescope')) {
+        if (! class_exists('Laravel\Telescope\Telescope')) {
             return '';
         }
 
         try {
             $row = DB::table('telescope_entries')
                 ->where('type', 'exception')
-                ->where('content', 'like', '%' . $jobUuid . '%')
+                ->where('content', 'like', '%'.$jobUuid.'%')
                 ->orderByDesc('created_at')
                 ->first();
 
-            if (!$row) {
+            if (! $row) {
                 return '';
             }
 
             $content = json_decode($row->content ?? '{}', true) ?? [];
-            $class   = $content['class'] ?? '';
+            $class = $content['class'] ?? '';
             $message = $content['message'] ?? '';
-            $trace   = collect($content['trace'] ?? [])
+            $trace = collect($content['trace'] ?? [])
                 ->take(10)
-                ->map(fn ($f) => ($f['file'] ?? '?') . ':' . ($f['line'] ?? '?') . ' ' . ($f['function'] ?? ''))
+                ->map(fn ($f) => ($f['file'] ?? '?').':'.($f['line'] ?? '?').' '.($f['function'] ?? ''))
                 ->implode("\n");
 
             return trim("Telescope exception entry:\nClass: {$class}\nMessage: {$message}\nTrace:\n{$trace}");

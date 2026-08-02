@@ -31,10 +31,11 @@ class ReadTelescopeEntry extends AbstractTool
 
         if ($uuid !== '') {
             $entry = $this->reader->forJob($uuid);
+
             return $entry !== '' ? $entry : 'No Telescope entry found for this job UUID.';
         }
 
-        $limit  = max(1, min(50, (int) $request->integer('limit', 10)));
+        $limit = max(1, min(50, (int) $request->integer('limit', 10)));
         $result = $this->reader->recent($limit);
 
         return $result !== '' ? $result : 'No Telescope exception entries found.';

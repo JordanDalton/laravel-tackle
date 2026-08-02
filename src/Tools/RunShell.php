@@ -5,16 +5,16 @@ namespace Tackle\Tools;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
+use Tackle\Contracts\InteractionPolicy;
 use Tackle\Support\CommandGuard;
 use Tackle\Support\PathGuard;
-
-use function Laravel\Prompts\confirm;
 
 class RunShell extends AbstractTool
 {
     public function __construct(
         private PathGuard $pathGuard,
         private CommandGuard $commandGuard,
+        private ?InteractionPolicy $interaction = null,
     ) {}
 
     public function description(): string
@@ -42,11 +42,11 @@ class RunShell extends AbstractTool
         $mode = $this->resolveShellMode();
 
         return match ($mode) {
-            'off'       => $this->refuseAll($command),
+            'off' => $this->refuseAll($command),
             'allowlist' => $this->runIfAllowed($command),
-            'approve'   => $this->runWithApproval($command),
-            'yolo'      => $this->runUnrestricted($command),
-            default     => "Unknown shell mode '{$mode}'. Check your tackle config.",
+            'approve' => $this->runWithApproval($command),
+            'yolo' => $this->runUnrestricted($command),
+            default => "Unknown shell mode '{$mode}'. Check your tackle config.",
         };
     }
 
@@ -56,6 +56,7 @@ class RunShell extends AbstractTool
 
         if (is_array($config)) {
             $env = app()->environment();
+
             return $config[$env] ?? $config['*'] ?? 'approve';
         }
 
@@ -80,17 +81,25 @@ class RunShell extends AbstractTool
 
     private function runWithApproval(string $command): string
     {
-        $approved = confirm(
+        $interaction = $this->interaction();
+
+        $approved = $interaction->confirm(
             label: 'The agent wants to run a shell command. Allow it?',
-            hint: $command,
             default: false,
+            hint: $command,
         );
 
-        if (! $approved) {
-            return "User denied execution of: '{$command}'";
+        if ($approved) {
+            return $this->execute($command);
         }
 
-        return $this->execute($command);
+        // With no terminal, shell=approve has no one to approve it. Refusing is
+        // the only safe reading — say why, rather than blaming a user who is not there.
+        return $interaction->isInteractive()
+            ? "User denied execution of: '{$command}'"
+            : 'Shell execution requires per-command approval (shell=approve) but no interactive user is '
+              ."available, so it was refused: '{$command}'. For unattended runs use shell=allowlist, or pass "
+              .'--yes to approve automatically.';
     }
 
     private function runUnrestricted(string $command): string
@@ -105,9 +114,14 @@ class RunShell extends AbstractTool
             ->run($command);
 
         if ($result->failed()) {
-            return "Command failed (exit {$result->exitCode()}):\n" . $result->errorOutput();
+            return "Command failed (exit {$result->exitCode()}):\n".$result->errorOutput();
         }
 
-        return $result->output() ?: "(Command ran successfully with no output.)";
+        return $result->output() ?: '(Command ran successfully with no output.)';
+    }
+
+    private function interaction(): InteractionPolicy
+    {
+        return $this->interaction ??= app(InteractionPolicy::class);
     }
 }

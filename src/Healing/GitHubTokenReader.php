@@ -20,12 +20,12 @@ class GitHubTokenReader
 
         // 3. Fallback: parse ~/.config/gh/hosts.yml directly
         $home = $_SERVER['HOME'] ?? $_ENV['HOME'] ?? getenv('HOME') ?? '';
-        if (!$home && function_exists('posix_getpwuid') && function_exists('posix_getuid')) {
+        if (! $home && function_exists('posix_getpwuid') && function_exists('posix_getuid')) {
             $home = posix_getpwuid(posix_getuid())['dir'] ?? '';
         }
 
         if ($home) {
-            $hostsFile = $home . '/.config/gh/hosts.yml';
+            $hostsFile = $home.'/.config/gh/hosts.yml';
             if (file_exists($hostsFile)) {
                 $content = file_get_contents($hostsFile);
                 if ($content && preg_match('/oauth_token:\s*([^\n\r]+)/', $content, $m)) {

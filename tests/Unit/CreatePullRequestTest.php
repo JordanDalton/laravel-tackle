@@ -16,10 +16,10 @@ function fakeGitSuccess(string $statusOutput = ' M app/Foo.php'): void
 {
     Process::fake([
         'git status --porcelain' => Process::result($statusOutput),
-        'git checkout*'          => Process::result(''),
-        'git add -A'             => Process::result(''),
-        'git commit*'            => Process::result(''),
-        'git push*'              => Process::result(''),
+        'git checkout*' => Process::result(''),
+        'git add -A' => Process::result(''),
+        'git commit*' => Process::result(''),
+        'git push*' => Process::result(''),
     ]);
 }
 
@@ -36,8 +36,8 @@ it('returns not-configured message when GitHub credentials are missing', functio
     ]);
 
     $result = makePrTool()->handle(new Request([
-        'title'  => 'Fix login',
-        'body'   => 'Fixed the login flow.',
+        'title' => 'Fix login',
+        'body' => 'Fixed the login flow.',
         'branch' => 'tackle/issue-3-fix-login',
     ]));
 
@@ -53,7 +53,7 @@ it('returns error when title is missing', function () {
     config()->set('tackle.github.repo', 'acme/app');
 
     $result = makePrTool()->handle(new Request([
-        'body'   => 'Some body.',
+        'body' => 'Some body.',
         'branch' => 'tackle/fix',
     ]));
 
@@ -69,8 +69,8 @@ it('returns error when no changes to commit', function () {
     ]);
 
     $result = makePrTool()->handle(new Request([
-        'title'  => 'Fix login',
-        'body'   => 'Fixed.',
+        'title' => 'Fix login',
+        'body' => 'Fixed.',
         'branch' => 'tackle/fix',
     ]));
 
@@ -90,15 +90,15 @@ it('creates branch, commits, pushes, and opens a PR', function () {
     Http::fake([
         '*api.github.com*' => Http::response([
             'html_url' => 'https://github.com/acme/app/pull/99',
-            'number'   => 99,
+            'number' => 99,
         ], 201),
     ]);
 
     $result = makePrTool()->handle(new Request([
-        'title'        => 'Fix issue 3',
-        'body'         => 'Implemented the fix.',
-        'branch'       => 'tackle/issue-3-fix',
-        'base'         => 'main',
+        'title' => 'Fix issue 3',
+        'body' => 'Implemented the fix.',
+        'branch' => 'tackle/issue-3-fix',
+        'base' => 'main',
         'issue_number' => 3,
     ]));
 
@@ -116,9 +116,9 @@ it('appends Closes #N to PR body when issue_number is given', function () {
     ]);
 
     makePrTool()->handle(new Request([
-        'title'        => 'My fix',
-        'body'         => 'Details here.',
-        'branch'       => 'tackle/issue-5',
+        'title' => 'My fix',
+        'body' => 'Details here.',
+        'branch' => 'tackle/issue-5',
         'issue_number' => 5,
     ]));
 
@@ -136,8 +136,8 @@ it('returns error when GitHub API rejects the PR', function () {
     ]);
 
     $result = makePrTool()->handle(new Request([
-        'title'  => 'Fix',
-        'body'   => 'Details.',
+        'title' => 'Fix',
+        'body' => 'Details.',
         'branch' => 'tackle/fix',
     ]));
 
@@ -150,12 +150,12 @@ it('returns error when git checkout fails', function () {
 
     Process::fake([
         'git status --porcelain' => Process::result(' M app/Foo.php'),
-        'git checkout*'          => Process::result('', 'fatal: branch already exists', 1),
+        'git checkout*' => Process::result('', 'fatal: branch already exists', 1),
     ]);
 
     $result = makePrTool()->handle(new Request([
-        'title'  => 'Fix',
-        'body'   => 'Details.',
+        'title' => 'Fix',
+        'body' => 'Details.',
         'branch' => 'tackle/fix',
     ]));
 

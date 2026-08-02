@@ -5,7 +5,9 @@ namespace Tackle\Commands;
 use Composer\InstalledVersions;
 use Illuminate\Console\Command;
 use Laravel\Ai\Contracts\Tool;
+use Tackle\Contracts\InteractionPolicy;
 use Tackle\Mcp\McpServer;
+use Tackle\Support\DenyInteraction;
 use Tackle\Tools\AskUser;
 use Tackle\Tools\ConfirmAction;
 
@@ -26,6 +28,11 @@ class McpCommand extends Command
 
     public function handle(): int
     {
+        // An MCP client has no terminal. Any tool that prompts would wedge the
+        // stdio session waiting on input that can never arrive — including tools
+        // users scaffold themselves with tackle:tool.
+        $this->laravel->instance(InteractionPolicy::class, new DenyInteraction);
+
         $tools = $this->resolveTools();
 
         if ($tools === []) {

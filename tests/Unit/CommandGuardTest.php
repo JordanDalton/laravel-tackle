@@ -7,7 +7,7 @@ use Tackle\Support\CommandGuard;
 // ---------------------------------------------------------------------------
 
 it('allows commands matching the allowlist', function () {
-    $guard     = new CommandGuard();
+    $guard = new CommandGuard;
     $allowlist = ['composer', 'npm', 'php artisan'];
 
     expect($guard->check('composer install', $allowlist))->toBeNull();
@@ -16,14 +16,14 @@ it('allows commands matching the allowlist', function () {
 });
 
 it('refuses commands not in the allowlist', function () {
-    $guard  = new CommandGuard();
+    $guard = new CommandGuard;
     $result = $guard->check('rm -rf /', ['composer', 'npm']);
 
     expect($result)->toBeString()->toContain('not in the allowlist');
 });
 
 it('allows glob patterns in the allowlist', function () {
-    $guard     = new CommandGuard();
+    $guard = new CommandGuard;
     $allowlist = ['make:*', 'route:list', 'migrate'];
 
     expect($guard->check('make:model Post', $allowlist))->toBeNull();
@@ -32,7 +32,7 @@ it('allows glob patterns in the allowlist', function () {
 });
 
 it('refuses artisan commands not in artisan allowlist', function () {
-    $guard  = new CommandGuard();
+    $guard = new CommandGuard;
     $result = $guard->check('config:clear', ['make:*', 'route:list', 'migrate']);
 
     expect($result)->toBeString()->toContain('not in the allowlist');
@@ -43,14 +43,14 @@ it('refuses artisan commands not in artisan allowlist', function () {
 // ---------------------------------------------------------------------------
 
 it('matches exact commands', function () {
-    $guard = new CommandGuard();
+    $guard = new CommandGuard;
 
     expect($guard->matches('migrate', ['migrate', 'db:seed']))->toBeTrue();
     expect($guard->matches('db:seed', ['migrate', 'db:seed']))->toBeTrue();
 });
 
 it('matches glob patterns', function () {
-    $guard = new CommandGuard();
+    $guard = new CommandGuard;
 
     expect($guard->matches('migrate:fresh', ['migrate:*']))->toBeTrue();
     expect($guard->matches('migrate:reset', ['migrate:*']))->toBeTrue();
@@ -58,7 +58,7 @@ it('matches glob patterns', function () {
 });
 
 it('returns false when no pattern matches', function () {
-    $guard = new CommandGuard();
+    $guard = new CommandGuard;
 
     expect($guard->matches('db:wipe', ['migrate:*', 'make:*']))->toBeFalse();
 });
@@ -68,17 +68,17 @@ it('returns false when no pattern matches', function () {
 // ---------------------------------------------------------------------------
 
 it('returns a flat list unchanged', function () {
-    $guard = new CommandGuard();
-    $list  = ['make:*', 'route:list', 'test'];
+    $guard = new CommandGuard;
+    $list = ['make:*', 'route:list', 'test'];
 
     expect($guard->resolveList($list))->toBe($list);
 });
 
 it('resolves the correct environment key', function () {
-    $guard = new CommandGuard();
+    $guard = new CommandGuard;
 
     $lists = [
-        'local'      => ['make:*', 'migrate:*', 'test'],
+        'local' => ['make:*', 'migrate:*', 'test'],
         'production' => ['route:list'],
     ];
 
@@ -90,11 +90,11 @@ it('resolves the correct environment key', function () {
 });
 
 it('falls back to wildcard key when env has no entry', function () {
-    $guard = new CommandGuard();
+    $guard = new CommandGuard;
 
     $lists = [
         'local' => ['make:*'],
-        '*'     => ['route:list'],
+        '*' => ['route:list'],
     ];
 
     app()->detectEnvironment(fn () => 'staging');
@@ -102,7 +102,7 @@ it('falls back to wildcard key when env has no entry', function () {
 });
 
 it('returns empty array when env and wildcard are both absent', function () {
-    $guard = new CommandGuard();
+    $guard = new CommandGuard;
 
     $lists = [
         'local' => ['make:*'],

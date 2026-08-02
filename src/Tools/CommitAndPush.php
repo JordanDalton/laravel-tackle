@@ -5,16 +5,18 @@ namespace Tackle\Tools;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
+use Tackle\Contracts\InteractionPolicy;
 use Tackle\Support\PathGuard;
-
-use function Laravel\Prompts\confirm;
 
 class CommitAndPush extends AbstractTool
 {
     /** Override in tests: set to true/false to skip the interactive prompt. */
     public static ?bool $confirmOverride = null;
 
-    public function __construct(private PathGuard $pathGuard) {}
+    public function __construct(
+        private PathGuard $pathGuard,
+        private ?InteractionPolicy $interaction = null,
+    ) {}
 
     public function description(): string
     {
@@ -35,7 +37,7 @@ class CommitAndPush extends AbstractTool
     public function handle(Request $request): string
     {
         $message = (string) $request->string('message', '');
-        $branch  = trim((string) $request->string('branch', ''));
+        $branch = trim((string) $request->string('branch', ''));
 
         if (trim($message) === '') {
             return 'message is required.';
@@ -52,7 +54,7 @@ class CommitAndPush extends AbstractTool
             // Sync with the remote tip so our commit is a fast-forward.
             // git reset --mixed moves detached HEAD to FETCH_HEAD without
             // touching working-directory files, so our edits survive.
-            $fetch = Process::path($path)->run('git fetch origin ' . escapeshellarg($branch));
+            $fetch = Process::path($path)->run('git fetch origin '.escapeshellarg($branch));
             if ($fetch->successful()) {
                 Process::path($path)->run('git reset --mixed FETCH_HEAD');
                 $afterReset = Process::path($path)->run('git status --porcelain');
@@ -68,20 +70,20 @@ class CommitAndPush extends AbstractTool
 
         Process::path($path)->run('git add -A');
 
-        $commit = Process::path($path)->run('git commit -m ' . escapeshellarg($message));
+        $commit = Process::path($path)->run('git commit -m '.escapeshellarg($message));
         if ($commit->failed()) {
-            return 'Commit failed: ' . trim($commit->errorOutput());
+            return 'Commit failed: '.trim($commit->errorOutput());
         }
 
         // Use HEAD:<branch> so we never need to check out the branch (avoids
         // "already checked out" errors when the same branch exists in the main repo).
         $pushCmd = $branch !== ''
-            ? 'git push origin HEAD:' . escapeshellarg($branch)
+            ? 'git push origin HEAD:'.escapeshellarg($branch)
             : 'git push';
 
         $push = Process::path($path)->run($pushCmd);
         if ($push->failed()) {
-            return 'Push failed: ' . trim($push->errorOutput());
+            return 'Push failed: '.trim($push->errorOutput());
         }
 
         return 'Changes committed and pushed to the existing PR branch.';
@@ -89,23 +91,13 @@ class CommitAndPush extends AbstractTool
 
     private function previewAndConfirm(string $path, string $branch): bool
     {
-        $stat = trim(Process::path($path)->run('git diff HEAD --stat')->output());
-        $diff = trim(Process::path($path)->run('git diff HEAD')->output());
+        $interaction = $this->interaction();
 
-        echo PHP_EOL;
-
-        if ($stat !== '') {
-            echo $stat . PHP_EOL;
-        }
-
-        if ($diff !== '') {
-            $lines = explode("\n", $diff);
-            if (count($lines) > 50) {
-                echo PHP_EOL . implode("\n", array_slice($lines, 0, 50));
-                echo PHP_EOL . '... (' . (count($lines) - 50) . ' more lines not shown)' . PHP_EOL;
-            } else {
-                echo PHP_EOL . $diff . PHP_EOL;
-            }
+        // The preview exists so a human can eyeball the diff before it is pushed.
+        // With no terminal there is nobody to read it, and echoing it would corrupt
+        // stdout for callers parsing structured output.
+        if ($interaction->isInteractive()) {
+            $this->printPreview($path);
         }
 
         if (static::$confirmOverride !== null) {
@@ -114,6 +106,33 @@ class CommitAndPush extends AbstractTool
 
         $label = $branch !== '' ? "Push these changes to {$branch}?" : 'Push these changes?';
 
-        return confirm($label, default: false);
+        return $interaction->confirm($label, default: false);
+    }
+
+    private function printPreview(string $path): void
+    {
+        $stat = trim(Process::path($path)->run('git diff HEAD --stat')->output());
+        $diff = trim(Process::path($path)->run('git diff HEAD')->output());
+
+        echo PHP_EOL;
+
+        if ($stat !== '') {
+            echo $stat.PHP_EOL;
+        }
+
+        if ($diff !== '') {
+            $lines = explode("\n", $diff);
+            if (count($lines) > 50) {
+                echo PHP_EOL.implode("\n", array_slice($lines, 0, 50));
+                echo PHP_EOL.'... ('.(count($lines) - 50).' more lines not shown)'.PHP_EOL;
+            } else {
+                echo PHP_EOL.$diff.PHP_EOL;
+            }
+        }
+    }
+
+    private function interaction(): InteractionPolicy
+    {
+        return $this->interaction ??= app(InteractionPolicy::class);
     }
 }

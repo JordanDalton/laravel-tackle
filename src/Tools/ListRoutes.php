@@ -43,7 +43,7 @@ class ListRoutes extends AbstractTool
         $result = Process::path($workspace)->timeout(30)->run($cmd);
 
         if (! $result->successful()) {
-            return 'Could not retrieve routes: ' . trim($result->errorOutput());
+            return 'Could not retrieve routes: '.trim($result->errorOutput());
         }
 
         $routes = json_decode(trim($result->output()), true);
@@ -55,13 +55,13 @@ class ListRoutes extends AbstractTool
         $lines = array_map(fn ($r) => sprintf(
             '%-8s %-45s %-30s %s',
             implode('|', (array) ($r['method'] ?? '')),
-            $r['uri']    ?? '',
-            $r['name']   ?? '',
+            $r['uri'] ?? '',
+            $r['name'] ?? '',
             $r['action'] ?? '',
         ), $routes);
 
         return sprintf("%-8s %-45s %-30s %s\n", 'METHOD', 'URI', 'NAME', 'ACTION')
-            . str_repeat('-', 120) . "\n"
-            . implode("\n", $lines);
+            .str_repeat('-', 120)."\n"
+            .implode("\n", $lines);
     }
 }

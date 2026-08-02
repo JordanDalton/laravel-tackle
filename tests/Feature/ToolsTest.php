@@ -16,14 +16,15 @@ use Tackle\Tools\WriteFile;
 
 function workspace(): string
 {
-    return sys_get_temp_dir() . '/tackle-tests';
+    return sys_get_temp_dir().'/tackle-tests';
 }
 
 function makeGuard(): PathGuard
 {
     config()->set('tackle.workspace', workspace());
     config()->set('tackle.protected_paths', ['.env', '.env.*', 'storage/*', 'vendor/*', '.git/*']);
-    return new PathGuard();
+
+    return new PathGuard;
 }
 
 function req(array $args): Request
@@ -33,9 +34,10 @@ function req(array $args): Request
 
 function ensureFile(string $relative, string $content = '<?php // test'): string
 {
-    $path = workspace() . '/' . $relative;
+    $path = workspace().'/'.$relative;
     @mkdir(dirname($path), 0755, true);
     file_put_contents($path, $content);
+
     return $path;
 }
 
@@ -125,20 +127,20 @@ it('EditFile replaces a unique string', function () {
     ensureFile('app/Foo.php', '<?php function hello() { return "world"; }');
 
     $result = (new EditFile(makeGuard()))->handle(req([
-        'path'    => 'app/Foo.php',
+        'path' => 'app/Foo.php',
         'old_str' => '"world"',
         'new_str' => '"universe"',
     ]));
 
     expect($result)->toContain('Successfully edited');
-    expect(file_get_contents(workspace() . '/app/Foo.php'))->toContain('"universe"');
+    expect(file_get_contents(workspace().'/app/Foo.php'))->toContain('"universe"');
 });
 
 it('EditFile refuses when old_str not found', function () {
     ensureFile('app/Foo.php', '<?php echo "hello";');
 
     $result = (new EditFile(makeGuard()))->handle(req([
-        'path'    => 'app/Foo.php',
+        'path' => 'app/Foo.php',
         'old_str' => 'this string does not exist',
         'new_str' => 'replacement',
     ]));
@@ -150,7 +152,7 @@ it('EditFile refuses when old_str is not unique', function () {
     ensureFile('app/Foo.php', '<?php $a = "foo"; $b = "foo";');
 
     $result = (new EditFile(makeGuard()))->handle(req([
-        'path'    => 'app/Foo.php',
+        'path' => 'app/Foo.php',
         'old_str' => '"foo"',
         'new_str' => '"bar"',
     ]));
@@ -162,7 +164,7 @@ it('EditFile refuses writes to .env', function () {
     ensureFile('.env', 'APP_KEY=abc');
 
     $result = (new EditFile(makeGuard()))->handle(req([
-        'path'    => '.env',
+        'path' => '.env',
         'old_str' => 'ABC',
         'new_str' => 'XYZ',
     ]));
@@ -176,19 +178,19 @@ it('EditFile refuses writes to .env', function () {
 
 it('WriteFile creates a new file', function () {
     $result = (new WriteFile(makeGuard()))->handle(req([
-        'path'    => 'app/NewFile.php',
+        'path' => 'app/NewFile.php',
         'content' => '<?php // new file',
     ]));
 
     expect($result)->toContain('Created');
-    expect(file_exists(workspace() . '/app/NewFile.php'))->toBeTrue();
+    expect(file_exists(workspace().'/app/NewFile.php'))->toBeTrue();
 });
 
 it('WriteFile refuses to overwrite an existing file', function () {
     ensureFile('app/Existing.php', '<?php // existing');
 
     $result = (new WriteFile(makeGuard()))->handle(req([
-        'path'    => 'app/Existing.php',
+        'path' => 'app/Existing.php',
         'content' => '<?php // overwrite attempt',
     ]));
 
@@ -197,7 +199,7 @@ it('WriteFile refuses to overwrite an existing file', function () {
 
 it('WriteFile refuses writes outside workspace', function () {
     $result = (new WriteFile(makeGuard()))->handle(req([
-        'path'    => '/tmp/evil.php',
+        'path' => '/tmp/evil.php',
         'content' => '<?php // evil',
     ]));
 
@@ -211,7 +213,7 @@ it('WriteFile refuses writes outside workspace', function () {
 it('RunShell refuses everything in off mode', function () {
     config()->set('tackle.shell', 'off');
 
-    $result = (new RunShell(makeGuard(), new CommandGuard()))->handle(req(['command' => 'echo hello']));
+    $result = (new RunShell(makeGuard(), new CommandGuard))->handle(req(['command' => 'echo hello']));
     expect($result)->toContain('disabled');
 });
 
@@ -219,7 +221,7 @@ it('RunShell allows allowlisted commands in allowlist mode', function () {
     config()->set('tackle.shell', 'allowlist');
     config()->set('tackle.shell_allowlist', ['echo']);
 
-    $result = (new RunShell(makeGuard(), new CommandGuard()))->handle(req(['command' => 'echo hello']));
+    $result = (new RunShell(makeGuard(), new CommandGuard))->handle(req(['command' => 'echo hello']));
     expect($result)->toContain('hello');
 });
 
@@ -227,14 +229,14 @@ it('RunShell refuses non-allowlisted commands in allowlist mode', function () {
     config()->set('tackle.shell', 'allowlist');
     config()->set('tackle.shell_allowlist', ['composer', 'npm']);
 
-    $result = (new RunShell(makeGuard(), new CommandGuard()))->handle(req(['command' => 'rm -rf /']));
+    $result = (new RunShell(makeGuard(), new CommandGuard))->handle(req(['command' => 'rm -rf /']));
     expect($result)->toContain('not in the allowlist');
 });
 
 it('RunShell runs commands in yolo mode', function () {
     config()->set('tackle.shell', 'yolo');
 
-    $result = (new RunShell(makeGuard(), new CommandGuard()))->handle(req(['command' => 'echo yolo-works']));
+    $result = (new RunShell(makeGuard(), new CommandGuard))->handle(req(['command' => 'echo yolo-works']));
     expect($result)->toContain('yolo-works');
 });
 
@@ -249,10 +251,10 @@ it('RunShell runs commands in yolo mode', function () {
 // ──────────────────────────────────────────────────────────────────────
 
 it('refuses to edit a directory instead of throwing', function () {
-    @mkdir(workspace() . '/app', 0755, true);
+    @mkdir(workspace().'/app', 0755, true);
 
     $result = (new EditFile(makeGuard()))->handle(req([
-        'path'    => 'app',
+        'path' => 'app',
         'old_str' => 'foo',
         'new_str' => 'bar',
     ]));
@@ -262,7 +264,7 @@ it('refuses to edit a directory instead of throwing', function () {
 
 it('refuses an empty path on edit', function () {
     $result = (new EditFile(makeGuard()))->handle(req([
-        'path'    => '',
+        'path' => '',
         'old_str' => 'foo',
         'new_str' => 'bar',
     ]));
@@ -277,10 +279,10 @@ it('refuses an empty path on read', function () {
 });
 
 it('refuses to write over a directory', function () {
-    @mkdir(workspace() . '/app', 0755, true);
+    @mkdir(workspace().'/app', 0755, true);
 
     $result = (new WriteFile(makeGuard()))->handle(req([
-        'path'    => 'app',
+        'path' => 'app',
         'content' => 'nope',
     ]));
 

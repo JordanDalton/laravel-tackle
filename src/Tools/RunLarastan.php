@@ -31,23 +31,23 @@ class RunLarastan extends AbstractTool
     public function handle(Request $request): string
     {
         $workspace = $this->guard->workspace();
-        $binary    = $workspace . '/vendor/bin/phpstan';
+        $binary = $workspace.'/vendor/bin/phpstan';
 
         if (! file_exists($binary)) {
             return "PHPStan is not installed. Run 'composer require --dev phpstan/phpstan' or "
-                . "'composer require --dev nunomaduro/larastan' to enable static analysis.";
+                ."'composer require --dev nunomaduro/larastan' to enable static analysis.";
         }
 
         $memoryLimit = $request->string('memory_limit', '');
-        $phpBin      = $memoryLimit !== ''
-            ? 'php -d memory_limit=' . escapeshellarg($memoryLimit)
+        $phpBin = $memoryLimit !== ''
+            ? 'php -d memory_limit='.escapeshellarg($memoryLimit)
             : 'php';
 
         $args = [$phpBin, './vendor/bin/phpstan', 'analyse', '--no-progress', '--no-interaction', '--no-ansi'];
 
         $level = $request->integer('level', -1);
         if ($level >= 0) {
-            $args[] = '--level=' . $level;
+            $args[] = '--level='.$level;
         }
 
         $path = trim((string) $request->string('path', ''));
@@ -59,7 +59,7 @@ class RunLarastan extends AbstractTool
             ->timeout(300)
             ->run(implode(' ', $args));
 
-        $output = trim($result->output() . $result->errorOutput());
+        $output = trim($result->output().$result->errorOutput());
 
         if ($output === '') {
             return '(PHPStan ran with no output.)';
@@ -69,10 +69,10 @@ class RunLarastan extends AbstractTool
         // PHPStan outputs "Allowed memory size of N bytes exhausted" on OOM.
         if ($memoryLimit === '' && stripos($output, 'memory') !== false && stripos($output, 'exhausted') !== false) {
             $args[0] = 'php -d memory_limit=1G';
-            $result  = Process::path($workspace)
+            $result = Process::path($workspace)
                 ->timeout(300)
                 ->run(implode(' ', $args));
-            $output = trim($result->output() . $result->errorOutput());
+            $output = trim($result->output().$result->errorOutput());
         }
 
         return $output !== '' ? $output : '(PHPStan ran with no output.)';

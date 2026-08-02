@@ -40,15 +40,15 @@ it('returns pr details including branch name', function () {
     config()->set('tackle.github.repo', 'acme/app');
 
     Http::fake([
-        '*api.github.com*/pulls/6'            => Http::response([
-            'number'   => 6,
-            'title'    => 'Return jordandalton from controller',
-            'state'    => 'open',
-            'user'     => ['login' => 'JordanDalton'],
-            'head'     => ['ref' => 'tackle/issue-6-return-jordandalton'],
-            'base'     => ['ref' => 'main'],
+        '*api.github.com*/pulls/6' => Http::response([
+            'number' => 6,
+            'title' => 'Return jordandalton from controller',
+            'state' => 'open',
+            'user' => ['login' => 'JordanDalton'],
+            'head' => ['ref' => 'tackle/issue-6-return-jordandalton'],
+            'base' => ['ref' => 'main'],
             'html_url' => 'https://github.com/acme/app/pull/6',
-            'body'     => 'Updates the return value.',
+            'body' => 'Updates the return value.',
         ], 200),
         '*api.github.com*/issues/6/comments*' => Http::response([], 200),
     ]);
@@ -68,15 +68,15 @@ it('includes comments in the output', function () {
     config()->set('tackle.github.repo', 'acme/app');
 
     Http::fake([
-        '*api.github.com*/pulls/6'            => Http::response([
-            'number'   => 6,
-            'title'    => 'My PR',
-            'state'    => 'open',
-            'user'     => ['login' => 'JordanDalton'],
-            'head'     => ['ref' => 'tackle/my-branch'],
-            'base'     => ['ref' => 'main'],
+        '*api.github.com*/pulls/6' => Http::response([
+            'number' => 6,
+            'title' => 'My PR',
+            'state' => 'open',
+            'user' => ['login' => 'JordanDalton'],
+            'head' => ['ref' => 'tackle/my-branch'],
+            'base' => ['ref' => 'main'],
             'html_url' => 'https://github.com/acme/app/pull/6',
-            'body'     => '',
+            'body' => '',
         ], 200),
         '*api.github.com*/issues/6/comments*' => Http::response([
             ['user' => ['login' => 'reviewer'], 'created_at' => '2026-01-01T00:00:00Z', 'body' => 'LGTM'],
@@ -95,19 +95,19 @@ it('lists open pull requests when no pr_number is given', function () {
     Http::fake([
         '*api.github.com*/pulls*' => Http::response([
             [
-                'number'     => 6,
-                'title'      => 'Return jordandalton from controller',
-                'user'       => ['login' => 'JordanDalton'],
-                'head'       => ['ref' => 'tackle/issue-6-return-jordandalton'],
-                'base'       => ['ref' => 'main'],
+                'number' => 6,
+                'title' => 'Return jordandalton from controller',
+                'user' => ['login' => 'JordanDalton'],
+                'head' => ['ref' => 'tackle/issue-6-return-jordandalton'],
+                'base' => ['ref' => 'main'],
                 'updated_at' => '2026-06-14T10:00:00Z',
             ],
             [
-                'number'     => 5,
-                'title'      => 'Add slug field',
-                'user'       => ['login' => 'JordanDalton'],
-                'head'       => ['ref' => 'tackle/issue-5-slug'],
-                'base'       => ['ref' => 'main'],
+                'number' => 5,
+                'title' => 'Add slug field',
+                'user' => ['login' => 'JordanDalton'],
+                'head' => ['ref' => 'tackle/issue-5-slug'],
+                'base' => ['ref' => 'main'],
                 'updated_at' => '2026-06-13T08:00:00Z',
             ],
         ], 200),
@@ -140,7 +140,7 @@ it('returns error when GitHub API returns non-200', function () {
     config()->set('tackle.github.repo', 'acme/app');
 
     Http::fake([
-        '*api.github.com*/pulls/99'          => Http::response(['message' => 'Not Found'], 404),
+        '*api.github.com*/pulls/99' => Http::response(['message' => 'Not Found'], 404),
         '*api.github.com*/issues/99/comments' => Http::response([], 200),
     ]);
 

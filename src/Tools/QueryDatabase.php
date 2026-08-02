@@ -12,7 +12,7 @@ class QueryDatabase extends AbstractTool
 
     public function description(): string
     {
-        return 'Run a read-only SQL SELECT query against the default database connection and return results as JSON. Only SELECT statements are permitted. Results capped at ' . self::MAX_ROWS . ' rows.';
+        return 'Run a read-only SQL SELECT query against the default database connection and return results as JSON. Only SELECT statements are permitted. Results capped at '.self::MAX_ROWS.' rows.';
     }
 
     public function schema(JsonSchema $schema): array
@@ -38,13 +38,13 @@ class QueryDatabase extends AbstractTool
 
         // Enforce row cap via LIMIT injection when no LIMIT is present.
         if (! preg_match('/\bLIMIT\b/i', $sql)) {
-            $sql .= ' LIMIT ' . self::MAX_ROWS;
+            $sql .= ' LIMIT '.self::MAX_ROWS;
         }
 
         try {
             $rows = DB::select($sql);
         } catch (\Throwable $e) {
-            return 'Query error: ' . $e->getMessage();
+            return 'Query error: '.$e->getMessage();
         }
 
         if (empty($rows)) {
@@ -54,7 +54,7 @@ class QueryDatabase extends AbstractTool
         $output = json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
         if (count($rows) >= self::MAX_ROWS) {
-            $output .= "\n\n[Results capped at " . self::MAX_ROWS . " rows.]";
+            $output .= "\n\n[Results capped at ".self::MAX_ROWS.' rows.]';
         }
 
         return $output;

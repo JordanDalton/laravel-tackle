@@ -9,8 +9,11 @@ use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolCall;
 use Laravel\Ai\Streaming\Events\ToolResult;
 use Laravel\Prompts\Stream;
+use Tackle\Commands\Concerns\ResolvesSessionOptions;
 use Tackle\Contracts\CodingAgent;
+use Tackle\Prompts\TackleSuggestPrompt;
 use Tackle\Support\BudgetTracker;
+use Tackle\Support\ToolSummary;
 use Tackle\Support\WorktreeManager;
 
 use function Laravel\Prompts\error as promptError;
@@ -18,12 +21,13 @@ use function Laravel\Prompts\intro;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\outro;
 use function Laravel\Prompts\stream;
-use Tackle\Prompts\TackleSuggestPrompt;
 use function Laravel\Prompts\title;
 use function Laravel\Prompts\warning;
 
 class CodeCommand extends Command
 {
+    use ResolvesSessionOptions;
+
     protected $signature = 'ai:code
         {--session= : Resume a named session}
         {--shell= : Override the shell mode for this session (off|allowlist|approve|yolo)}
@@ -37,35 +41,27 @@ class CodeCommand extends Command
     protected $description = 'Start an interactive AI coding session powered by Laravel Tackle.';
 
     private ?Stream $activeStream = null;
-    private array   $history      = [];
-    private ?array  $fileIndex    = null;
+
+    private array $history = [];
+
+    private ?array $fileIndex = null;
 
     public function handle(CodingAgent $agent, BudgetTracker $budget, WorktreeManager $worktrees): int
     {
         if (! App::runningInConsole()) {
             $this->error('ai:code must be run from the terminal.');
+
             return self::FAILURE;
         }
 
         if (! $this->isTty()) {
             $this->error('ai:code requires an interactive TTY — cannot run in a non-interactive pipe.');
+
             return self::FAILURE;
         }
 
-        $shell = match (true) {
-            (bool) $this->option('off')       => 'off',
-            (bool) $this->option('allowlist') => 'allowlist',
-            (bool) $this->option('approve')   => 'approve',
-            (bool) $this->option('yolo')      => 'yolo',
-            default                           => $this->option('shell'),
-        };
-
-        if ($shell !== null) {
-            if (! in_array($shell, ['off', 'allowlist', 'approve', 'yolo'], strict: true)) {
-                $this->error("Invalid --shell value '{$shell}'. Must be one of: off, allowlist, approve, yolo.");
-                return self::FAILURE;
-            }
-            config(['tackle.shell' => $shell]);
+        if (! $this->applyShellOverride()) {
+            return self::FAILURE;
         }
 
         $useWorktree = $this->resolveWorktreeMode();
@@ -74,7 +70,7 @@ class CodeCommand extends Command
             try {
                 $worktrees->create();
             } catch (\RuntimeException $e) {
-                $this->warn('Could not create worktree: ' . $e->getMessage() . ' — falling back to live workspace.');
+                $this->warn('Could not create worktree: '.$e->getMessage().' — falling back to live workspace.');
                 $useWorktree = false;
             }
         }
@@ -90,10 +86,10 @@ class CodeCommand extends Command
 
     private function runSession(CodingAgent $agent, BudgetTracker $budget, bool $worktree): int
     {
-        $model     = config('tackle.model', 'claude-sonnet-4-6');
+        $model = config('tackle.model', 'claude-sonnet-4-6');
         $budgetUsd = config('tackle.budget_usd', 1.00);
         $shellMode = $this->resolveShellMode();
-        $wtLabel   = $worktree ? ' · worktree: on' : '';
+        $wtLabel = $worktree ? ' · worktree: on' : '';
 
         title('Tackle — Ready');
         intro("Laravel Tackle  ·  {$model}  ·  \${$budgetUsd} budget  ·  shell: {$shellMode}{$wtLabel}");
@@ -114,7 +110,8 @@ class CodeCommand extends Command
 
             if (in_array(strtolower(trim($task)), ['exit', 'quit', 'q'], strict: true)) {
                 title('');
-                outro($budget->summary() . ' · Goodbye!');
+                outro($budget->summary().' · Goodbye!');
+
                 return self::SUCCESS;
             }
 
@@ -127,6 +124,7 @@ class CodeCommand extends Command
                     $budget->estimatedCost(),
                     $budget->budgetUsd(),
                 ));
+
                 return self::FAILURE;
             }
 
@@ -137,7 +135,7 @@ class CodeCommand extends Command
                 $this->runAgentTurn($agent, $budget, $this->expandAtMentions($task));
             } catch (\Throwable $e) {
                 $this->closeStream();
-                promptError('Agent error: ' . $e->getMessage());
+                promptError('Agent error: '.$e->getMessage());
                 note('The session is still active — continue with a new task.');
             }
 
@@ -147,26 +145,6 @@ class CodeCommand extends Command
             $this->line('');
             $this->line('<fg=gray>─────────────────────────────────────────────────────────</>');
         }
-    }
-
-    private function resolveWorktreeMode(): bool
-    {
-        if ($this->option('worktree')) {
-            return true;
-        }
-
-        if ($this->option('no-worktree')) {
-            return false;
-        }
-
-        $config = config('tackle.worktree', false);
-
-        if (is_array($config)) {
-            $env = app()->environment();
-            return (bool) ($config[$env] ?? $config['*'] ?? false);
-        }
-
-        return (bool) $config;
     }
 
     private function runAgentTurn(CodingAgent $agent, BudgetTracker $budget, string $task): void
@@ -181,17 +159,20 @@ class CodeCommand extends Command
                         $this->activeStream = stream();
                     }
                     $this->activeStream->append($event->delta);
+
                     return;
                 }
 
                 if ($event instanceof ToolCall) {
                     $this->closeStream();
                     $this->renderToolCall($event);
+
                     return;
                 }
 
                 if ($event instanceof ToolResult) {
                     $this->renderToolResult($event);
+
                     return;
                 }
 
@@ -238,38 +219,15 @@ class CodeCommand extends Command
             return;
         }
 
-        $summary = match ($tool) {
-            'ReadFile'           => '📖 reading ' . ($args['path'] ?? '?'),
-            'Glob'               => '🔍 listing ' . ($args['pattern'] ?? '?'),
-            'SearchCode'         => '🔍 searching for ' . ($args['query'] ?? '?'),
-            'EditFile'           => '✏️  editing ' . ($args['path'] ?? '?'),
-            'WriteFile'          => '📝 creating ' . ($args['path'] ?? '?'),
-            'RunArtisan'         => '⚡ artisan ' . ($args['command'] ?? '?'),
-            'RunTests'           => '🧪 running tests' . (! empty($args['filter']) ? ' (filter: ' . $args['filter'] . ')' : ''),
-            'RunPint'            => '✨ formatting with pint',
-            'RunLarastan'        => '🔎 running larastan' . (! empty($args['path']) ? ' on ' . $args['path'] : ''),
-            'RunShell'           => '💻 shell: ' . ($args['command'] ?? '?'),
-            'QueryDatabase'      => '🗄️  querying database',
-            'ReadLog'            => '📋 reading log' . (! empty($args['filter']) ? ' (filter: ' . $args['filter'] . ')' : ''),
-            'GitDiff'            => '🔀 git diff' . (! empty($args['path']) ? ' ' . $args['path'] : ''),
-            'ListRoutes'         => '🗺️  listing routes',
-            'ReadTelescopeEntry' => '🔭 reading telescope',
-            'ReadSentryIssue'    => '🪲 reading sentry',
-            'ReadGitHubIssue'    => '🐙 reading github issue',
-            'ReadPullRequest'    => '🐙 reading pull request',
-            'CreateGitHubIssue'  => '🐙 creating github issue',
-            'CreatePullRequest'  => '🚀 opening pull request',
-            'CommitAndPush'      => '📤 committing and pushing',
-            default              => '→ ' . $tool,
-        };
+        $summary = ToolSummary::for($tool, $args);
 
-        title('Tackle — ' . strip_tags($summary));
+        title('Tackle — '.strip_tags($summary));
         $this->line("<fg=cyan>  {$summary}</>");
     }
 
     private function renderToolResult(ToolResult $event): void
     {
-        $tool   = $event->toolResult->name;
+        $tool = $event->toolResult->name;
         $result = (string) ($event->toolResult->result ?? '');
 
         if (in_array($tool, ['RunTests', 'RunArtisan', 'RunShell'], strict: true)) {
@@ -304,7 +262,7 @@ class CodeCommand extends Command
             } elseif ($result === 'Cancelled by user.') {
                 $this->line('<fg=yellow>  ⚠ Push cancelled.</>');
             } else {
-                $this->line('<fg=red>  ✗ ' . $result . '</>');
+                $this->line('<fg=red>  ✗ '.$result.'</>');
             }
         }
 
@@ -314,7 +272,7 @@ class CodeCommand extends Command
                 || str_contains($result, 'protected pattern')
                 || str_contains($result, 'not found')
                 || str_contains($result, 'not unique')) {
-                $this->line('<fg=yellow>  ⚠ ' . $result . '</>');
+                $this->line('<fg=yellow>  ⚠ '.$result.'</>');
             } else {
                 $this->line('<fg=green>  ✓ File saved</>');
             }
@@ -323,19 +281,19 @@ class CodeCommand extends Command
 
     private function showGitDiff(): void
     {
-        $wt   = app(WorktreeManager::class);
+        $wt = app(WorktreeManager::class);
         $root = $wt->active() ? $wt->path() : base_path();
 
-        if (! is_dir($root . '/.git') && ! $wt->active()) {
+        if (! is_dir($root.'/.git') && ! $wt->active()) {
             return;
         }
 
-        $output = shell_exec('git -C ' . escapeshellarg($root) . ' diff --stat 2>/dev/null');
+        $output = shell_exec('git -C '.escapeshellarg($root).' diff --stat 2>/dev/null');
 
         if ($output && trim($output) !== '') {
             $this->line('');
             $label = $wt->active() ? 'Worktree changes (live files untouched)' : 'Uncommitted changes';
-            note($label . "\n" . trim($output));
+            note($label."\n".trim($output));
         }
     }
 
@@ -367,10 +325,10 @@ class CodeCommand extends Command
 
     private function pathCompletions(string $before, string $query): array
     {
-        $base     = base_path();
+        $base = base_path();
         $excluded = ['vendor', '.git', 'node_modules', 'storage', 'bootstrap/cache'];
-        $matches  = glob($base . '/' . $query . '*') ?: [];
-        $results  = [];
+        $matches = glob($base.'/'.$query.'*') ?: [];
+        $results = [];
 
         foreach ($matches as $match) {
             $relative = ltrim(str_replace($base, '', $match), '/');
@@ -379,7 +337,7 @@ class CodeCommand extends Command
                 continue;
             }
 
-            $results[] = $before . $relative . (is_dir($match) ? '/' : '');
+            $results[] = $before.$relative.(is_dir($match) ? '/' : '');
         }
 
         return array_slice($results, 0, 20);
@@ -387,12 +345,12 @@ class CodeCommand extends Command
 
     private function filenameCompletions(string $before, string $query): array
     {
-        $index   = $this->fileIndex();
+        $index = $this->fileIndex();
         $results = [];
 
         foreach ($index as $relative) {
             if (stripos(basename($relative), $query) !== false) {
-                $results[] = $before . $relative;
+                $results[] = $before.$relative;
             }
         }
 
@@ -404,7 +362,7 @@ class CodeCommand extends Command
             return match (true) {
                 $aStart && ! $bStart => -1,
                 ! $aStart && $bStart => 1,
-                default              => strcmp($a, $b),
+                default => strcmp($a, $b),
             };
         });
 
@@ -418,8 +376,8 @@ class CodeCommand extends Command
         }
 
         $excluded = ['vendor', '.git', 'node_modules', 'storage', 'bootstrap'];
-        $base     = base_path();
-        $index    = [];
+        $base = base_path();
+        $index = [];
 
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($base, \RecursiveDirectoryIterator::SKIP_DOTS),
@@ -444,11 +402,11 @@ class CodeCommand extends Command
 
     private function expandAtMentions(string $task): string
     {
-        $wt   = app(WorktreeManager::class);
+        $wt = app(WorktreeManager::class);
         $root = $wt->active() ? $wt->path() : base_path();
 
         return preg_replace_callback('#@([\w./_-]+)#', function ($matches) use ($root) {
-            $path = $root . DIRECTORY_SEPARATOR . $matches[1];
+            $path = $root.DIRECTORY_SEPARATOR.$matches[1];
 
             if (! file_exists($path) || is_dir($path)) {
                 return $matches[0];
@@ -467,18 +425,6 @@ class CodeCommand extends Command
                 rtrim($content),
             );
         }, $task);
-    }
-
-    private function resolveShellMode(): string
-    {
-        $config = config('tackle.shell', 'approve');
-
-        if (is_array($config)) {
-            $env = app()->environment();
-            return $config[$env] ?? $config['*'] ?? 'approve';
-        }
-
-        return $config;
     }
 
     private function isTty(): bool

@@ -12,6 +12,7 @@ use Laravel\Prompts\Stream;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Healing\GitHubReader;
 use Tackle\Healing\SentryReader;
+use Tackle\Prompts\TackleSuggestPrompt;
 use Tackle\Support\BudgetTracker;
 use Tackle\Support\WorktreeManager;
 
@@ -23,7 +24,6 @@ use function Laravel\Prompts\stream;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\title;
 use function Laravel\Prompts\warning;
-use Tackle\Prompts\TackleSuggestPrompt;
 
 class FixCommand extends Command
 {
@@ -41,31 +41,35 @@ class FixCommand extends Command
     protected $description = 'Fix an exception or issue — loads context from Sentry, a GitHub issue, or a pasted exception, then opens an interactive fix session.';
 
     private ?Stream $activeStream = null;
-    private array   $history      = [];
+
+    private array $history = [];
 
     public function handle(CodingAgent $agent, BudgetTracker $budget, WorktreeManager $worktrees): int
     {
         if (! App::runningInConsole()) {
             $this->error('ai:fix must be run from the terminal.');
+
             return self::FAILURE;
         }
 
         if (! $this->isTty()) {
             $this->error('ai:fix requires an interactive TTY.');
+
             return self::FAILURE;
         }
 
         $shell = match (true) {
-            (bool) $this->option('off')       => 'off',
+            (bool) $this->option('off') => 'off',
             (bool) $this->option('allowlist') => 'allowlist',
-            (bool) $this->option('approve')   => 'approve',
-            (bool) $this->option('yolo')      => 'yolo',
-            default                           => $this->option('shell'),
+            (bool) $this->option('approve') => 'approve',
+            (bool) $this->option('yolo') => 'yolo',
+            default => $this->option('shell'),
         };
 
         if ($shell !== null) {
             if (! in_array($shell, ['off', 'allowlist', 'approve', 'yolo'], strict: true)) {
                 $this->error("Invalid --shell value '{$shell}'. Must be one of: off, allowlist, approve, yolo.");
+
                 return self::FAILURE;
             }
             config(['tackle.shell' => $shell]);
@@ -77,7 +81,7 @@ class FixCommand extends Command
             try {
                 $worktrees->create();
             } catch (\RuntimeException $e) {
-                $this->warn('Could not create worktree: ' . $e->getMessage() . ' — falling back to live workspace.');
+                $this->warn('Could not create worktree: '.$e->getMessage().' — falling back to live workspace.');
                 $useWorktree = false;
             }
         }
@@ -93,10 +97,10 @@ class FixCommand extends Command
 
     private function runSession(CodingAgent $agent, BudgetTracker $budget, bool $worktree): int
     {
-        $model     = config('tackle.model', 'claude-sonnet-4-6');
+        $model = config('tackle.model', 'claude-sonnet-4-6');
         $budgetUsd = config('tackle.budget_usd', 1.00);
         $shellMode = $this->resolveShellMode();
-        $wtLabel   = $worktree ? ' · worktree: on' : '';
+        $wtLabel = $worktree ? ' · worktree: on' : '';
 
         title('Tackle Fix — Ready');
         intro("Laravel Tackle Fix  ·  {$model}  ·  \${$budgetUsd} budget  ·  shell: {$shellMode}{$wtLabel}");
@@ -124,7 +128,7 @@ class FixCommand extends Command
             $this->runAgentTurn($agent, $budget, $firstPrompt);
         } catch (\Throwable $e) {
             $this->closeStream();
-            promptError('Agent error: ' . $e->getMessage());
+            promptError('Agent error: '.$e->getMessage());
             note('The session is still active — continue with a new task.');
         }
 
@@ -148,7 +152,8 @@ class FixCommand extends Command
 
             if (in_array(strtolower(trim($task)), ['exit', 'quit', 'q'], strict: true)) {
                 title('');
-                outro($budget->summary() . ' · Goodbye!');
+                outro($budget->summary().' · Goodbye!');
+
                 return self::SUCCESS;
             }
 
@@ -161,6 +166,7 @@ class FixCommand extends Command
                     $budget->estimatedCost(),
                     $budget->budgetUsd(),
                 ));
+
                 return self::FAILURE;
             }
 
@@ -171,7 +177,7 @@ class FixCommand extends Command
                 $this->runAgentTurn($agent, $budget, $task);
             } catch (\Throwable $e) {
                 $this->closeStream();
-                promptError('Agent error: ' . $e->getMessage());
+                promptError('Agent error: '.$e->getMessage());
                 note('The session is still active — continue with a new task.');
             }
 
@@ -192,6 +198,7 @@ class FixCommand extends Command
 
             if ($context === '') {
                 $this->error("Could not fetch Sentry issue #{$sentryId}. Check SENTRY_AUTH_TOKEN and SENTRY_ORG.");
+
                 return [null, null];
             }
 
@@ -206,6 +213,7 @@ class FixCommand extends Command
 
             if ($context === '') {
                 $this->error("Could not fetch GitHub issue #{$issueNumber}. Check GITHUB_TOKEN and GITHUB_REPO.");
+
                 return [null, null];
             }
 
@@ -225,8 +233,8 @@ class FixCommand extends Command
 
         return [
             "Fix the following issue in this Laravel application:\n\n{$description}\n\n"
-            . "Diagnose the root cause by reading the relevant code, apply the minimal fix, run tests to verify, "
-            . "then offer to open a pull request.",
+            .'Diagnose the root cause by reading the relevant code, apply the minimal fix, run tests to verify, '
+            .'then offer to open a pull request.',
             null,
         ];
     }
@@ -234,9 +242,9 @@ class FixCommand extends Command
     private function wrapContext(string $label, string $context): string
     {
         return "Fix the following issue in this Laravel application:\n\n"
-            . "--- {$label} ---\n{$context}\n---\n\n"
-            . "Diagnose the root cause by reading the relevant code, apply the minimal fix, run tests to verify, "
-            . "then offer to open a pull request.";
+            ."--- {$label} ---\n{$context}\n---\n\n"
+            .'Diagnose the root cause by reading the relevant code, apply the minimal fix, run tests to verify, '
+            .'then offer to open a pull request.';
     }
 
     private function runAgentTurn(CodingAgent $agent, BudgetTracker $budget, string $task): void
@@ -251,17 +259,20 @@ class FixCommand extends Command
                         $this->activeStream = stream();
                     }
                     $this->activeStream->append($event->delta);
+
                     return;
                 }
 
                 if ($event instanceof ToolCall) {
                     $this->closeStream();
                     $this->renderToolCall($event);
+
                     return;
                 }
 
                 if ($event instanceof ToolResult) {
                     $this->renderToolResult($event);
+
                     return;
                 }
 
@@ -308,37 +319,37 @@ class FixCommand extends Command
         }
 
         $summary = match ($tool) {
-            'ReadFile'           => '📖 reading ' . ($args['path'] ?? '?'),
-            'Glob'               => '🔍 listing ' . ($args['pattern'] ?? '?'),
-            'SearchCode'         => '🔍 searching for ' . ($args['query'] ?? '?'),
-            'EditFile'           => '✏️  editing ' . ($args['path'] ?? '?'),
-            'WriteFile'          => '📝 creating ' . ($args['path'] ?? '?'),
-            'RunArtisan'         => '⚡ artisan ' . ($args['command'] ?? '?'),
-            'RunTests'           => '🧪 running tests' . (! empty($args['filter']) ? ' (filter: ' . $args['filter'] . ')' : ''),
-            'RunPint'            => '✨ formatting with pint',
-            'RunLarastan'        => '🔎 running larastan' . (! empty($args['path']) ? ' on ' . $args['path'] : ''),
-            'RunShell'           => '💻 shell: ' . ($args['command'] ?? '?'),
-            'QueryDatabase'      => '🗄️  querying database',
-            'ReadLog'            => '📋 reading log' . (! empty($args['filter']) ? ' (filter: ' . $args['filter'] . ')' : ''),
-            'GitDiff'            => '🔀 git diff' . (! empty($args['path']) ? ' ' . $args['path'] : ''),
-            'ListRoutes'         => '🗺️  listing routes',
+            'ReadFile' => '📖 reading '.($args['path'] ?? '?'),
+            'Glob' => '🔍 listing '.($args['pattern'] ?? '?'),
+            'SearchCode' => '🔍 searching for '.($args['query'] ?? '?'),
+            'EditFile' => '✏️  editing '.($args['path'] ?? '?'),
+            'WriteFile' => '📝 creating '.($args['path'] ?? '?'),
+            'RunArtisan' => '⚡ artisan '.($args['command'] ?? '?'),
+            'RunTests' => '🧪 running tests'.(! empty($args['filter']) ? ' (filter: '.$args['filter'].')' : ''),
+            'RunPint' => '✨ formatting with pint',
+            'RunLarastan' => '🔎 running larastan'.(! empty($args['path']) ? ' on '.$args['path'] : ''),
+            'RunShell' => '💻 shell: '.($args['command'] ?? '?'),
+            'QueryDatabase' => '🗄️  querying database',
+            'ReadLog' => '📋 reading log'.(! empty($args['filter']) ? ' (filter: '.$args['filter'].')' : ''),
+            'GitDiff' => '🔀 git diff'.(! empty($args['path']) ? ' '.$args['path'] : ''),
+            'ListRoutes' => '🗺️  listing routes',
             'ReadTelescopeEntry' => '🔭 reading telescope',
-            'ReadSentryIssue'    => '🪲 reading sentry',
-            'ReadGitHubIssue'    => '🐙 reading github issue',
-            'ReadPullRequest'    => '🐙 reading pull request',
-            'CreateGitHubIssue'  => '🐙 creating github issue',
-            'CreatePullRequest'  => '🚀 opening pull request',
-            'CommitAndPush'      => '📤 committing and pushing',
-            default              => '→ ' . $tool,
+            'ReadSentryIssue' => '🪲 reading sentry',
+            'ReadGitHubIssue' => '🐙 reading github issue',
+            'ReadPullRequest' => '🐙 reading pull request',
+            'CreateGitHubIssue' => '🐙 creating github issue',
+            'CreatePullRequest' => '🚀 opening pull request',
+            'CommitAndPush' => '📤 committing and pushing',
+            default => '→ '.$tool,
         };
 
-        title('Tackle Fix — ' . strip_tags($summary));
+        title('Tackle Fix — '.strip_tags($summary));
         $this->line("<fg=cyan>  {$summary}</>");
     }
 
     private function renderToolResult(ToolResult $event): void
     {
-        $tool   = $event->toolResult->name;
+        $tool = $event->toolResult->name;
         $result = (string) ($event->toolResult->result ?? '');
 
         if (in_array($tool, ['RunTests', 'RunArtisan', 'RunShell'], strict: true)) {
@@ -373,7 +384,7 @@ class FixCommand extends Command
             } elseif ($result === 'Cancelled by user.') {
                 $this->line('<fg=yellow>  ⚠ Push cancelled.</>');
             } else {
-                $this->line('<fg=red>  ✗ ' . $result . '</>');
+                $this->line('<fg=red>  ✗ '.$result.'</>');
             }
         }
 
@@ -383,7 +394,7 @@ class FixCommand extends Command
                 || str_contains($result, 'protected pattern')
                 || str_contains($result, 'not found')
                 || str_contains($result, 'not unique')) {
-                $this->line('<fg=yellow>  ⚠ ' . $result . '</>');
+                $this->line('<fg=yellow>  ⚠ '.$result.'</>');
             } else {
                 $this->line('<fg=green>  ✓ File saved</>');
             }
@@ -392,19 +403,19 @@ class FixCommand extends Command
 
     private function showGitDiff(): void
     {
-        $wt   = app(WorktreeManager::class);
+        $wt = app(WorktreeManager::class);
         $root = $wt->active() ? $wt->path() : base_path();
 
-        if (! is_dir($root . '/.git') && ! $wt->active()) {
+        if (! is_dir($root.'/.git') && ! $wt->active()) {
             return;
         }
 
-        $output = shell_exec('git -C ' . escapeshellarg($root) . ' diff --stat 2>/dev/null');
+        $output = shell_exec('git -C '.escapeshellarg($root).' diff --stat 2>/dev/null');
 
         if ($output && trim($output) !== '') {
             $this->line('');
             $label = $wt->active() ? 'Worktree changes (live files untouched)' : 'Uncommitted changes';
-            note($label . "\n" . trim($output));
+            note($label."\n".trim($output));
         }
     }
 
@@ -428,6 +439,7 @@ class FixCommand extends Command
 
         if (is_array($config)) {
             $env = app()->environment();
+
             return $config[$env] ?? $config['*'] ?? 'approve';
         }
 

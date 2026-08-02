@@ -4,12 +4,12 @@ namespace Tackle\Tools;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Tools\Request;
-
-use function Laravel\Prompts\multiselect;
-use function Laravel\Prompts\select;
+use Tackle\Contracts\InteractionPolicy;
 
 class AskUser extends AbstractTool
 {
+    public function __construct(private ?InteractionPolicy $interaction = null) {}
+
     public function description(): string
     {
         return 'Present the user with an interactive selection prompt and return their choice. ALWAYS call this tool instead of writing a numbered list or bullet list of options in your response text. Use it any time you have identified two or more valid paths — implementation approaches, return types, architectural options, etc. — and the user needs to choose. The user sees a styled terminal select() or multiselect() prompt. Pass multiple=true to allow selecting more than one option.';
@@ -31,26 +31,19 @@ class AskUser extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $question = $request->string('question', 'Choose an option:');
-        $options  = $request->array('options');
+        $question = (string) $request->string('question', 'Choose an option:');
+        $options = $request->array('options');
         $multiple = $request->boolean('multiple', false);
 
         if (empty($options)) {
             return 'No options were provided.';
         }
 
-        $this->newline();
-
-        if ($multiple) {
-            $selected = multiselect(label: $question, options: $options, required: true);
-            return implode(', ', $selected);
-        }
-
-        return select(label: $question, options: $options);
+        return $this->interaction()->choose($question, $options, $multiple);
     }
 
-    private function newline(): void
+    private function interaction(): InteractionPolicy
     {
-        echo PHP_EOL;
+        return $this->interaction ??= app(InteractionPolicy::class);
     }
 }

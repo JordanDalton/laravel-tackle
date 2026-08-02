@@ -43,8 +43,15 @@ return [
     | Max Steps
     |--------------------------------------------------------------------------
     |
-    | Maximum number of tool-call / reasoning steps per agent turn. Prevents
-    | runaway loops.
+    | Maximum number of tool calls before `ai:run` aborts the run. Prevents a
+    | runaway loop from burning the budget with nobody watching. Override for a
+    | single run with `--max-steps`.
+    |
+    | This is a ceiling, not a grant: each agent also declares its own
+    | #[MaxSteps] attribute (40 on DefaultCodingAgent), which laravel/ai reads by
+    | reflection and which cannot be raised at runtime. Setting this higher than
+    | the agent's attribute has no effect. Interactive sessions are bounded by
+    | the attribute alone — you are there to stop them.
     |
     */
     'max_steps' => env('AI_CODE_MAX_STEPS', 40),

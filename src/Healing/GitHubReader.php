@@ -43,9 +43,9 @@ class GitHubReader
 
         try {
             $response = $this->client->get("repos/{$repo}/issues", [
-                'state'     => 'open',
-                'per_page'  => min($limit, 25),
-                'sort'      => 'updated',
+                'state' => 'open',
+                'per_page' => min($limit, 25),
+                'sort' => 'updated',
                 'direction' => 'desc',
             ]);
 
@@ -60,11 +60,12 @@ class GitHubReader
             }
 
             return $issues->map(function ($issue) {
-                $number  = $issue['number']     ?? '?';
-                $title   = $issue['title']      ?? '?';
+                $number = $issue['number'] ?? '?';
+                $title = $issue['title'] ?? '?';
                 $updated = $issue['updated_at'] ?? '';
-                $labels  = collect($issue['labels'] ?? [])->pluck('name')->implode(', ');
-                $label   = $labels ? " [{$labels}]" : '';
+                $labels = collect($issue['labels'] ?? [])->pluck('name')->implode(', ');
+                $label = $labels ? " [{$labels}]" : '';
+
                 return "[{$updated}] #{$number}{$label} {$title}";
             })->implode("\n");
         } catch (Throwable) {
@@ -74,14 +75,14 @@ class GitHubReader
 
     private function formatIssue(array $issue, array $comments): string
     {
-        $number  = $issue['number']        ?? '?';
-        $title   = $issue['title']         ?? '?';
-        $state   = $issue['state']         ?? '?';
-        $author  = $issue['user']['login'] ?? '?';
-        $body    = trim($issue['body']     ?? '');
-        $labels  = collect($issue['labels'] ?? [])->pluck('name')->implode(', ');
+        $number = $issue['number'] ?? '?';
+        $title = $issue['title'] ?? '?';
+        $state = $issue['state'] ?? '?';
+        $author = $issue['user']['login'] ?? '?';
+        $body = trim($issue['body'] ?? '');
+        $labels = collect($issue['labels'] ?? [])->pluck('name')->implode(', ');
 
-        $output  = "GitHub Issue #{$number} — {$title}";
+        $output = "GitHub Issue #{$number} — {$title}";
         $output .= "\nState: {$state} | Author: {$author}";
 
         if ($labels) {
@@ -95,9 +96,9 @@ class GitHubReader
         if (! empty($comments)) {
             $output .= "\n\n--- Comments ---";
             foreach ($comments as $comment) {
-                $login   = $comment['user']['login'] ?? '?';
-                $created = $comment['created_at']    ?? '';
-                $text    = trim($comment['body']     ?? '');
+                $login = $comment['user']['login'] ?? '?';
+                $created = $comment['created_at'] ?? '';
+                $text = trim($comment['body'] ?? '');
                 $output .= "\n\n[{$created}] {$login}:\n{$text}";
             }
         }

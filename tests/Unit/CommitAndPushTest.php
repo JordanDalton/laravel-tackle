@@ -36,10 +36,10 @@ it('stages, commits, and pushes when user confirms', function () {
 
     Process::fake([
         'git status --porcelain' => Process::result(' M app/Foo.php'),
-        'git diff*'              => Process::result('diff --git a/app/Foo.php'),
-        'git add -A'             => Process::result(''),
-        'git commit*'            => Process::result('[main abc1234] Add comment'),
-        'git push'               => Process::result(''),
+        'git diff*' => Process::result('diff --git a/app/Foo.php'),
+        'git add -A' => Process::result(''),
+        'git commit*' => Process::result('[main abc1234] Add comment'),
+        'git push' => Process::result(''),
     ]);
 
     $result = makeCommitAndPushTool()->handle(new Request(['message' => 'Add comment above change']));
@@ -54,7 +54,7 @@ it('returns cancelled when user declines the diff preview', function () {
 
     Process::fake([
         'git status --porcelain' => Process::result(' M app/Foo.php'),
-        'git diff*'              => Process::result('diff --git a/app/Foo.php'),
+        'git diff*' => Process::result('diff --git a/app/Foo.php'),
     ]);
 
     $result = makeCommitAndPushTool()->handle(new Request(['message' => 'Fix']));
@@ -69,17 +69,17 @@ it('fetches and resets to remote tip before committing when branch is provided',
 
     Process::fake([
         'git status --porcelain' => Process::result(' M app/Foo.php'),
-        'git fetch origin*'      => Process::result(''),
-        'git reset*'             => Process::result(''),
-        'git diff*'              => Process::result('diff --git a/app/Foo.php'),
-        'git add -A'             => Process::result(''),
-        'git commit*'            => Process::result('[detached HEAD abc1234] Add comment'),
-        'git push origin*'       => Process::result(''),
+        'git fetch origin*' => Process::result(''),
+        'git reset*' => Process::result(''),
+        'git diff*' => Process::result('diff --git a/app/Foo.php'),
+        'git add -A' => Process::result(''),
+        'git commit*' => Process::result('[detached HEAD abc1234] Add comment'),
+        'git push origin*' => Process::result(''),
     ]);
 
     $result = makeCommitAndPushTool()->handle(new Request([
         'message' => 'Add comment above change',
-        'branch'  => 'tackle/issue-6-return-dalton',
+        'branch' => 'tackle/issue-6-return-dalton',
     ]));
 
     expect($result)->toBe('Changes committed and pushed to the existing PR branch.');
@@ -94,9 +94,9 @@ it('returns error when commit fails', function () {
 
     Process::fake([
         'git status --porcelain' => Process::result(' M app/Foo.php'),
-        'git diff*'              => Process::result('diff --git a/app/Foo.php'),
-        'git add -A'             => Process::result(''),
-        'git commit*'            => Process::result('', 'nothing to commit', 1),
+        'git diff*' => Process::result('diff --git a/app/Foo.php'),
+        'git add -A' => Process::result(''),
+        'git commit*' => Process::result('', 'nothing to commit', 1),
     ]);
 
     $result = makeCommitAndPushTool()->handle(new Request(['message' => 'Fix']));
@@ -110,10 +110,10 @@ it('returns error when push fails', function () {
 
     Process::fake([
         'git status --porcelain' => Process::result(' M app/Foo.php'),
-        'git diff*'              => Process::result('diff --git a/app/Foo.php'),
-        'git add -A'             => Process::result(''),
-        'git commit*'            => Process::result('[main abc1234] Fix'),
-        'git push'               => Process::result('', 'error: remote rejected', 1),
+        'git diff*' => Process::result('diff --git a/app/Foo.php'),
+        'git add -A' => Process::result(''),
+        'git commit*' => Process::result('[main abc1234] Fix'),
+        'git push' => Process::result('', 'error: remote rejected', 1),
     ]);
 
     $result = makeCommitAndPushTool()->handle(new Request(['message' => 'Fix']));
