@@ -6,6 +6,7 @@ use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
 use Tackle\Support\PathGuard;
+use Tackle\Support\Utf8;
 
 class RunLarastan extends AbstractTool
 {
@@ -75,6 +76,6 @@ class RunLarastan extends AbstractTool
             $output = trim($result->output().$result->errorOutput());
         }
 
-        return $output !== '' ? $output : '(PHPStan ran with no output.)';
+        return $output !== '' ? Utf8::clean($output) : '(PHPStan ran with no output.)';
     }
 }

@@ -8,6 +8,7 @@ use Laravel\Ai\Tools\Request;
 use Tackle\Contracts\InteractionPolicy;
 use Tackle\Support\CommandGuard;
 use Tackle\Support\PathGuard;
+use Tackle\Support\Utf8;
 
 class RunShell extends AbstractTool
 {
@@ -117,7 +118,7 @@ class RunShell extends AbstractTool
             return "Command failed (exit {$result->exitCode()}):\n".$result->errorOutput();
         }
 
-        return $result->output() ?: '(Command ran successfully with no output.)';
+        return Utf8::clean($result->output()) ?: '(Command ran successfully with no output.)';
     }
 
     private function interaction(): InteractionPolicy

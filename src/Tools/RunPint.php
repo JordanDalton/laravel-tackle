@@ -6,6 +6,7 @@ use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
 use Tackle\Support\PathGuard;
+use Tackle\Support\Utf8;
 
 class RunPint extends AbstractTool
 {
@@ -39,6 +40,6 @@ class RunPint extends AbstractTool
             ->timeout(60)
             ->run("./vendor/bin/pint{$arg}");
 
-        return ($result->output().$result->errorOutput()) ?: '(Pint ran with no output.)';
+        return Utf8::clean($result->output().$result->errorOutput()) ?: '(Pint ran with no output.)';
     }
 }

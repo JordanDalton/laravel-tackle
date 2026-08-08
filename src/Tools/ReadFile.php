@@ -6,6 +6,7 @@ use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\File;
 use Laravel\Ai\Tools\Request;
 use Tackle\Support\PathGuard;
+use Tackle\Support\Utf8;
 
 class ReadFile extends AbstractTool
 {
@@ -43,7 +44,7 @@ class ReadFile extends AbstractTool
             return "'{$path}' is a directory, not a file.";
         }
 
-        return File::get($absolute);
+        return Utf8::clean(File::get($absolute));
     }
 
     private function absolute(string $path): string

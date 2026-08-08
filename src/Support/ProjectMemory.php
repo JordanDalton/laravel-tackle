@@ -38,7 +38,7 @@ class ProjectMemory
             return null;
         }
 
-        $content = trim((string) @file_get_contents($path));
+        $content = Utf8::clean(trim((string) @file_get_contents($path)));
 
         if ($content === '') {
             return null;

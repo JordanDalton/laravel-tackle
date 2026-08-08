@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
 use Tackle\Support\CommandGuard;
 use Tackle\Support\PathGuard;
+use Tackle\Support\Utf8;
 
 class RunTests extends AbstractTool
 {
@@ -53,6 +54,6 @@ class RunTests extends AbstractTool
             ->timeout(120)
             ->run($binary);
 
-        return ($result->output().$result->errorOutput()) ?: '(Tests ran with no output.)';
+        return Utf8::clean($result->output().$result->errorOutput()) ?: '(Tests ran with no output.)';
     }
 }

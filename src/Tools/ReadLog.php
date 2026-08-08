@@ -4,6 +4,7 @@ namespace Tackle\Tools;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Tools\Request;
+use Tackle\Support\Utf8;
 
 class ReadLog extends AbstractTool
 {
@@ -50,6 +51,6 @@ class ReadLog extends AbstractTool
                 : 'The log file is empty.';
         }
 
-        return implode("\n", $tail);
+        return Utf8::clean(implode("\n", $tail));
     }
 }

@@ -6,6 +6,7 @@ use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
 use Tackle\Support\PathGuard;
+use Tackle\Support\Utf8;
 
 class GitDiff extends AbstractTool
 {
@@ -63,7 +64,7 @@ class GitDiff extends AbstractTool
             return 'git diff failed: '.trim($result->errorOutput());
         }
 
-        $output = trim($result->output());
+        $output = Utf8::clean(trim($result->output()));
 
         return $output !== '' ? $output : 'No differences found.';
     }

@@ -5,6 +5,7 @@ namespace Tackle\Tools;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Tools\Request;
 use Tackle\Support\PathGuard;
+use Tackle\Support\Utf8;
 
 class SearchCode extends AbstractTool
 {
@@ -98,7 +99,7 @@ class SearchCode extends AbstractTool
             $output .= "\n\n[Results capped at ".self::MAX_RESULTS.'. Narrow your search if needed.]';
         }
 
-        return $output;
+        return Utf8::clean($output);
     }
 
     private function collectFiles(string $dir): array
