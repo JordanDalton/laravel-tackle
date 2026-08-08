@@ -40,6 +40,13 @@ class GitHubClient
             ->get("https://api.github.com/{$path}", $params);
     }
 
+    public function getRaw(string $path, string $accept, array $params = []): Response
+    {
+        return Http::withToken($this->token())
+            ->withHeaders(['Accept' => $accept, 'X-GitHub-Api-Version' => '2022-11-28'])
+            ->get("https://api.github.com/{$path}", $params);
+    }
+
     public function post(string $path, array $data = []): Response
     {
         return Http::withToken($this->token())

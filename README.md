@@ -14,7 +14,7 @@ can extend or build on top of:
 - **`ai:code`** — an interactive coding agent that reads your codebase, edits files, runs tests, and formats code
 - **`ai:run`** — the same agent with no terminal attached: one task, a JSON result, and an exit code, for CI and cron
 - **`ai:fix`** — a focused fix session: paste an exception, point it at a Sentry issue (`--sentry=ID`) or GitHub issue (`--issue=N`), and the agent diagnoses, patches, and verifies the fix. Runs in worktree mode by default.
-- **`ai:review`** — a read-only agent that reviews git diffs and surfaces real issues with severity levels
+- **`ai:review`** — a read-only agent that reviews git diffs and surfaces real issues with severity levels. Point it at a GitHub pull request (`--pr=42 --comment`) and it posts the findings as inline PR review comments — drop it into a `pull_request` workflow and every PR gets reviewed automatically.
 - **`ai:explain`** — explains what a file, class, or method does in plain English
 - **`ai:test`** — generates a Pest test file for any class or method
 - **Self-healer** — an autonomous agent that listens for failed jobs and scheduled tasks, diagnoses the exception, patches the code, and opens a PR or applies the fix — without you lifting a finger
@@ -1051,6 +1051,12 @@ php artisan ai:review --commit=abc1234
 
 # Tell the agent what to prioritise
 php artisan ai:review --against=main --focus=security,performance
+
+# Review a GitHub pull request (diff fetched via the GitHub API)
+php artisan ai:review --pr=42
+
+# …and post the findings back to the PR as inline review comments
+php artisan ai:review --pr=42 --comment
 ```
 
 ### Output format
@@ -1085,6 +1091,85 @@ php artisan ai:review --staged --focus=bugs,security
 
 Any plain-language description works — `security`, `performance`, `n+1 queries`,
 `missing tests`, `breaking changes`, etc.
+
+### Reviewing pull requests
+
+`--pr=N` reviews a GitHub pull request instead of a local diff. The diff is
+fetched from the GitHub API, so it works regardless of which branches exist in
+your local checkout — the checkout is only used by the agent's read tools to
+understand the surrounding code. Requires `GITHUB_TOKEN` and `GITHUB_REPO`
+(see [GitHub Issues integration](#github-issues-integration)); the token needs
+**Pull requests: read** permission, or **read & write** when using `--comment`.
+
+```bash
+# Print the review to the terminal
+php artisan ai:review --pr=42
+
+# Post it to the PR as a single review with inline comments
+php artisan ai:review --pr=42 --comment
+```
+
+With `--comment`, each finding is anchored to the exact file and line as an
+inline review comment (🔴/🟡/🟢 severity included), under a summary body with
+the overall verdict. Findings that reference lines outside the diff are folded
+into the summary instead of being dropped.
+
+### Gating CI on the review
+
+`--fail-on` makes the command exit non-zero when findings at or above the given
+severity exist, so a workflow can block a merge:
+
+```bash
+php artisan ai:review --pr=42 --comment --fail-on=critical   # fail on critical only
+php artisan ai:review --pr=42 --fail-on=warning              # fail on critical or warning
+```
+
+`--fail-on` also works for local scopes (`--staged`, `--against=main`, …) —
+useful in pre-push hooks.
+
+### Reviewing every PR automatically
+
+Drop this workflow into `.github/workflows/tackle-review.yml` and every pull
+request gets reviewed:
+
+```yaml
+name: Tackle Review
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+      - run: composer install --no-interaction --prefer-dist
+      - name: Review the pull request
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+        run: |
+          php artisan ai:review \
+            --pr=${{ github.event.pull_request.number }} \
+            --comment \
+            --fail-on=critical
+```
+
+Notes:
+
+- `pull-requests: write` is what lets the default `GITHUB_TOKEN` post the review.
+- Drop `--fail-on=critical` if you want the review to be advisory rather than
+  blocking.
+- The review agent is read-only and the diff comes from the API, so the job
+  needs no database and no `--yes`-style approval flags.
 
 ---
 

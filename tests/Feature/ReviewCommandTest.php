@@ -60,6 +60,52 @@ it('ai:review command is registered', function () {
     expect($commands)->toHaveKey('ai:review');
 });
 
+// ---------------------------------------------------------------------------
+// ai:review — pull request options
+// ---------------------------------------------------------------------------
+
+it('ai:review exposes the pr, comment, and fail-on options', function () {
+    $command = Artisan::all()['ai:review'];
+    $definition = $command->getDefinition();
+
+    expect($definition->hasOption('pr'))->toBeTrue()
+        ->and($definition->hasOption('comment'))->toBeTrue()
+        ->and($definition->hasOption('fail-on'))->toBeTrue();
+});
+
+it('ai:review rejects --comment without --pr', function () {
+    $this->artisan('ai:review', ['--comment' => true])
+        ->expectsOutputToContain('--comment option requires --pr')
+        ->assertExitCode(1);
+});
+
+it('ai:review rejects --pr combined with local diff scopes', function () {
+    $this->artisan('ai:review', ['--pr' => '42', '--against' => 'main'])
+        ->expectsOutputToContain('cannot be combined')
+        ->assertExitCode(1);
+});
+
+it('ai:review rejects a non-numeric --pr', function () {
+    $this->artisan('ai:review', ['--pr' => 'abc'])
+        ->expectsOutputToContain('must be a pull request number')
+        ->assertExitCode(1);
+});
+
+it('ai:review rejects an unknown --fail-on severity', function () {
+    $this->artisan('ai:review', ['--fail-on' => 'fatal'])
+        ->expectsOutputToContain('must be one of: critical, warning, suggestion')
+        ->assertExitCode(1);
+});
+
+it('ai:review fails cleanly when --pr is used without GitHub configured', function () {
+    config()->set('tackle.github.token', 'ghp_token');
+    config()->set('tackle.github.repo', null);
+
+    $this->artisan('ai:review', ['--pr' => '42'])
+        ->expectsOutputToContain('GitHub is not configured')
+        ->assertExitCode(1);
+});
+
 it('ai:review reports nothing when there are no changes', function () {
     Process::fake([
         '*git diff HEAD*' => Process::result(''),
