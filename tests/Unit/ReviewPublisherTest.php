@@ -124,6 +124,26 @@ it('throws when the GitHub API rejects the review', function () {
     makePublisher()->publish(makePr(slugDiff()), new ParsedReview('lgtm', []), new DiffLineIndex(slugDiff()));
 })->throws(RuntimeException::class, 'HTTP 422');
 
+it('embeds the reviewed-sha marker in the review body', function () {
+    Http::fake([
+        'api.github.com/*' => Http::response(['html_url' => 'https://example.com/review'], 200),
+    ]);
+
+    makePublisher()->publish(makePr(slugDiff()), new ParsedReview('lgtm', []), new DiffLineIndex(slugDiff()));
+
+    Http::assertSent(fn ($request) => str_contains($request->data()['body'], '<!-- tackle-review:sha=abc123 -->'));
+});
+
+it('labels incremental reviews as follow-ups', function () {
+    Http::fake([
+        'api.github.com/*' => Http::response(['html_url' => 'https://example.com/review'], 200),
+    ]);
+
+    makePublisher()->publish(makePr(slugDiff()), new ParsedReview('lgtm', []), new DiffLineIndex(slugDiff()), incremental: true);
+
+    Http::assertSent(fn ($request) => str_contains($request->data()['body'], 'Follow-up review'));
+});
+
 it('falls back to the PR url when the response has no html_url', function () {
     Http::fake([
         'api.github.com/*' => Http::response([], 200),

@@ -18,7 +18,7 @@ class ReviewPublisher
      *
      * @throws RuntimeException when GitHub is not configured or the POST fails
      */
-    public function publish(PullRequest $pr, ParsedReview $review, DiffLineIndex $index): string
+    public function publish(PullRequest $pr, ParsedReview $review, DiffLineIndex $index, bool $incremental = false): string
     {
         if (! $this->client->configured()) {
             throw new RuntimeException(
@@ -47,7 +47,7 @@ class ReviewPublisher
         $response = $this->client->post("repos/{$repo}/pulls/{$pr->number}/reviews", array_filter([
             'commit_id' => $pr->headSha,
             'event' => 'COMMENT',
-            'body' => $this->body($review, $unanchored),
+            'body' => $this->body($review, $unanchored, $incremental)."\n\n".ReviewHistory::marker($pr->headSha),
             'comments' => $comments,
         ], fn ($value) => $value !== '' && $value !== []));
 
@@ -61,7 +61,7 @@ class ReviewPublisher
     }
 
     /** @param  Finding[]  $unanchored */
-    private function body(ParsedReview $review, array $unanchored): string
+    private function body(ParsedReview $review, array $unanchored, bool $incremental): string
     {
         $verdict = match ($review->verdict) {
             'lgtm' => '✅ **LGTM**',
@@ -70,6 +70,10 @@ class ReviewPublisher
         };
 
         $body = "## Tackle AI Review\n\n{$verdict}";
+
+        if ($incremental) {
+            $body .= "\n\n_Follow-up review — only changes pushed since the last Tackle review._";
+        }
 
         if ($review->findings === []) {
             return $body."\n\nNo issues found.";

@@ -1114,6 +1114,30 @@ inline review comment (🔴/🟡/🟢 severity included), under a summary body w
 the overall verdict. Findings that reference lines outside the diff are folded
 into the summary instead of being dropped.
 
+### Incremental re-reviews
+
+Re-running `ai:review --pr` on a PR Tackle has already reviewed does **not**
+repeat the whole review. Each posted review embeds an invisible marker recording
+the head commit it covered; on the next run Tackle finds it and:
+
+- reviews **only the changes pushed since the last review** (via the GitHub
+  compare API),
+- tells the agent what it already reported, so findings aren't repeated,
+- labels the posted review as a follow-up,
+- and exits early with "Nothing new to review" when the head commit is unchanged.
+
+If the previously reviewed commit was force-pushed away and the compare can't be
+resolved, Tackle falls back to a full review automatically. Pass `--full` to
+force a full re-review at any time:
+
+```bash
+php artisan ai:review --pr=42 --comment --full
+```
+
+This makes the `pull_request`-triggered workflow below cheap to run on
+`synchronize`: each push reviews only its own delta instead of the entire PR
+again.
+
 ### Gating CI on the review
 
 `--fail-on` makes the command exit non-zero when findings at or above the given
@@ -1129,8 +1153,29 @@ useful in pre-push hooks.
 
 ### Reviewing every PR automatically
 
-Drop this workflow into `.github/workflows/tackle-review.yml` and every pull
-request gets reviewed:
+The easiest path is the [tackle-review action](https://github.com/JordanDalton/tackle-review),
+which wraps the whole job in one step:
+
+```yaml
+name: Tackle Review
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: JordanDalton/tackle-review@v1
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          fail-on: critical   # optional — omit for an advisory review
+```
+
+Or hand-roll the equivalent workflow in `.github/workflows/tackle-review.yml`:
 
 ```yaml
 name: Tackle Review
