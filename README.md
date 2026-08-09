@@ -872,6 +872,24 @@ php artisan queue:work --queue=healer
 Run this alongside your existing workers. In production (Supervisor, Forge, etc.)
 add a separate process group for the `healer` queue.
 
+For local development, the healer slots neatly into a
+[`@laravel/multiplex`](https://github.com/laravel/multiplex) tab next to the
+rest of your stack:
+
+```bash
+npx @laravel/multiplex \
+  'server,php artisan serve' \
+  'queue,php artisan queue:listen' \
+  'vite,npm run dev' \
+  'healer@green,php artisan queue:work --queue=healer'
+```
+
+When a job throws in the `queue` tab, watch the `healer` tab diagnose it,
+patch the code, and post the PR link — your dev environment healing itself.
+(Multiplex spawns commands without stdin, so it suits the healer and
+[`ai:run`](#headless-mode-ci-cron-scripts); the interactive `ai:code` and
+`ai:fix` sessions need a real terminal.)
+
 ### GitHub token setup
 
 For PR mode, Tackle needs a GitHub token with the `repo` scope.
