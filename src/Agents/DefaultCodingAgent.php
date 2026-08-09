@@ -165,11 +165,11 @@ class DefaultCodingAgent implements CodingAgent
     {
         $response = $this->traitStream($prompt, $attachments, $provider, $model, $timeout);
 
-        $response->then(function ($completed) use ($prompt) {
+        $response->then(function ($completed) use ($prompt, $attachments) {
             // Approval decisions resume an existing turn rather than starting a
             // new one, so there is no user message to record for them.
             if (is_string($prompt)) {
-                $this->conversationMessages[] = new UserMessage($prompt);
+                $this->conversationMessages[] = new UserMessage($prompt, $attachments);
             }
 
             $this->conversationMessages[] = new AssistantMessage($completed->text);

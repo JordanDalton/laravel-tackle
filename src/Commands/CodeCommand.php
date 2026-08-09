@@ -18,6 +18,7 @@ use Tackle\Prompts\TackleSuggestPrompt;
 use Tackle\Support\BudgetTracker;
 use Tackle\Support\ConversationCompactor;
 use Tackle\Support\CustomCommands;
+use Tackle\Support\ImageAttachments;
 use Tackle\Support\ToolSummary;
 use Tackle\Support\WorktreeManager;
 
@@ -185,12 +186,20 @@ class CodeCommand extends Command
             $this->line('');
 
             try {
+                // Images first — otherwise @screenshot.png would be inlined
+                // as (binary) text by the @-mention expansion below.
+                [$task, $attachments] = ImageAttachments::extract($task, $this->workspaceRoot());
+
+                if ($attachments !== []) {
+                    note(count($attachments).' image'.(count($attachments) === 1 ? '' : 's').' attached.');
+                }
+
                 $task = $this->expandAtMentions($task);
 
                 if ($planFirst) {
-                    $this->planThenExecute($agent, $budget, $task);
+                    $this->planThenExecute($agent, $budget, $task, $attachments);
                 } else {
-                    $this->runAgentTurn($agent, $budget, $task);
+                    $this->runAgentTurn($agent, $budget, $task, $attachments);
                 }
             } catch (\Throwable $e) {
                 $this->closeStream();
@@ -263,7 +272,7 @@ class CodeCommand extends Command
      * Plan mode: a read-only agent investigates and proposes a plan; nothing
      * is edited until the user approves it.
      */
-    private function planThenExecute(CodingAgent $agent, BudgetTracker $budget, string $task): void
+    private function planThenExecute(CodingAgent $agent, BudgetTracker $budget, string $task, array $attachments = []): void
     {
         $planPrompt = $task;
 
@@ -271,7 +280,7 @@ class CodeCommand extends Command
             title('Tackle — Planning…');
             note('Plan mode — read-only. No files will change until you approve the plan.');
 
-            $plan = $this->runAgentTurn($this->planner, $budget, $planPrompt);
+            $plan = $this->runAgentTurn($this->planner, $budget, $planPrompt, $attachments);
 
             if (trim($plan) === '') {
                 promptError('The planner returned no plan — running the task directly instead.');
@@ -300,7 +309,7 @@ class CodeCommand extends Command
             }
 
             title('Tackle — Executing plan…');
-            $this->runAgentTurn($agent, $budget, "{$task}\n\nThe following implementation plan has been reviewed and approved by the user — follow it, deviating only if the code contradicts it (say so when you do):\n\n{$plan}");
+            $this->runAgentTurn($agent, $budget, "{$task}\n\nThe following implementation plan has been reviewed and approved by the user — follow it, deviating only if the code contradicts it (say so when you do):\n\n{$plan}", $attachments);
 
             return;
         }
@@ -316,12 +325,12 @@ class CodeCommand extends Command
         );
     }
 
-    private function runAgentTurn(CodingAgent $agent, BudgetTracker $budget, string $task): string
+    private function runAgentTurn(CodingAgent $agent, BudgetTracker $budget, string $task, array $attachments = []): string
     {
         $text = '';
 
         try {
-            $response = $agent->stream($task);
+            $response = $agent->stream($task, $attachments);
 
             $response->each(function ($event) use ($budget, &$text) {
                 if ($event instanceof TextDelta) {
@@ -586,10 +595,16 @@ class CodeCommand extends Command
         return $this->fileIndex = $index;
     }
 
-    private function expandAtMentions(string $task): string
+    private function workspaceRoot(): string
     {
         $wt = app(WorktreeManager::class);
-        $root = $wt->active() ? $wt->path() : base_path();
+
+        return $wt->active() ? $wt->path() : base_path();
+    }
+
+    private function expandAtMentions(string $task): string
+    {
+        $root = $this->workspaceRoot();
 
         return preg_replace_callback('#@([\w./_-]+)#', function ($matches) use ($root) {
             $path = $root.DIRECTORY_SEPARATOR.$matches[1];

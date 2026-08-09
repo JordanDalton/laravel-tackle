@@ -306,6 +306,21 @@ the older exchanges and keeps the last `AI_CODE_COMPACTION_KEEP` messages
 verbatim, automatically. Force it any time with `/compact`, or start fresh with
 `/clear`.
 
+### Images
+
+Drag an image into the terminal (which pastes its path), or type the path, or
+`@`-mention one in the workspace — Tackle detects it, attaches the image to the
+prompt, and the model sees the actual pixels:
+
+```
+> the header is misaligned, see /Users/me/Desktop/Screen\ Shot.png — fix the CSS
+> build this component @docs/mock.webp
+```
+
+PNG, JPEG, GIF, and WebP are recognized; quoted paths and escaped spaces from
+drag-and-drop both work. Requires a vision-capable model (the default Claude
+models are; some local models are not).
+
 ### Interactive UX
 
 `ai:code` uses [Laravel Prompts](https://laravel.com/docs/13.x/prompts) throughout for a fully interactive terminal experience:
