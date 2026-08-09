@@ -23,7 +23,11 @@ Every agent runs through the same tool infrastructure and safety layer. You can
 add your own tools, write new agents, and swap the default agent entirely —
 all without forking the package.
 
-Built on top of [`laravel/ai`](https://github.com/laravel/ai).
+Built on top of [`laravel/ai`](https://github.com/laravel/ai) — and **provider-agnostic**
+like it: Tackle runs on any provider `laravel/ai` supports with tool calling.
+Anthropic (Claude) is the default; OpenAI, Gemini, Groq, and fully local models
+via Ollama are two env vars away. See
+[Changing the model or provider](#changing-the-model-or-provider).
 
 ---
 
@@ -123,6 +127,31 @@ ANTHROPIC_API_KEY=sk-ant-...
 The `config/ai.php` published above already includes the `anthropic` provider
 block — just add the env var and you're ready.
 
+**Prefer another provider?** Any provider in `config/ai.php` works, e.g. OpenAI:
+
+```env
+AI_CODE_PROVIDER=openai
+AI_CODE_MODEL=gpt-5.2
+OPENAI_API_KEY=sk-...
+
+# Keep budget enforcement accurate: your model's per-Mtok rates
+AI_CODE_PRICE_INPUT=1.75
+AI_CODE_PRICE_OUTPUT=14.00
+```
+
+Or fully local via Ollama — no API key, no cost:
+
+```env
+AI_CODE_PROVIDER=ollama
+AI_CODE_MODEL=qwen3-coder
+AI_CODE_PRICE_INPUT=0
+AI_CODE_PRICE_OUTPUT=0
+```
+
+Agent quality tracks the model: the coding and review agents lean heavily on
+tool calling, so weaker models produce weaker results. The plumbing is neutral;
+our recommendation is Claude.
+
 ---
 
 ## Environment variables
@@ -136,6 +165,8 @@ All config options can be set via `.env`. Nothing requires editing a PHP file.
 | `AI_CODE_MODEL` | `claude-sonnet-4-6` | Model to use |
 | `AI_CODE_MAX_STEPS` | `40` | Tool-call ceiling for `ai:run` — cannot exceed the agent's own `#[MaxSteps]` |
 | `AI_CODE_BUDGET` | `1.00` | Hard spend limit in USD per session |
+| `AI_CODE_PRICE_INPUT` | `3.00` | Input price per million tokens used for budget estimation — set to your model's rate |
+| `AI_CODE_PRICE_OUTPUT` | `15.00` | Output price per million tokens used for budget estimation — set to your model's rate |
 | `AI_CODE_SHELL` | `approve` | Shell mode: `off` \| `allowlist` \| `approve` \| `yolo`. Can be set per-environment in `config/tackle.php` — production defaults to `off`. |
 | `AI_CODE_WORKTREE` | `false` | Enable worktree isolation (production defaults to `true`). |
 | `AI_CODE_MEMORY` | `file` | Session persistence: `none` \| `file` \| `database` |
@@ -1538,6 +1569,11 @@ AI_CODE_MODEL=gpt-4o
 The provider name must match a key in `config/ai.php`. Any provider supported by
 `laravel/ai` (Anthropic, OpenAI, Gemini, Groq, Ollama, etc.) works as long as it
 supports tool calling.
+
+When switching models, also set `AI_CODE_PRICE_INPUT` / `AI_CODE_PRICE_OUTPUT`
+to the model's per-million-token rates — the budget cap is estimated from token
+counts, and the defaults assume Claude Sonnet pricing. For local models set both
+to `0`.
 
 Internally, Tackle injects provider and model values via two custom Laravel
 contextual attributes — `#[AiProvider]` and `#[AiModel]` — so any agent you

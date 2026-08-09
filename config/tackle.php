@@ -69,6 +69,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Token Pricing
+    |--------------------------------------------------------------------------
+    |
+    | Per-million-token rates used to estimate spend against the budget. The
+    | defaults approximate Claude Sonnet. When using another model or provider
+    | (OpenAI, Gemini, Groq, Ollama, ...), set these to its actual rates so
+    | budget enforcement stays meaningful — for local models, set both to 0.
+    |
+    */
+    'pricing' => [
+        'input_per_mtok' => env('AI_CODE_PRICE_INPUT', 3.00),
+        'output_per_mtok' => env('AI_CODE_PRICE_OUTPUT', 15.00),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Shell Execution Policy
     |--------------------------------------------------------------------------
     |

@@ -2,6 +2,32 @@
 
 use Tackle\Support\BudgetTracker;
 
+it('uses configured per-model pricing when provided', function () {
+    // GPT-class pricing: $2.50 in / $10 out per million tokens.
+    $tracker = new BudgetTracker(1.00, 2.50, 10.00);
+    $tracker->record(1_000_000, 1_000_000);
+
+    expect($tracker->estimatedCost())->toBe(12.50);
+});
+
+it('treats zero pricing as free (local models)', function () {
+    $tracker = new BudgetTracker(1.00, 0.0, 0.0);
+    $tracker->record(5_000_000, 5_000_000);
+
+    expect($tracker->estimatedCost())->toBe(0.0)
+        ->and($tracker->overBudget())->toBeFalse();
+});
+
+it('resolves pricing from config through the container', function () {
+    config()->set('tackle.pricing.input_per_mtok', 1.00);
+    config()->set('tackle.pricing.output_per_mtok', 2.00);
+
+    $tracker = app(BudgetTracker::class);
+    $tracker->record(1_000_000, 1_000_000);
+
+    expect($tracker->estimatedCost())->toBe(3.00);
+});
+
 it('starts with zero spend', function () {
     $tracker = new BudgetTracker(1.00);
 

@@ -6,21 +6,30 @@ use Illuminate\Container\Attributes\Config;
 
 class BudgetTracker
 {
-    // Pricing per million tokens (approximate Sonnet 4 rates; overrideable).
-    private const INPUT_COST_PER_M = 3.00;
-
-    private const OUTPUT_COST_PER_M = 15.00;
-
     private int $inputTokens = 0;
 
     private int $outputTokens = 0;
 
     private float $budgetUsd;
 
+    private float $inputCostPerM;
+
+    private float $outputCostPerM;
+
+    /**
+     * Pricing defaults approximate Claude Sonnet rates. Budget enforcement is
+     * only as accurate as these numbers — when using another model or
+     * provider, set tackle.pricing (AI_CODE_PRICE_INPUT / AI_CODE_PRICE_OUTPUT)
+     * to its per-million-token rates.
+     */
     public function __construct(
         #[Config('tackle.budget_usd')] float $budgetUsd = 1.00,
+        #[Config('tackle.pricing.input_per_mtok')] ?float $inputCostPerM = null,
+        #[Config('tackle.pricing.output_per_mtok')] ?float $outputCostPerM = null,
     ) {
         $this->budgetUsd = $budgetUsd;
+        $this->inputCostPerM = $inputCostPerM ?? 3.00;
+        $this->outputCostPerM = $outputCostPerM ?? 15.00;
     }
 
     public function record(int $inputTokens, int $outputTokens): void
@@ -31,8 +40,8 @@ class BudgetTracker
 
     public function estimatedCost(): float
     {
-        return ($this->inputTokens / 1_000_000 * self::INPUT_COST_PER_M)
-             + ($this->outputTokens / 1_000_000 * self::OUTPUT_COST_PER_M);
+        return ($this->inputTokens / 1_000_000 * $this->inputCostPerM)
+             + ($this->outputTokens / 1_000_000 * $this->outputCostPerM);
     }
 
     public function overBudget(): bool
