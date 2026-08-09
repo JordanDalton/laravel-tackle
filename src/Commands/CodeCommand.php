@@ -192,6 +192,15 @@ class CodeCommand extends Command
 
                 if ($attachments !== []) {
                     note(count($attachments).' image'.(count($attachments) === 1 ? '' : 's').' attached.');
+
+                    // An image with no instruction is a question waiting to be
+                    // asked — not a license to improvise a task from context.
+                    if (trim((string) preg_replace('/\[attached image: [^\]]*\]/', '', $task)) === '') {
+                        $task = text(
+                            label: 'What should I do with the image'.(count($attachments) === 1 ? '' : 's').'?',
+                            required: true,
+                        ).' '.$task;
+                    }
                 }
 
                 foreach ($unreadable as $blocked) {
