@@ -20,6 +20,7 @@ use Tackle\Commands\MakeToolCommand;
 use Tackle\Commands\McpCommand;
 use Tackle\Commands\PruneCommand;
 use Tackle\Commands\ReplayCommand;
+use Tackle\Commands\RespondCommand;
 use Tackle\Commands\ReviewCommand;
 use Tackle\Commands\RunCommand;
 use Tackle\Commands\TestCommand;
@@ -46,6 +47,7 @@ class TackleServiceProvider extends PackageServiceProvider
                 RunCommand::class,
                 FixCommand::class,
                 ReviewCommand::class,
+                RespondCommand::class,
                 ExplainCommand::class,
                 TestCommand::class,
                 HealingLogCommand::class,

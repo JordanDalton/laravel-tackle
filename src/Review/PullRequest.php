@@ -13,5 +13,15 @@ class PullRequest
         public readonly string $baseRef,
         public readonly string $url,
         public readonly string $diff,
+        public readonly string $headRepo = '',
     ) {}
+
+    /**
+     * Whether the head branch lives in a different repository than the one
+     * Tackle is configured for — pushing to it would need fork write access.
+     */
+    public function isFromFork(string $configuredRepo): bool
+    {
+        return $this->headRepo !== '' && strcasecmp($this->headRepo, $configuredRepo) !== 0;
+    }
 }

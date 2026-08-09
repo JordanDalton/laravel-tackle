@@ -55,6 +55,7 @@ class PullRequestFetcher
             baseRef: (string) ($pr['base']['ref'] ?? ''),
             url: (string) ($pr['html_url'] ?? ''),
             diff: Utf8::clean(trim($diff->body())),
+            headRepo: (string) ($pr['head']['repo']['full_name'] ?? ''),
         );
     }
 }

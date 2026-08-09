@@ -15,6 +15,7 @@ can extend or build on top of:
 - **`ai:run`** — the same agent with no terminal attached: one task, a JSON result, and an exit code, for CI and cron
 - **`ai:fix`** — a focused fix session: paste an exception, point it at a Sentry issue (`--sentry=ID`) or GitHub issue (`--issue=N`), and the agent diagnoses, patches, and verifies the fix. Runs in worktree mode by default.
 - **`ai:review`** — a read-only agent that reviews git diffs and surfaces real issues with severity levels. Point it at a GitHub pull request (`--pr=42 --comment`) and it posts the findings as inline PR review comments — drop it into a `pull_request` workflow and every PR gets reviewed automatically.
+- **`ai:respond`** — acts on a `@tackle` comment left on a pull request: applies the requested change, pushes it to the PR branch, and replies in the thread. Wire it to a workflow and reviewers can type `@tackle fix this` under any finding.
 - **`ai:explain`** — explains what a file, class, or method does in plain English
 - **`ai:test`** — generates a Pest test file for any class or method
 - **Self-healer** — an autonomous agent that listens for failed jobs and scheduled tasks, diagnoses the exception, patches the code, and opens a PR or applies the fix — without you lifting a finger
@@ -1246,6 +1247,39 @@ Notes:
   blocking.
 - The review agent is read-only and the diff comes from the API, so the job
   needs no database and no `--yes`-style approval flags.
+
+### Acting on review comments (`@tackle`)
+
+`ai:respond` closes the loop from *found* to *fixed*. When a reviewer replies
+to a finding (or leaves any PR comment) asking Tackle to act, the command loads
+the comment, its thread, and the diff context, runs the coding agent against
+the instruction, pushes the resulting commit to the PR branch, and replies in
+the thread:
+
+```bash
+php artisan ai:respond --pr=42 --comment-id=123456 --comment-type=review
+```
+
+- `--comment-type=review` for inline review comments (the usual case),
+  `--comment-type=issue` for comments in the PR conversation tab.
+- If the comment asks a question rather than requesting a change, the agent
+  answers in the thread and touches nothing.
+- The reply always arrives — success (with the pushed SHA and diff stat),
+  no-op, or a clear failure message. Threads never dangle.
+
+Guardrails, enforced in PHP:
+
+- **Fork PRs are refused** — Tackle never pushes to a branch in someone else's
+  repository; it replies explaining why instead.
+- **The checkout must match the PR head** — the agent edits the working tree
+  and the result is pushed, so a mismatched checkout aborts before the agent
+  runs. In CI, check out `refs/pull/<n>/head`.
+- Confirmations are auto-denied as in `ai:run`; pass `--yes` only where you
+  would have approved them yourself.
+
+The easiest way to wire this to GitHub is the `respond` action — see
+[tackle-review](https://github.com/JordanDalton/tackle-review). Gate the
+workflow on `author_association` so only maintainers can trigger it.
 
 ---
 
