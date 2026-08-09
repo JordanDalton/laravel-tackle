@@ -10,9 +10,12 @@ use Laravel\Ai\Streaming\Events\ToolResult;
 use Tackle\Commands\Concerns\ResolvesSessionOptions;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Contracts\InteractionPolicy;
+use Tackle\Events\SessionEnded;
+use Tackle\Events\SessionStarted;
 use Tackle\Exceptions\AgentInterruptedException;
 use Tackle\Support\AutoApproveInteraction;
 use Tackle\Support\BudgetTracker;
+use Tackle\Support\CustomCommands;
 use Tackle\Support\DenyInteraction;
 use Tackle\Support\Reporting\JsonReporter;
 use Tackle\Support\Reporting\RunReporter;
@@ -63,8 +66,26 @@ class RunCommand extends Command
 
     private ?string $pullRequestUrl = null;
 
-    public function handle(WorktreeManager $worktrees): int
+    private string $resolvedPrompt = '';
+
+    public function handle(WorktreeManager $worktrees, CustomCommands $commands): int
     {
+        $this->resolvedPrompt = (string) $this->argument('prompt');
+
+        // "/name args" resolves through .tackle/commands, same as the REPL.
+        if (($slash = CustomCommands::parse($this->resolvedPrompt)) !== null) {
+            [$name, $args] = $slash;
+            $rendered = $commands->render($name, $args);
+
+            if ($rendered === null) {
+                $this->error("Unknown command /{$name} — no .tackle/commands/{$name}.md found.");
+
+                return self::EXIT_ERROR;
+            }
+
+            $this->resolvedPrompt = $rendered;
+        }
+
         $format = (string) $this->option('output');
 
         if (! in_array($format, ['text', 'json'], strict: true)) {
@@ -124,6 +145,8 @@ class RunCommand extends Command
             }
         }
 
+        SessionStarted::dispatch('ai:run', (string) config('tackle.provider', 'anthropic'), (string) config('tackle.model'));
+
         $reporter->starting([
             'model' => config('tackle.model'),
             'shell' => $this->resolveShellMode(),
@@ -156,7 +179,7 @@ class RunCommand extends Command
         $worktreePath = $useWorktree ? $worktrees->path() : null;
 
         try {
-            $agent->stream((string) $this->argument('prompt'))->each(
+            $agent->stream($this->resolvedPrompt)->each(
                 fn ($event) => $this->handleEvent($event, $budget, $reporter),
             );
         } catch (AgentInterruptedException $e) {
@@ -194,6 +217,13 @@ class RunCommand extends Command
             'worktree' => $worktreePath,
             'pr_url' => $this->pullRequestUrl,
         ]);
+
+        SessionEnded::dispatch(
+            'ai:run',
+            $budget->inputTokens(),
+            $budget->outputTokens(),
+            round($budget->estimatedCost(), 4),
+        );
 
         return $exit;
     }

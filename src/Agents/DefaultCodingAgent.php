@@ -12,6 +12,7 @@ use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Support\CommandGuard;
+use Tackle\Support\EventedTool;
 use Tackle\Support\PathGuard;
 use Tackle\Support\ProjectMemory;
 use Tackle\Tools\AskUser;
@@ -182,9 +183,32 @@ class DefaultCodingAgent implements CodingAgent
         return $this->conversationMessages;
     }
 
+    /**
+     * Total characters held in the conversation — a cheap proxy for context
+     * size, used to decide when to compact.
+     */
+    public function conversationSize(): int
+    {
+        return array_sum(array_map(
+            fn ($message) => strlen((string) ($message->content ?? '')),
+            $this->conversationMessages,
+        ));
+    }
+
+    /** @param  array<mixed>  $messages */
+    public function replaceConversation(array $messages): void
+    {
+        $this->conversationMessages = array_values($messages);
+    }
+
+    public function forgetConversation(): void
+    {
+        $this->conversationMessages = [];
+    }
+
     public function tools(): iterable
     {
-        return [
+        return EventedTool::wrap([
             $this->readFile,
             $this->glob,
             $this->searchCode,
@@ -208,6 +232,6 @@ class DefaultCodingAgent implements CodingAgent
             $this->commitAndPush,
             $this->askUser,
             $this->confirmAction,
-        ];
+        ]);
     }
 }

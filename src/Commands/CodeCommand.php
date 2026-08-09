@@ -9,10 +9,15 @@ use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolCall;
 use Laravel\Ai\Streaming\Events\ToolResult;
 use Laravel\Prompts\Stream;
+use Tackle\Agents\PlanningAgent;
 use Tackle\Commands\Concerns\ResolvesSessionOptions;
 use Tackle\Contracts\CodingAgent;
+use Tackle\Events\SessionEnded;
+use Tackle\Events\SessionStarted;
 use Tackle\Prompts\TackleSuggestPrompt;
 use Tackle\Support\BudgetTracker;
+use Tackle\Support\ConversationCompactor;
+use Tackle\Support\CustomCommands;
 use Tackle\Support\ToolSummary;
 use Tackle\Support\WorktreeManager;
 
@@ -20,7 +25,9 @@ use function Laravel\Prompts\error as promptError;
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\outro;
+use function Laravel\Prompts\select;
 use function Laravel\Prompts\stream;
+use function Laravel\Prompts\text;
 use function Laravel\Prompts\title;
 use function Laravel\Prompts\warning;
 
@@ -30,6 +37,7 @@ class CodeCommand extends Command
 
     protected $signature = 'ai:code
         {--session= : Resume a named session}
+        {--plan : Plan first — every task produces a read-only plan you approve before edits happen}
         {--shell= : Override the shell mode for this session (off|allowlist|approve|yolo)}
         {--off : Shorthand for --shell=off}
         {--allowlist : Shorthand for --shell=allowlist}
@@ -46,8 +54,18 @@ class CodeCommand extends Command
 
     private ?array $fileIndex = null;
 
-    public function handle(CodingAgent $agent, BudgetTracker $budget, WorktreeManager $worktrees): int
+    private CustomCommands $customCommands;
+
+    private PlanningAgent $planner;
+
+    private ConversationCompactor $compactor;
+
+    public function handle(CodingAgent $agent, BudgetTracker $budget, WorktreeManager $worktrees, CustomCommands $commands, PlanningAgent $planner, ConversationCompactor $compactor): int
     {
+        $this->customCommands = $commands;
+        $this->planner = $planner;
+        $this->compactor = $compactor;
+
         if (! App::runningInConsole()) {
             $this->error('ai:code must be run from the terminal.');
 
@@ -98,24 +116,50 @@ class CodeCommand extends Command
             note('Worktree mode — all edits go to an isolated copy of the repo. Live files are untouched until you open a PR.');
         }
 
+        SessionStarted::dispatch('ai:code', (string) config('tackle.provider', 'anthropic'), (string) $model);
+
         while (true) {
             $task = (new TackleSuggestPrompt(
                 label: 'What should I work on?',
                 options: fn (string $value) => $this->completions($value),
-                placeholder: 'Describe a task or type "exit" to quit. Use @ to reference files.',
+                placeholder: 'Describe a task, /command, or "exit". Use @ to reference files.',
                 required: true,
-                hint: count($this->history) > 0 ? 'Use ↑↓ for history · @ for files · Tab to complete' : '@ for files · Tab to complete',
+                hint: count($this->history) > 0 ? 'Use ↑↓ for history · @ for files · / for commands' : '@ for files · / for commands',
                 scroll: 10,
             ))->prompt();
 
             if (in_array(strtolower(trim($task)), ['exit', 'quit', 'q'], strict: true)) {
                 title('');
                 outro($budget->summary().' · Goodbye!');
+                $this->dispatchSessionEnded($budget);
 
                 return self::SUCCESS;
             }
 
             $this->history[] = $task;
+
+            $planFirst = (bool) $this->option('plan');
+
+            if (($slash = CustomCommands::parse($task)) !== null) {
+                [$name, $args] = $slash;
+
+                if ($name === 'plan') {
+                    $task = $args;
+                    $planFirst = true;
+                } else {
+                    $resolved = $this->handleSlashCommand($name, $args, $agent);
+
+                    if ($resolved === null) {
+                        continue;
+                    }
+
+                    $task = $resolved;
+                }
+            }
+
+            if (trim($task) === '') {
+                continue;
+            }
 
             if ($budget->overBudget()) {
                 title('Tackle — Budget Exceeded');
@@ -124,15 +168,30 @@ class CodeCommand extends Command
                     $budget->estimatedCost(),
                     $budget->budgetUsd(),
                 ));
+                $this->dispatchSessionEnded($budget);
 
                 return self::FAILURE;
+            }
+
+            if ($this->compactor->shouldCompact($agent)) {
+                title('Tackle — Compacting context…');
+
+                if ($this->compactor->compact($agent)) {
+                    note('Session history compacted — older context summarized, recent messages kept.');
+                }
             }
 
             title('Tackle — Thinking…');
             $this->line('');
 
             try {
-                $this->runAgentTurn($agent, $budget, $this->expandAtMentions($task));
+                $task = $this->expandAtMentions($task);
+
+                if ($planFirst) {
+                    $this->planThenExecute($agent, $budget, $task);
+                } else {
+                    $this->runAgentTurn($agent, $budget, $task);
+                }
             } catch (\Throwable $e) {
                 $this->closeStream();
                 promptError('Agent error: '.$e->getMessage());
@@ -147,18 +206,131 @@ class CodeCommand extends Command
         }
     }
 
-    private function runAgentTurn(CodingAgent $agent, BudgetTracker $budget, string $task): void
+    /**
+     * Handle a built-in or custom slash command. Returns a task string to run
+     * (custom commands render to a prompt), or null when the command was
+     * handled in place (or unknown) and the loop should continue.
+     */
+    private function handleSlashCommand(string $name, string $args, CodingAgent $agent): ?string
     {
+        switch ($name) {
+            case 'help':
+                $builtins = "/plan <task> — plan first, edit after your approval\n"
+                    ."/compact — summarize older session history now\n"
+                    ."/clear — forget the session history\n"
+                    .'/help — this list';
+                $customs = collect($this->customCommands->all())
+                    ->keys()
+                    ->map(fn (string $custom) => "/{$custom}")
+                    ->implode("\n");
+
+                note("Built-in commands:\n{$builtins}".($customs !== '' ? "\n\nProject commands (.tackle/commands):\n{$customs}" : ''));
+
+                return null;
+
+            case 'clear':
+                if (method_exists($agent, 'forgetConversation')) {
+                    $agent->forgetConversation();
+                    note('Session history cleared.');
+                } else {
+                    warning('The bound agent does not support /clear.');
+                }
+
+                return null;
+
+            case 'compact':
+                if ($this->compactor->compact($agent)) {
+                    note('Session history compacted.');
+                } else {
+                    note('Nothing to compact yet.');
+                }
+
+                return null;
+        }
+
+        $rendered = $this->customCommands->render($name, $args);
+
+        if ($rendered === null) {
+            warning("Unknown command /{$name} — type /help for the list, or add .tackle/commands/{$name}.md to define it.");
+
+            return null;
+        }
+
+        return $rendered;
+    }
+
+    /**
+     * Plan mode: a read-only agent investigates and proposes a plan; nothing
+     * is edited until the user approves it.
+     */
+    private function planThenExecute(CodingAgent $agent, BudgetTracker $budget, string $task): void
+    {
+        $planPrompt = $task;
+
+        while (true) {
+            title('Tackle — Planning…');
+            note('Plan mode — read-only. No files will change until you approve the plan.');
+
+            $plan = $this->runAgentTurn($this->planner, $budget, $planPrompt);
+
+            if (trim($plan) === '') {
+                promptError('The planner returned no plan — running the task directly instead.');
+                $this->runAgentTurn($agent, $budget, $task);
+
+                return;
+            }
+
+            $choice = select(
+                label: 'Execute this plan?',
+                options: ['execute' => 'Execute the plan', 'revise' => 'Revise the plan', 'cancel' => 'Cancel'],
+                default: 'execute',
+            );
+
+            if ($choice === 'cancel') {
+                note('Plan discarded — nothing was changed.');
+
+                return;
+            }
+
+            if ($choice === 'revise') {
+                $feedback = text(label: 'What should change about the plan?', required: true);
+                $planPrompt = "{$task}\n\nYou previously proposed this plan:\n{$plan}\n\nThe user asked for revisions: {$feedback}\n\nProduce an updated plan.";
+
+                continue;
+            }
+
+            title('Tackle — Executing plan…');
+            $this->runAgentTurn($agent, $budget, "{$task}\n\nThe following implementation plan has been reviewed and approved by the user — follow it, deviating only if the code contradicts it (say so when you do):\n\n{$plan}");
+
+            return;
+        }
+    }
+
+    private function dispatchSessionEnded(BudgetTracker $budget): void
+    {
+        SessionEnded::dispatch(
+            'ai:code',
+            $budget->inputTokens(),
+            $budget->outputTokens(),
+            round($budget->estimatedCost(), 4),
+        );
+    }
+
+    private function runAgentTurn(CodingAgent $agent, BudgetTracker $budget, string $task): string
+    {
+        $text = '';
+
         try {
             $response = $agent->stream($task);
 
-            $response->each(function ($event) use ($budget) {
+            $response->each(function ($event) use ($budget, &$text) {
                 if ($event instanceof TextDelta) {
                     if ($this->activeStream === null) {
                         $this->line('');
                         $this->activeStream = stream();
                     }
                     $this->activeStream->append($event->delta);
+                    $text .= $event->delta;
 
                     return;
                 }
@@ -199,6 +371,8 @@ class CodeCommand extends Command
         } finally {
             $this->closeStream();
         }
+
+        return $text;
     }
 
     private function closeStream(): void
@@ -299,6 +473,18 @@ class CodeCommand extends Command
 
     private function completions(string $input): array
     {
+        // Slash-command completion while typing the command name itself.
+        if (str_starts_with($input, '/') && ! str_contains($input, ' ')) {
+            $query = substr($input, 1);
+            $names = ['plan', 'compact', 'clear', 'help', ...array_keys($this->customCommands->all())];
+
+            return collect($names)
+                ->filter(fn (string $name) => $query === '' || stripos($name, $query) !== false)
+                ->map(fn (string $name) => "/{$name}")
+                ->values()
+                ->all();
+        }
+
         $atPos = strrpos($input, '@');
 
         if ($atPos === false) {

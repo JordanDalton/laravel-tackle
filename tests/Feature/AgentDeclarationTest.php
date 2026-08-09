@@ -33,8 +33,10 @@ it('resolves the CodingAgent binding used by ai:code and ai:run', function () {
 });
 
 it('exposes the tools ai:run reports on', function () {
+    // Resolve names the way laravel/ai does: name() when present (tools are
+    // wrapped in EventedTool), class basename otherwise.
     $tools = collect(app(CodingAgent::class)->tools())
-        ->map(fn ($tool) => class_basename($tool))
+        ->map(fn ($tool) => is_callable([$tool, 'name']) ? $tool->name() : class_basename($tool))
         ->all();
 
     expect($tools)->toContain('ReadFile', 'EditFile', 'RunTests', 'AskUser', 'ConfirmAction');

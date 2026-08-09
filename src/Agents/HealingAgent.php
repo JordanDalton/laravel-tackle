@@ -8,6 +8,7 @@ use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Healing\TelescopeReader;
+use Tackle\Support\EventedTool;
 use Tackle\Support\PathGuard;
 use Tackle\Support\ProjectMemory;
 use Tackle\Tools\EditFile;
@@ -86,13 +87,13 @@ class HealingAgent implements CodingAgent
 
     public function tools(): iterable
     {
-        return [
+        return EventedTool::wrap([
             new ReadFile($this->guard),
             new Glob($this->guard),
             new SearchCode($this->guard),
             new EditFile($this->guard),
             new RunTests($this->guard),
             new ReadTelescopeEntry(new TelescopeReader),
-        ];
+        ]);
     }
 }

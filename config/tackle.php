@@ -85,6 +85,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Context Compaction
+    |--------------------------------------------------------------------------
+    |
+    | Long ai:code sessions re-send their whole history every turn. When the
+    | conversation exceeds threshold_chars, Tackle summarizes the older part
+    | and keeps the last keep_recent messages verbatim. Compact manually at
+    | any time with /compact; disable auto-compaction by setting the
+    | threshold very high.
+    |
+    */
+    'compaction' => [
+        'threshold_chars' => env('AI_CODE_COMPACTION_THRESHOLD', 60000),
+        'keep_recent' => env('AI_CODE_COMPACTION_KEEP', 4),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Shell Execution Policy
     |--------------------------------------------------------------------------
     |

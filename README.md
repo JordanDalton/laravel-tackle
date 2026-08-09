@@ -11,7 +11,7 @@ purpose-built for Laravel and installed directly into your app via Composer.
 The harness ships with three built-in agents and a full tool infrastructure you
 can extend or build on top of:
 
-- **`ai:code`** — an interactive coding agent that reads your codebase, edits files, runs tests, and formats code
+- **`ai:code`** — an interactive coding agent that reads your codebase, edits files, runs tests, and formats code. Supports plan mode (approve a read-only plan before any edits), project-defined slash commands, and automatic context compaction for long sessions.
 - **`ai:run`** — the same agent with no terminal attached: one task, a JSON result, and an exit code, for CI and cron
 - **`ai:fix`** — a focused fix session: paste an exception, point it at a Sentry issue (`--sentry=ID`) or GitHub issue (`--issue=N`), and the agent diagnoses, patches, and verifies the fix. Runs in worktree mode by default.
 - **`ai:review`** — a read-only agent that reviews git diffs and surfaces real issues with severity levels. Point it at a GitHub pull request (`--pr=42 --comment`) and it posts the findings as inline PR review comments — drop it into a `pull_request` workflow and every PR gets reviewed automatically.
@@ -166,6 +166,8 @@ All config options can be set via `.env`. Nothing requires editing a PHP file.
 | `AI_CODE_MODEL` | `claude-sonnet-4-6` | Model to use |
 | `AI_CODE_MAX_STEPS` | `40` | Tool-call ceiling for `ai:run` — cannot exceed the agent's own `#[MaxSteps]` |
 | `AI_CODE_BUDGET` | `1.00` | Hard spend limit in USD per session |
+| `AI_CODE_COMPACTION_THRESHOLD` | `60000` | Conversation size (chars) that triggers automatic history compaction |
+| `AI_CODE_COMPACTION_KEEP` | `4` | Recent messages kept verbatim when compacting |
 | `AI_CODE_PRICE_INPUT` | `3.00` | Input price per million tokens used for budget estimation — set to your model's rate |
 | `AI_CODE_PRICE_OUTPUT` | `15.00` | Output price per million tokens used for budget estimation — set to your model's rate |
 | `AI_CODE_SHELL` | `approve` | Shell mode: `off` \| `allowlist` \| `approve` \| `yolo`. Can be set per-environment in `config/tackle.php` — production defaults to `off`. |
@@ -239,6 +241,70 @@ has been modified.
 Production environments default to `worktree: on` (see [Configuration](#configuration)).
 Worktrees are cleaned up automatically when the session ends. Use `tackle:prune`
 to remove any that were left behind by interrupted sessions.
+
+### Plan mode
+
+Have the agent think before it touches anything. In plan mode a **read-only**
+planning agent investigates the codebase and streams a numbered implementation
+plan — files, changes, risks. Nothing is edited until you approve it.
+
+```bash
+php artisan ai:code --plan     # every task plans first
+```
+
+Or plan a single task from inside the REPL:
+
+```
+> /plan add soft deletes to the Invoice model
+```
+
+After the plan streams you choose: **Execute** (the coding agent follows the
+approved plan), **Revise** (describe what to change; the planner tries again),
+or **Cancel**. One approval replaces a session of per-edit vigilance.
+
+### Slash commands
+
+The `ai:code` prompt understands commands. Type `/` to autocomplete them:
+
+| Command | What it does |
+|---|---|
+| `/plan <task>` | Plan first, edit only after your approval |
+| `/compact` | Summarize older session history to free context |
+| `/clear` | Forget the session history entirely |
+| `/help` | List all commands, including your project's own |
+| `/<name> [args]` | Run a [custom command](#custom-commands-tacklecommands) from `.tackle/commands` |
+
+### Custom commands (.tackle/commands)
+
+Reusable prompts your whole team shares, checked into the repo. Drop a markdown
+file in `.tackle/commands/` and its name becomes a command:
+
+```markdown
+<!-- .tackle/commands/deploy-check.md -->
+Review everything changed since the last tag for deploy risk: migrations that
+lock tables, config that needs new env vars, breaking API changes. Focus on: $ARGUMENTS
+```
+
+```
+> /deploy-check the billing module
+```
+
+`$ARGUMENTS` is replaced with whatever follows the command name (or the
+arguments are appended when the template has no placeholder). Custom commands
+work headlessly too:
+
+```bash
+php artisan ai:run "/deploy-check the billing module"
+```
+
+### Context compaction
+
+Long sessions re-send their whole history every turn — slower, costlier, and
+eventually over the context limit. When the conversation exceeds
+`AI_CODE_COMPACTION_THRESHOLD` (default 60,000 characters), Tackle summarizes
+the older exchanges and keeps the last `AI_CODE_COMPACTION_KEEP` messages
+verbatim, automatically. Force it any time with `/compact`, or start fresh with
+`/clear`.
 
 ### Interactive UX
 
@@ -1445,6 +1511,69 @@ This copies the stubs to `stubs/tackle/` in your project root. Both commands
 check for published stubs before falling back to the package defaults.
 
 ---
+
+### Events (hooks)
+
+Tackle dispatches Laravel events around the agent lifecycle, so ordinary
+listeners can observe — or veto — what agents do:
+
+| Event | When | Payload |
+|---|---|---|
+| `Tackle\Events\SessionStarted` | An `ai:code` / `ai:run` session begins | command, provider, model |
+| `Tackle\Events\SessionEnded` | The session ends | command, token counts, estimated cost |
+| `Tackle\Events\ToolCalling` | Before a tool executes — **vetoable** | tool name, arguments |
+| `Tackle\Events\ToolCalled` | After a tool executes | tool name, arguments, result, duration |
+
+A `ToolCalling` listener that returns `false` blocks the call (the agent
+receives a refusal and reroutes); returning a string uses it as the refusal
+message. Anything else observes without interfering:
+
+```php
+use Tackle\Events\ToolCalling;
+use Tackle\Events\ToolCalled;
+
+Event::listen(ToolCalling::class, function (ToolCalling $event) {
+    if ($event->tool === 'RunShell' && now()->isWeekend()) {
+        return 'No shell commands on weekends.';
+    }
+});
+
+Event::listen(ToolCalled::class, function (ToolCalled $event) {
+    AgentAudit::record($event->tool, $event->arguments, $event->durationMs);
+});
+```
+
+Events fire for the tools of `DefaultCodingAgent` (and subclasses) and the
+self-healer. This is a hook layer on top of the safety guards, not a
+replacement — `PathGuard`, shell modes, and allowlists still apply first.
+Requires a `laravel/ai` version with `ToolNameResolver` (0.10+); on older
+versions the events simply don't fire.
+
+### MCP client tools
+
+Just as external clients can consume Tackle's tools over MCP, Tackle's agents
+can consume **external MCP servers**. Install [`laravel/mcp`](https://github.com/laravel/mcp)
+(requires `laravel/ai` >= 0.8), then return the client's tools from an agent's
+`tools()` — `laravel/ai` wraps them automatically, prefixed `mcp_tools_*`:
+
+```php
+use Laravel\Mcp\Facades\Mcp;
+
+class MyCodingAgent extends DefaultCodingAgent
+{
+    public function tools(): iterable
+    {
+        return [
+            ...parent::tools(),
+            ...Mcp::client('playwright')->tools(),
+        ];
+    }
+}
+```
+
+Now the agent can drive a browser to verify its own fix, query an external
+system, or use any other MCP server you trust — while Tackle's own tools keep
+their PathGuard and shell-policy enforcement.
 
 ### Adding your own tools
 
