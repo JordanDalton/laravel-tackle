@@ -24,7 +24,7 @@ use Tackle\Support\GitHubClient;
 use Throwable;
 
 /**
- * Acts on a "@tackle ..." comment left on a pull request: runs the coding
+ * Acts on a "/tackle ..." comment left on a pull request: runs the coding
  * agent against the comment's instruction, pushes any resulting changes to the
  * PR branch, and always replies in the thread — success, no-op, or failure.
  */
@@ -45,7 +45,7 @@ class RespondCommand extends Command
         {--approve       : Shorthand for --shell=approve}
         {--yolo          : Shorthand for --shell=yolo}';
 
-    protected $description = 'Act on a @tackle pull request comment — apply the requested change and reply in the thread.';
+    protected $description = 'Act on a /tackle pull request comment — apply the requested change and reply in the thread.';
 
     private int $steps = 0;
 

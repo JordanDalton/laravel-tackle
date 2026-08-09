@@ -15,7 +15,7 @@ can extend or build on top of:
 - **`ai:run`** — the same agent with no terminal attached: one task, a JSON result, and an exit code, for CI and cron
 - **`ai:fix`** — a focused fix session: paste an exception, point it at a Sentry issue (`--sentry=ID`) or GitHub issue (`--issue=N`), and the agent diagnoses, patches, and verifies the fix. Runs in worktree mode by default.
 - **`ai:review`** — a read-only agent that reviews git diffs and surfaces real issues with severity levels. Point it at a GitHub pull request (`--pr=42 --comment`) and it posts the findings as inline PR review comments — drop it into a `pull_request` workflow and every PR gets reviewed automatically.
-- **`ai:respond`** — acts on a `@tackle` comment left on a pull request: applies the requested change, pushes it to the PR branch, and replies in the thread. Wire it to a workflow and reviewers can type `@tackle fix this` under any finding.
+- **`ai:respond`** — acts on a `/tackle` comment left on a pull request: applies the requested change, pushes it to the PR branch, and replies in the thread. Wire it to a workflow and reviewers can type `/tackle fix this` under any finding.
 - **`ai:explain`** — explains what a file, class, or method does in plain English
 - **`ai:test`** — generates a Pest test file for any class or method
 - **Self-healer** — an autonomous agent that listens for failed jobs and scheduled tasks, diagnoses the exception, patches the code, and opens a PR or applies the fix — without you lifting a finger
@@ -1248,7 +1248,7 @@ Notes:
 - The review agent is read-only and the diff comes from the API, so the job
   needs no database and no `--yes`-style approval flags.
 
-### Acting on review comments (`@tackle`)
+### Acting on review comments (`/tackle`)
 
 `ai:respond` closes the loop from *found* to *fixed*. When a reviewer replies
 to a finding (or leaves any PR comment) asking Tackle to act, the command loads
