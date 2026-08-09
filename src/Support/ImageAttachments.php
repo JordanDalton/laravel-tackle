@@ -25,8 +25,12 @@ class ImageAttachments
         $patterns = [
             // 'quoted path.png' or "quoted path.png"
             '/\'([^\']+\.(?:'.self::EXTENSIONS.'))\'|"([^"]+\.(?:'.self::EXTENSIONS.'))"/iu',
-            // unquoted path, possibly with backslash-escaped spaces, possibly @-mentioned
-            '/@?(?:[^\s\\\\]|\\\\ )+\.(?:'.self::EXTENSIONS.')/iu',
+            // Unquoted path, possibly with backslash-escaped spaces, possibly
+            // @-mentioned. ASCII whitespace is spelled out instead of \s: under
+            // /u, \s also matches Unicode spaces — including the narrow
+            // no-break space (U+202F) macOS puts before AM/PM in screenshot
+            // filenames, which must stay part of the path.
+            '/@?(?:[^ \t\r\n\\\\]|\\\\ )+\.(?:'.self::EXTENSIONS.')/iu',
         ];
 
         foreach ($patterns as $pattern) {

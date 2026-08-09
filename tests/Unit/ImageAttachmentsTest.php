@@ -75,6 +75,18 @@ it('ignores prompts with no image paths', function () {
         ->and($prompt)->toBe('add a slug to the Post model');
 });
 
+it('handles the narrow no-break space macOS puts in screenshot filenames', function () {
+    $nnbsp = "\u{202F}";
+    makeImage("Screenshot 2026-08-09 at 11.18.03{$nnbsp}AM.png");
+    $escaped = config('tackle.workspace')."/Screenshot\\ 2026-08-09\\ at\\ 11.18.03{$nnbsp}AM.png";
+
+    [$prompt, $attachments, $unreadable] = ImageAttachments::extract("see {$escaped}", config('tackle.workspace'));
+
+    expect($attachments)->toHaveCount(1)
+        ->and($unreadable)->toBe([])
+        ->and($prompt)->toContain('[attached image: Screenshot 2026-08-09 at 11.18.03');
+});
+
 it('extracts multiple images from one prompt', function () {
     $a = makeImage('before.png');
     $b = makeImage('after.png');
