@@ -182,6 +182,11 @@ class RespondCommand extends Command
                 $text .= $event->delta;
                 $this->output->write($event->delta);
             } elseif ($event instanceof ToolCall) {
+                // Narration between tool calls ("Let me look at...") is not
+                // the reply — only text after the LAST tool call is kept, so
+                // the posted comment is the agent's closing message alone.
+                $text = '';
+
                 if (++$this->steps > $this->maxSteps) {
                     throw new AgentInterruptedException('max_steps_reached');
                 }
