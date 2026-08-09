@@ -12,6 +12,7 @@ use Tackle\Review\FindingsParser;
 use Tackle\Review\ParsedReview;
 use Tackle\Review\PullRequest;
 use Tackle\Review\PullRequestFetcher;
+use Tackle\Review\ReviewHistory;
 use Tackle\Review\ReviewPublisher;
 use Tackle\Support\Utf8;
 
@@ -22,13 +23,14 @@ class ReviewCommand extends Command
         {--commit=       : Review a specific commit\'s changes}
         {--against=      : Review everything not yet in this branch, e.g. --against=main}
         {--pr=           : Review a GitHub pull request by number (diff fetched via the GitHub API)}
+        {--full          : Review the whole PR even when Tackle has reviewed it before (requires --pr)}
         {--comment       : Post the findings to the pull request as inline review comments (requires --pr)}
         {--fail-on=      : Exit non-zero when findings at or above this severity exist: critical|warning|suggestion}
         {--focus=        : Comma-separated focus areas: bugs,security,performance,tests}';
 
     protected $description = 'Review code changes with AI — reads the git diff and highlights real issues.';
 
-    public function handle(ReviewAgent $agent, PullRequestFetcher $fetcher, FindingsParser $parser, ReviewPublisher $publisher): int
+    public function handle(ReviewAgent $agent, PullRequestFetcher $fetcher, ReviewHistory $history, FindingsParser $parser, ReviewPublisher $publisher): int
     {
         if (($error = $this->validateOptions()) !== null) {
             $this->error($error);
@@ -37,6 +39,8 @@ class ReviewCommand extends Command
         }
 
         $pr = null;
+        $incremental = false;
+        $previousComments = [];
 
         if ($this->option('pr')) {
             try {
@@ -48,6 +52,30 @@ class ReviewCommand extends Command
             }
 
             $diff = $pr->diff;
+
+            // Review only what changed since the last Tackle review, unless
+            // --full is passed or the compare cannot be resolved (force-push).
+            if (! $this->option('full') && ($lastSha = $history->lastReviewedSha($pr->number)) !== null) {
+                if ($lastSha === $pr->headSha) {
+                    $this->info('Nothing new to review — the head commit was already reviewed. Use --full to re-review the whole PR.');
+
+                    return self::SUCCESS;
+                }
+
+                $delta = $history->deltaDiff($lastSha, $pr->headSha);
+
+                if ($delta === '') {
+                    $this->info('Nothing new to review — no changes since the last Tackle review. Use --full to re-review the whole PR.');
+
+                    return self::SUCCESS;
+                }
+
+                if ($delta !== null) {
+                    $incremental = true;
+                    $diff = $delta;
+                    $previousComments = $history->previousComments($pr->number);
+                }
+            }
         } else {
             if (! is_dir(base_path('.git'))) {
                 $this->error('ai:review requires a git repository.');
@@ -70,9 +98,13 @@ class ReviewCommand extends Command
             return self::SUCCESS;
         }
 
-        $this->renderBanner($pr);
+        if ($pr !== null) {
+            $this->warnOnCheckoutMismatch($pr);
+        }
 
-        $prompt = $this->buildPrompt($diff, $pr);
+        $this->renderBanner($pr, $incremental);
+
+        $prompt = $this->buildPrompt($diff, $pr, $incremental, $previousComments);
 
         $structured = $this->needsStructuredFindings();
         $text = '';
@@ -109,7 +141,9 @@ class ReviewCommand extends Command
 
         if ($this->option('comment')) {
             try {
-                $url = $publisher->publish($pr, $review, new DiffLineIndex($pr->diff));
+                // Anchors validate against the FULL PR diff even for an
+                // incremental review — that is what GitHub accepts.
+                $url = $publisher->publish($pr, $review, new DiffLineIndex($pr->diff), $incremental);
                 $this->info("Review posted: {$url}");
             } catch (RuntimeException $e) {
                 $this->error($e->getMessage());
@@ -121,6 +155,36 @@ class ReviewCommand extends Command
         return $this->applyFailOn($review);
     }
 
+    /**
+     * The diff comes from the GitHub API, but the agent reads files from the
+     * local working tree. When the two don't match — the checkout is on a
+     * different branch than the PR head — the agent sees files that contradict
+     * the diff and draws wrong conclusions. Warn instead of guessing.
+     */
+    private function warnOnCheckoutMismatch(PullRequest $pr): void
+    {
+        $result = Process::path(base_path())->timeout(10)->run(['git', 'rev-parse', 'HEAD']);
+
+        if (! $result->successful()) {
+            return;
+        }
+
+        $localHead = trim($result->output());
+
+        if ($localHead === '' || $localHead === $pr->headSha) {
+            return;
+        }
+
+        $localShort = substr($localHead, 0, 7);
+        $prShort = substr($pr->headSha, 0, 7);
+
+        $this->warn(
+            "Local checkout ({$localShort}) does not match the PR head ({$prShort}). "
+            .'The agent reads files from your working tree, so its context may contradict the diff. '
+            ."For accurate results: git checkout {$pr->headRef}"
+        );
+    }
+
     private function validateOptions(): ?string
     {
         if ($this->option('pr') && ($this->option('staged') || $this->option('commit') || $this->option('against'))) {
@@ -129,6 +193,10 @@ class ReviewCommand extends Command
 
         if ($this->option('comment') && ! $this->option('pr')) {
             return 'The --comment option requires --pr, e.g. ai:review --pr=42 --comment.';
+        }
+
+        if ($this->option('full') && ! $this->option('pr')) {
+            return 'The --full option requires --pr, e.g. ai:review --pr=42 --full.';
         }
 
         if ($this->option('pr') && ! ctype_digit((string) $this->option('pr'))) {
@@ -204,19 +272,20 @@ class ReviewCommand extends Command
         return ['git', 'diff', 'HEAD'];
     }
 
-    private function buildPrompt(string $diff, ?PullRequest $pr): string
+    private function buildPrompt(string $diff, ?PullRequest $pr, bool $incremental = false, array $previousComments = []): string
     {
-        $scope = $this->scopeDescription($pr);
+        $scope = $this->scopeDescription($pr, $incremental);
         $focus = $this->focusInstruction();
         $stat = $pr === null ? $this->diffStat() : '';
         $context = $pr === null ? '' : $this->prContext($pr);
+        $previous = $this->previousFindingsContext($incremental, $previousComments);
         $structured = $this->needsStructuredFindings() ? $this->structuredInstruction() : '';
 
         return <<<PROMPT
         Please review the following git diff.
 
         **Scope:** {$scope}
-        {$stat}{$context}{$focus}
+        {$stat}{$context}{$focus}{$previous}
 
         Before commenting on any changed function or class, read the full file for context.
 
@@ -224,6 +293,23 @@ class ReviewCommand extends Command
         {$diff}
         </diff>{$structured}
         PROMPT;
+    }
+
+    private function previousFindingsContext(bool $incremental, array $previousComments): string
+    {
+        if (! $incremental) {
+            return '';
+        }
+
+        $context = "\n\n**This is a follow-up review.** The diff above contains only the changes "
+            .'pushed since the last review — earlier changes on this PR were already reviewed. '
+            .'Do not repeat previously reported findings unless the new changes make them worse.';
+
+        if ($previousComments !== []) {
+            $context .= "\n\n**Already reported (do not repeat):**\n- ".implode("\n- ", $previousComments);
+        }
+
+        return $context;
     }
 
     private function prContext(PullRequest $pr): string
@@ -260,10 +346,12 @@ class ReviewCommand extends Command
         INSTRUCTION;
     }
 
-    private function scopeDescription(?PullRequest $pr = null): string
+    private function scopeDescription(?PullRequest $pr = null, bool $incremental = false): string
     {
         if ($pr !== null) {
-            return "pull request #{$pr->number} — {$pr->title}";
+            $suffix = $incremental ? ' (changes since the last Tackle review)' : '';
+
+            return "pull request #{$pr->number} — {$pr->title}{$suffix}";
         }
 
         if ($this->option('staged')) {
@@ -310,9 +398,9 @@ class ReviewCommand extends Command
         return $stat !== '' ? "\n**Stat:**\n```\n{$stat}\n```\n" : '';
     }
 
-    private function renderBanner(?PullRequest $pr): void
+    private function renderBanner(?PullRequest $pr, bool $incremental = false): void
     {
-        $scope = $this->scopeDescription($pr);
+        $scope = $this->scopeDescription($pr, $incremental);
         $model = config('tackle.model', 'claude-sonnet-4-6');
 
         $this->line('');

@@ -2,7 +2,9 @@
 
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Laravel\Ai\Responses\StreamableAgentResponse;
 use Tackle\Agents\ReviewAgent;
 use Tackle\Tools\EditFile;
 use Tackle\Tools\Glob;
@@ -70,7 +72,80 @@ it('ai:review exposes the pr, comment, and fail-on options', function () {
 
     expect($definition->hasOption('pr'))->toBeTrue()
         ->and($definition->hasOption('comment'))->toBeTrue()
-        ->and($definition->hasOption('fail-on'))->toBeTrue();
+        ->and($definition->hasOption('fail-on'))->toBeTrue()
+        ->and($definition->hasOption('full'))->toBeTrue();
+});
+
+it('ai:review rejects --full without --pr', function () {
+    $this->artisan('ai:review', ['--full' => true])
+        ->expectsOutputToContain('--full option requires --pr')
+        ->assertExitCode(1);
+});
+
+it('ai:review skips the agent when the head commit was already reviewed', function () {
+    config()->set('tackle.github.token', 'ghp_token');
+    config()->set('tackle.github.repo', 'acme/app');
+
+    Http::fake(function ($request) {
+        if (str_contains($request->url(), '/reviews')) {
+            return Http::response([
+                ['body' => "## Tackle AI Review\n\n<!-- tackle-review:sha=abcd123 -->"],
+            ], 200);
+        }
+
+        if ($request->hasHeader('Accept', 'application/vnd.github.v3.diff')) {
+            return Http::response("diff --git a/a.php b/a.php\n", 200);
+        }
+
+        return Http::response([
+            'title' => 'T',
+            'body' => '',
+            'head' => ['ref' => 'feat', 'sha' => 'abcd123'],
+            'base' => ['ref' => 'main'],
+            'html_url' => 'https://github.com/acme/app/pull/7',
+        ], 200);
+    });
+
+    $this->artisan('ai:review', ['--pr' => '7'])
+        ->expectsOutputToContain('Nothing new to review')
+        ->assertExitCode(0);
+});
+
+it('ai:review warns when the local checkout does not match the PR head', function () {
+    config()->set('tackle.github.token', 'ghp_token');
+    config()->set('tackle.github.repo', 'acme/app');
+
+    Http::fake(function ($request) {
+        if (str_contains($request->url(), '/reviews')) {
+            return Http::response([], 200); // no previous Tackle review
+        }
+
+        if ($request->hasHeader('Accept', 'application/vnd.github.v3.diff')) {
+            return Http::response("diff --git a/a.php b/a.php\n", 200);
+        }
+
+        return Http::response([
+            'title' => 'T',
+            'body' => '',
+            'head' => ['ref' => 'feat/slugs', 'sha' => 'abc9999'],
+            'base' => ['ref' => 'main'],
+            'html_url' => 'https://github.com/acme/app/pull/7',
+        ], 200);
+    });
+
+    Process::fake(['*' => Process::result("1111111222233334444\n")]);
+
+    $response = Mockery::mock(StreamableAgentResponse::class);
+    $response->shouldReceive('each');
+    $mockAgent = Mockery::mock(ReviewAgent::class);
+    $mockAgent->shouldReceive('stream')->andReturn($response);
+    $this->app->instance(ReviewAgent::class, $mockAgent);
+
+    // One assertion only: both substrings live on the same output line, and
+    // each expectsOutputToContain consumes a distinct doWrite call.
+    $this->artisan('ai:review', ['--pr' => '7'])
+        ->expectsOutputToContain('does not match the PR head')
+        ->assertExitCode(0);
 });
 
 it('ai:review rejects --comment without --pr', function () {
