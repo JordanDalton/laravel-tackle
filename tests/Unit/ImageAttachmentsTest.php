@@ -52,11 +52,20 @@ it('resolves workspace-relative and @-mentioned paths', function () {
         ->and($prompt)->toBe('build this UI [attached image: mock.webp]');
 });
 
-it('leaves nonexistent image paths untouched', function () {
-    [$prompt, $attachments] = ImageAttachments::extract('see /nope/missing.png', config('tackle.workspace'));
+it('reports unreadable absolute image paths instead of failing silently', function () {
+    [$prompt, $attachments, $unreadable] = ImageAttachments::extract('see /nope/missing.png', config('tackle.workspace'));
 
     expect($attachments)->toBe([])
-        ->and($prompt)->toBe('see /nope/missing.png');
+        ->and($prompt)->toBe('see /nope/missing.png')
+        ->and($unreadable)->toBe(['/nope/missing.png']);
+});
+
+it('treats unresolvable relative image mentions as ordinary prose', function () {
+    [$prompt, $attachments, $unreadable] = ImageAttachments::extract('rename logo.png to brand.png', config('tackle.workspace'));
+
+    expect($attachments)->toBe([])
+        ->and($unreadable)->toBe([])
+        ->and($prompt)->toBe('rename logo.png to brand.png');
 });
 
 it('ignores prompts with no image paths', function () {

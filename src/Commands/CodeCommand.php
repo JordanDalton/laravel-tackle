@@ -188,10 +188,14 @@ class CodeCommand extends Command
             try {
                 // Images first — otherwise @screenshot.png would be inlined
                 // as (binary) text by the @-mention expansion below.
-                [$task, $attachments] = ImageAttachments::extract($task, $this->workspaceRoot());
+                [$task, $attachments, $unreadable] = ImageAttachments::extract($task, $this->workspaceRoot());
 
                 if ($attachments !== []) {
                     note(count($attachments).' image'.(count($attachments) === 1 ? '' : 's').' attached.');
+                }
+
+                foreach ($unreadable as $blocked) {
+                    warning("Could not read image {$blocked} — it may have been deleted, or macOS is protecting it. Drag the file from Desktop or Finder instead of the floating screenshot thumbnail.");
                 }
 
                 $task = $this->expandAtMentions($task);

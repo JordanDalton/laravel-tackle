@@ -15,11 +15,12 @@ class ImageAttachments
     private const EXTENSIONS = 'png|jpe?g|gif|webp';
 
     /**
-     * @return array{0: string, 1: array<int, object>} [clean prompt, attachments]
+     * @return array{0: string, 1: array<int, object>, 2: array<int, string>} [clean prompt, attachments, unreadable paths]
      */
     public static function extract(string $prompt, string $workspace): array
     {
         $attachments = [];
+        $unreadable = [];
 
         $patterns = [
             // 'quoted path.png' or "quoted path.png"
@@ -29,26 +30,36 @@ class ImageAttachments
         ];
 
         foreach ($patterns as $pattern) {
-            $prompt = (string) preg_replace_callback($pattern, function (array $matches) use (&$attachments, $workspace) {
+            $prompt = (string) preg_replace_callback($pattern, function (array $matches) use (&$attachments, &$unreadable, $workspace) {
                 $raw = $matches[1] ?? null;
                 $raw = ($raw !== null && $raw !== '') ? $raw : ($matches[2] ?? $matches[0]);
 
                 $path = self::resolve($raw, $workspace);
 
-                if ($path === null) {
-                    return $matches[0]; // not a real file — leave the text alone
+                if (@is_file($path) && @file_get_contents($path, length: 1) !== false) {
+                    $attachments[] = Image::fromPath($path);
+
+                    return '[attached image: '.basename($path).']';
                 }
 
-                $attachments[] = Image::fromPath($path);
+                // An absolute image path that cannot be read was almost
+                // certainly a real file: deleted since, or blocked by macOS
+                // privacy protections (the floating-screenshot TemporaryItems
+                // folder denies even stat). Report it — silently sending the
+                // path as text just confuses the model. Relative paths that
+                // do not resolve are treated as ordinary prose.
+                if (str_starts_with(str_replace('\\ ', ' ', ltrim(trim($raw), '@')), DIRECTORY_SEPARATOR)) {
+                    $unreadable[] = $path;
+                }
 
-                return '[attached image: '.basename($path).']';
+                return $matches[0];
             }, $prompt);
         }
 
-        return [$prompt, $attachments];
+        return [$prompt, $attachments, $unreadable];
     }
 
-    private static function resolve(string $raw, string $workspace): ?string
+    private static function resolve(string $raw, string $workspace): string
     {
         $path = str_replace('\\ ', ' ', ltrim(trim($raw), '@'));
 
@@ -60,6 +71,6 @@ class ImageAttachments
             $path = $workspace.DIRECTORY_SEPARATOR.$path;
         }
 
-        return (is_file($path) && is_readable($path)) ? $path : null;
+        return $path;
     }
 }
