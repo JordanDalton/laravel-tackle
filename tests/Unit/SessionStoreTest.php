@@ -55,6 +55,14 @@ it('sanitizes session names into safe filenames', function () {
         ->and($store->path(''))->toEndWith('ai-code/default.json');
 });
 
+it('lists saved sessions with message counts', function () {
+    $store = new SessionStore;
+    $store->save('test-session', [new UserMessage('a'), new AssistantMessage('b')]);
+
+    expect($store->all())->toHaveKey('test-session')
+        ->and($store->all()['test-session'])->toBe(2);
+});
+
 it('survives corrupt session files', function () {
     $store = new SessionStore;
     @mkdir(dirname($store->path('corrupt')), 0755, true);

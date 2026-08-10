@@ -116,9 +116,10 @@ class CodeCommand extends Command
         $budgetUsd = config('tackle.budget_usd', 1.00);
         $shellMode = $this->resolveShellMode();
         $wtLabel = $worktree ? ' · worktree: on' : '';
+        $sessionLabel = $this->sessions->enabled() ? "  ·  session: {$this->sessionName}" : '';
 
         title('Tackle — Ready');
-        intro("Laravel Tackle  ·  {$model}  ·  \${$budgetUsd} budget  ·  shell: {$shellMode}{$wtLabel}");
+        intro("Laravel Tackle  ·  {$model}  ·  \${$budgetUsd} budget  ·  shell: {$shellMode}{$wtLabel}{$sessionLabel}");
 
         if ($worktree) {
             note('Worktree mode — all edits go to an isolated copy of the repo. Live files are untouched until you open a PR.');
@@ -147,6 +148,14 @@ class CodeCommand extends Command
 
             if (in_array(strtolower(trim($task)), ['exit', 'quit', 'q'], strict: true)) {
                 title('');
+
+                if ($this->sessions->enabled() && method_exists($agent, 'conversationSize') && $agent->conversationSize() > 0) {
+                    $resume = $this->sessionName === 'default'
+                        ? 'php artisan ai:code'
+                        : "php artisan ai:code --session={$this->sessionName}";
+                    note("Session '{$this->sessionName}' saved — {$resume} picks up where you left off.");
+                }
+
                 outro($budget->summary().' · Goodbye!');
                 $this->dispatchSessionEnded($budget);
 
@@ -265,6 +274,7 @@ class CodeCommand extends Command
                 $builtins = "/plan <task> — plan first, edit after your approval\n"
                     ."/compact — summarize older session history now\n"
                     ."/clear — forget the session history\n"
+                    ."/sessions — list saved sessions\n"
                     .'/help — this list';
                 $customs = collect($this->customCommands->all())
                     ->keys()
@@ -293,6 +303,23 @@ class CodeCommand extends Command
                 } else {
                     note('Nothing to compact yet.');
                 }
+
+                return null;
+
+            case 'sessions':
+                $saved = $this->sessions->all();
+
+                if ($saved === []) {
+                    note('No saved sessions yet — history is written after your first task.');
+
+                    return null;
+                }
+
+                $lines = collect($saved)
+                    ->map(fn (int $count, string $name) => ($name === $this->sessionName ? "{$name} (current)" : $name)." — {$count} messages")
+                    ->implode("\n");
+
+                note("Saved sessions:\n{$lines}\n\nResume one with: php artisan ai:code --session=<name>");
 
                 return null;
         }
@@ -525,7 +552,7 @@ class CodeCommand extends Command
         // Slash-command completion while typing the command name itself.
         if (str_starts_with($input, '/') && ! str_contains($input, ' ')) {
             $query = substr($input, 1);
-            $names = ['plan', 'compact', 'clear', 'help', ...array_keys($this->customCommands->all())];
+            $names = ['plan', 'compact', 'clear', 'sessions', 'help', ...array_keys($this->customCommands->all())];
 
             return collect($names)
                 ->filter(fn (string $name) => $query === '' || stripos($name, $query) !== false)

@@ -78,6 +78,26 @@ class SessionStore
         @unlink($this->path($name));
     }
 
+    /**
+     * Every saved session and how many messages it holds.
+     *
+     * @return array<string, int> name => message count
+     */
+    public function all(): array
+    {
+        $sessions = [];
+
+        foreach (glob(storage_path('ai-code/*.json')) ?: [] as $file) {
+            $data = json_decode((string) @file_get_contents($file), true);
+
+            $sessions[basename($file, '.json')] = is_array($data) ? count($data) : 0;
+        }
+
+        ksort($sessions);
+
+        return $sessions;
+    }
+
     public function path(string $name): string
     {
         $safe = (string) preg_replace('/[^\w-]+/', '-', $name);

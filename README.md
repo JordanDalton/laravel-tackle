@@ -271,6 +271,7 @@ The `ai:code` prompt understands commands. Type `/` to autocomplete them:
 | `/plan <task>` | Plan first, edit only after your approval |
 | `/compact` | Summarize older session history to free context |
 | `/clear` | Forget the session history entirely |
+| `/sessions` | List saved sessions and how to resume them |
 | `/help` | List all commands, including your project's own |
 | `/<name> [args]` | Run a [custom command](#custom-commands-tacklecommands) from `.tackle/commands` |
 
