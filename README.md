@@ -172,7 +172,7 @@ All config options can be set via `.env`. Nothing requires editing a PHP file.
 | `AI_CODE_PRICE_OUTPUT` | `15.00` | Output price per million tokens used for budget estimation — set to your model's rate |
 | `AI_CODE_SHELL` | `approve` | Shell mode: `off` \| `allowlist` \| `approve` \| `yolo`. Can be set per-environment in `config/tackle.php` — production defaults to `off`. |
 | `AI_CODE_WORKTREE` | `false` | Enable worktree isolation (production defaults to `true`). |
-| `AI_CODE_MEMORY` | `file` | Session persistence: `none` \| `file` \| `database` |
+| `AI_CODE_MEMORY` | `file` | Session persistence: `file` (resume on next run) \| `none` |
 | `AI_CODE_HEALING_ENABLED` | `false` | Enable the self-healing queue worker feature |
 | `AI_CODE_HEALING_MODE` | `pr` | Healing mode: `pr` \| `patch` |
 | `AI_CODE_HEALING_QUEUE` | `healer` | Queue name for the `HealJobFailure` job |
@@ -465,27 +465,39 @@ The `memory` config controls what happens to conversation history when you exit.
 
 | Mode | Behaviour |
 |---|---|
+| `file` | **(Default)** The transcript is saved to `storage/ai-code/` after every turn. Re-running `ai:code` resumes where you left off. |
 | `none` | History is lost when the session ends. Every `php artisan ai:code` starts fresh. |
-| `file` | **(Default)** The session transcript is saved to `storage/ai-code/`. Re-running `ai:code` picks up where you left off. |
-| `database` | Uses `laravel/ai`'s `RemembersConversations`. Requires publishing and running the `laravel/ai` migrations first. |
 
-### File memory
+With `file` mode you'll see this on your next run:
 
-With the default `file` mode, transcripts are stored as JSON in
-`storage/ai-code/`. The directory is created automatically. You can delete files
-there to clear history, or add `storage/ai-code/` to `.gitignore` to keep
-session history out of your repository.
-
-### Database memory
-
-To use `database` mode, publish and run the `laravel/ai` migrations:
-
-```bash
-php artisan vendor:publish --tag="laravel-ai-migrations"
-php artisan migrate
+```
+Resumed session 'default' — 12 messages of history. Type /clear to start fresh.
 ```
 
-Then set `AI_CODE_MEMORY=database` in `.env`.
+### Named sessions
+
+`--session` keeps separate histories for separate streams of work:
+
+```bash
+php artisan ai:code --session=billing-refactor
+php artisan ai:code --session=bugfixes
+```
+
+`ai:run` joins a persisted session only when `--session` is passed — anonymous
+one-shot runs never pollute your interactive history. That means a cron'd
+`ai:run --session=nightly` accumulates context across nights.
+
+Notes:
+
+- Transcripts are JSON under `storage/ai-code/` — delete a file (or `/clear`
+  in the REPL) to forget a session; gitignore the directory to keep history
+  out of your repository.
+- [Context compaction](#context-compaction) applies to resumed sessions too:
+  a long transcript is summarized before it eats your context window.
+- Image attachments are not persisted — re-attach an image if a later session
+  needs it.
+- Text is persisted, not tool output: a resumed session remembers what was
+  said and done, and the agent re-reads files as needed.
 
 ---
 
@@ -550,7 +562,7 @@ return [
     // Root directory for the agent — null defaults to base_path()
     'workspace' => null,
 
-    // Session memory: none | file (default) | database
+    // Session memory: file (default, resumes across runs) | none
     'memory' => env('AI_CODE_MEMORY', 'file'),
 ];
 ```
@@ -561,7 +573,7 @@ return [
 |---|---|
 | `off` | `RunShell` refuses everything. Use `RunArtisan` / `RunTests` instead. |
 | `allowlist` | Only commands whose first token matches `shell_allowlist` run unattended. |
-| `approve` | **Default.** Every command shows a confirmation prompt before running. |
+| `approve` | **Default.** Every command shows a confirmation prompt before running. Choosing **"always allow this exact command"** saves it to `.tackle/permissions.json`, and it runs without asking from then on. |
 | `yolo` | Runs anything, no prompt. **Dangerous — CI or fully-trusted environments only.** |
 
 Shell mode can be set as a plain string (applies to all environments) or as a
@@ -1488,8 +1500,9 @@ Things Tackle cannot do in v1:
   left unstaged. In worktree mode the agent can commit and push to an existing PR
   branch using the `CommitAndPush` tool, but it will always call `ConfirmAction`
   first.
-- **History resets on exit** (unless `memory=file` or `memory=database`). With
-  the default `file` mode, history persists between sessions automatically.
+- **History persists as text.** With the default `memory=file`, sessions resume
+  across runs, but tool outputs and image attachments are not replayed — the
+  agent re-reads what it needs. Set `memory=none` to start fresh every time.
 - **Budget is estimated, not exact.** The spend limit is calculated from token
   counts using approximate per-model pricing. Actual charges from your provider
   may differ slightly.

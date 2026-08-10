@@ -19,6 +19,7 @@ use Tackle\Support\BudgetTracker;
 use Tackle\Support\ConversationCompactor;
 use Tackle\Support\CustomCommands;
 use Tackle\Support\ImageAttachments;
+use Tackle\Support\SessionStore;
 use Tackle\Support\ToolSummary;
 use Tackle\Support\WorktreeManager;
 
@@ -61,11 +62,17 @@ class CodeCommand extends Command
 
     private ConversationCompactor $compactor;
 
-    public function handle(CodingAgent $agent, BudgetTracker $budget, WorktreeManager $worktrees, CustomCommands $commands, PlanningAgent $planner, ConversationCompactor $compactor): int
+    private SessionStore $sessions;
+
+    private string $sessionName = 'default';
+
+    public function handle(CodingAgent $agent, BudgetTracker $budget, WorktreeManager $worktrees, CustomCommands $commands, PlanningAgent $planner, ConversationCompactor $compactor, SessionStore $sessions): int
     {
         $this->customCommands = $commands;
         $this->planner = $planner;
         $this->compactor = $compactor;
+        $this->sessions = $sessions;
+        $this->sessionName = (string) ($this->option('session') ?: 'default');
 
         if (! App::runningInConsole()) {
             $this->error('ai:code must be run from the terminal.');
@@ -118,6 +125,15 @@ class CodeCommand extends Command
         }
 
         SessionStarted::dispatch('ai:code', (string) config('tackle.provider', 'anthropic'), (string) $model);
+
+        if ($this->sessions->enabled() && method_exists($agent, 'replaceConversation')) {
+            $resumed = $this->sessions->load($this->sessionName);
+
+            if ($resumed !== []) {
+                $agent->replaceConversation($resumed);
+                note("Resumed session '{$this->sessionName}' — ".count($resumed).' messages of history. Type /clear to start fresh.');
+            }
+        }
 
         while (true) {
             $task = (new TackleSuggestPrompt(
@@ -220,11 +236,20 @@ class CodeCommand extends Command
                 note('The session is still active — continue with a new task.');
             }
 
+            $this->persistSession($agent);
+
             $this->showGitDiff();
 
             title('Tackle — Ready');
             $this->line('');
             $this->line('<fg=gray>─────────────────────────────────────────────────────────</>');
+        }
+    }
+
+    private function persistSession(CodingAgent $agent): void
+    {
+        if ($this->sessions->enabled() && method_exists($agent, 'messages')) {
+            $this->sessions->save($this->sessionName, $agent->messages());
         }
     }
 
@@ -253,6 +278,7 @@ class CodeCommand extends Command
             case 'clear':
                 if (method_exists($agent, 'forgetConversation')) {
                     $agent->forgetConversation();
+                    $this->sessions->forget($this->sessionName);
                     note('Session history cleared.');
                 } else {
                     warning('The bound agent does not support /clear.');
@@ -262,6 +288,7 @@ class CodeCommand extends Command
 
             case 'compact':
                 if ($this->compactor->compact($agent)) {
+                    $this->persistSession($agent);
                     note('Session history compacted.');
                 } else {
                     note('Nothing to compact yet.');

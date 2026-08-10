@@ -20,6 +20,7 @@ use Tackle\Support\DenyInteraction;
 use Tackle\Support\Reporting\JsonReporter;
 use Tackle\Support\Reporting\RunReporter;
 use Tackle\Support\Reporting\TextReporter;
+use Tackle\Support\SessionStore;
 use Tackle\Support\WorktreeManager;
 use Throwable;
 
@@ -134,6 +135,19 @@ class RunCommand extends Command
         $budget = $this->laravel->make(BudgetTracker::class);
         $agent = $this->laravel->make(CodingAgent::class);
 
+        // Headless runs join a persisted session only when asked to by name —
+        // anonymous one-shot runs should not pollute the default session.
+        $sessions = $this->laravel->make(SessionStore::class);
+        $sessionName = (string) $this->option('session');
+
+        if ($sessionName !== '' && $sessions->enabled() && method_exists($agent, 'replaceConversation')) {
+            $resumed = $sessions->load($sessionName);
+
+            if ($resumed !== []) {
+                $agent->replaceConversation($resumed);
+            }
+        }
+
         $useWorktree = $this->resolveWorktreeMode();
 
         if ($useWorktree) {
@@ -217,6 +231,12 @@ class RunCommand extends Command
             'worktree' => $worktreePath,
             'pr_url' => $this->pullRequestUrl,
         ]);
+
+        $sessionName = (string) $this->option('session');
+
+        if ($sessionName !== '' && $this->laravel->make(SessionStore::class)->enabled() && method_exists($agent, 'messages')) {
+            $this->laravel->make(SessionStore::class)->save($sessionName, $agent->messages());
+        }
 
         SessionEnded::dispatch(
             'ai:run',

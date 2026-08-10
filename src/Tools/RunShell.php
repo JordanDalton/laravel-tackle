@@ -8,6 +8,7 @@ use Laravel\Ai\Tools\Request;
 use Tackle\Contracts\InteractionPolicy;
 use Tackle\Support\CommandGuard;
 use Tackle\Support\PathGuard;
+use Tackle\Support\PermissionStore;
 use Tackle\Support\Utf8;
 
 class RunShell extends AbstractTool
@@ -82,7 +83,31 @@ class RunShell extends AbstractTool
 
     private function runWithApproval(string $command): string
     {
+        $permissions = app(PermissionStore::class);
+
+        // The user has previously said "always allow" to this exact command.
+        if ($permissions->allows($command)) {
+            return $this->execute($command);
+        }
+
         $interaction = $this->interaction();
+
+        if (method_exists($interaction, 'confirmWithAlways')) {
+            $choice = $interaction->confirmWithAlways(
+                label: 'The agent wants to run a shell command. Allow it?',
+                hint: $command,
+            );
+
+            if ($choice === 'always') {
+                $permissions->allow($command);
+            }
+
+            if ($choice === 'always' || $choice === 'yes') {
+                return $this->execute($command);
+            }
+
+            return "User denied execution of: '{$command}'";
+        }
 
         $approved = $interaction->confirm(
             label: 'The agent wants to run a shell command. Allow it?',

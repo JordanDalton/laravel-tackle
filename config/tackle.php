@@ -233,10 +233,10 @@ return [
     | Memory / Persistence
     |--------------------------------------------------------------------------
     |
+    |   file      - Persist the transcript to storage/ai-code/*.json after
+    |               every turn (default). ai:code resumes it on the next run;
+    |               --session=name keeps separate histories per workstream.
     |   none      - Ephemeral; each session starts fresh.
-    |   file      - Persist transcript to storage/ai-code/*.json (default).
-    |   database  - Use laravel/ai RemembersConversations (requires running
-    |               the laravel/ai migrations first).
     |
     */
     'memory' => env('AI_CODE_MEMORY', 'file'),

@@ -21,6 +21,28 @@ class TerminalInteraction implements InteractionPolicy
         return confirm(label: $label, default: $default, hint: $hint ?? '');
     }
 
+    /**
+     * A confirm with a third answer: approve and remember it. Not part of the
+     * InteractionPolicy contract (adding a method would break custom
+     * policies); callers discover it via method_exists and fall back to
+     * confirm(). Returns 'yes' | 'no' | 'always'.
+     */
+    public function confirmWithAlways(string $label, ?string $hint = null): string
+    {
+        echo PHP_EOL;
+
+        return select(
+            label: $label,
+            options: [
+                'no' => 'No',
+                'yes' => 'Yes, once',
+                'always' => 'Yes, and always allow this exact command in this project',
+            ],
+            default: 'no',
+            hint: $hint ?? '',
+        );
+    }
+
     public function choose(string $question, array $options, bool $multiple = false): string
     {
         echo PHP_EOL;
