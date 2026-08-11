@@ -1295,6 +1295,38 @@ php artisan ai:review --pr=42 --fail-on=warning              # fail on critical 
 `--fail-on` also works for local scopes (`--staged`, `--against=main`, …) —
 useful in pre-push hooks.
 
+### Machine-readable review output
+
+As with `ai:run`, `--output=json` prints one JSON document on stdout —
+diagnostics (including the review prose) go to stderr — so stdout pipes
+straight into `jq`. JSON mode always requests the structured findings block,
+so `verdict` and `findings` are populated even without `--comment` or
+`--fail-on`. Exit codes are unchanged.
+
+```bash
+php artisan ai:review --pr=42 --output=json | jq -r '.verdict'
+```
+
+```json
+{
+  "ok": true,
+  "outcome": "completed",
+  "error": null,
+  "verdict": "needs_changes",
+  "findings": [
+    { "path": "app/Models/Subscription.php", "line": 42, "severity": "critical", "message": "Unchecked null." }
+  ],
+  "text": "The review prose, without the findings block.",
+  "head_sha": "9f2ab1c4…",
+  "pr_number": 42,
+  "usage": { "input_tokens": 41233, "output_tokens": 2210, "estimated_cost_usd": 0.1563 }
+}
+```
+
+`outcome` is `completed`, `nothing_to_review`, `findings_gate_failed`
+(`--fail-on` tripped), or `error`. For local scopes, `head_sha` and
+`pr_number` are `null`.
+
 ### Reviewing every PR automatically
 
 The easiest path is the [tackle-review action](https://github.com/JordanDalton/tackle-review),
@@ -1370,10 +1402,16 @@ the thread:
 
 ```bash
 php artisan ai:respond --pr=42 --comment-id=123456 --comment-type=review
+
+# Machine-readable result — one JSON document on stdout, diagnostics on stderr
+php artisan ai:respond --pr=42 --comment-id=123456 --output=json
 ```
 
 - `--comment-type=review` for inline review comments (the usual case),
   `--comment-type=issue` for comments in the PR conversation tab.
+- `--output=json` reports `ok`, `outcome`, `error`, `pr_number`, `comment_id`,
+  `reply_posted`, `pushed`, and `usage` — the same stdout/stderr discipline
+  and usage shape as `ai:run`. Exit codes are unchanged.
 - If the comment asks a question rather than requesting a change, the agent
   answers in the thread and touches nothing.
 - The reply always arrives — success (with the pushed SHA and diff stat),

@@ -8,6 +8,7 @@ use Laravel\Ai\Streaming\Events\StreamEnd;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolCall;
 use RuntimeException;
+use Tackle\Commands\Concerns\EmitsJsonDocument;
 use Tackle\Commands\Concerns\ResolvesSessionOptions;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Contracts\InteractionPolicy;
@@ -30,9 +31,11 @@ use Throwable;
  */
 class RespondCommand extends Command
 {
+    use EmitsJsonDocument;
     use ResolvesSessionOptions;
 
     protected $signature = 'ai:respond
+        {--output=text   : Result format (text|json)}
         {--pr=           : Pull request number the comment was left on}
         {--comment-id=   : ID of the triggering comment}
         {--comment-type=review : Where the comment lives: review (inline) | issue (conversation)}
@@ -51,12 +54,26 @@ class RespondCommand extends Command
 
     private int $maxSteps = 40;
 
+    private ?int $prNumber = null;
+
+    private ?int $commentId = null;
+
+    private ?BudgetTracker $budget = null;
+
+    private bool $replyPosted = false;
+
+    private bool $pushed = false;
+
     public function handle(
         PullRequestFetcher $prs,
         CommentFetcher $comments,
         CommentResponder $responder,
         GitHubClient $github,
     ): int {
+        if (! $this->resolveOutputFormat()) {
+            return self::FAILURE;
+        }
+
         if (($error = $this->validateOptions()) !== null) {
             $this->error($error);
 
@@ -72,14 +89,20 @@ class RespondCommand extends Command
         }
 
         $this->maxSteps = (int) ($this->option('max-steps') ?: config('tackle.max_steps', 40));
+        $this->prNumber = (int) $this->option('pr');
+        $this->commentId = (int) $this->option('comment-id');
+
+        // Constructed after the budget override above, since the tracker reads
+        // config at construction time.
+        $budget = $this->budget = $this->laravel->make(BudgetTracker::class);
 
         try {
-            $pr = $prs->fetch((int) $this->option('pr'));
-            $comment = $comments->fetch($pr->number, (int) $this->option('comment-id'), (string) $this->option('comment-type'));
+            $pr = $prs->fetch($this->prNumber);
+            $comment = $comments->fetch($pr->number, $this->commentId, (string) $this->option('comment-type'));
         } catch (RuntimeException $e) {
             $this->error($e->getMessage());
 
-            return self::FAILURE;
+            return $this->finish(self::FAILURE, 'error', $e->getMessage());
         }
 
         $responder->acknowledge($comment);
@@ -87,25 +110,26 @@ class RespondCommand extends Command
         // Never push into someone else's repository. Fork PRs get a polite
         // reply instead of a failed push.
         if ($pr->isFromFork((string) $github->repo())) {
-            $responder->reply($pr->number, $comment, '🤖 This PR comes from a fork, and Tackle only pushes to branches in this repository. Apply the change manually or move the branch here.');
-            $this->error("PR #{$pr->number} is from a fork ({$pr->headRepo}) — refusing to push.");
+            $this->reply($responder, $pr->number, $comment, '🤖 This PR comes from a fork, and Tackle only pushes to branches in this repository. Apply the change manually or move the branch here.');
+            $error = "PR #{$pr->number} is from a fork ({$pr->headRepo}) — refusing to push.";
+            $this->error($error);
 
-            return self::FAILURE;
+            return $this->finish(self::FAILURE, 'error', $error);
         }
 
         // The agent edits the local working tree and the result is pushed to
         // the PR branch, so the checkout MUST be the PR head. This is an
         // operator error, not something to announce on the PR.
         if (! $this->checkoutMatches($pr)) {
-            $this->error("Local checkout does not match the PR head ({$pr->headSha}). Check out {$pr->headRef} (in CI: ref: refs/pull/{$pr->number}/head) and re-run.");
+            $error = "Local checkout does not match the PR head ({$pr->headSha}). Check out {$pr->headRef} (in CI: ref: refs/pull/{$pr->number}/head) and re-run.";
+            $this->error($error);
 
-            return self::FAILURE;
+            return $this->finish(self::FAILURE, 'error', $error);
         }
 
         $interaction = $this->option('yes') ? new AutoApproveInteraction : new DenyInteraction;
         $this->laravel->instance(InteractionPolicy::class, $interaction);
 
-        $budget = $this->laravel->make(BudgetTracker::class);
         $agent = $this->laravel->make(CodingAgent::class);
 
         $this->info("Responding to {$comment->author}'s comment on PR #{$pr->number}…");
@@ -117,19 +141,21 @@ class RespondCommand extends Command
                 ? ($e->getMessage() === 'budget_exceeded' ? 'the spend limit was reached' : 'the step limit was reached')
                 : $e->getMessage();
 
-            $responder->reply($pr->number, $comment, "❌ Tackle couldn't complete this: {$reason}");
+            $this->reply($responder, $pr->number, $comment, "❌ Tackle couldn't complete this: {$reason}");
             $this->error("Agent failed: {$reason}");
 
-            return self::FAILURE;
+            $outcome = $e instanceof AgentInterruptedException ? $e->getMessage() : 'error';
+
+            return $this->finish(self::FAILURE, $outcome, $reason);
         }
 
         $summary = $summary !== '' ? $summary : 'Done.';
 
         if (! $this->hasChanges()) {
-            $responder->reply($pr->number, $comment, "🤖 {$this->truncate($summary)}");
+            $this->reply($responder, $pr->number, $comment, "🤖 {$this->truncate($summary)}");
             $this->info('No file changes were needed — replied with the agent\'s answer.');
 
-            return self::SUCCESS;
+            return $this->finish(self::SUCCESS, 'completed');
         }
 
         $diffStat = trim(Process::path(base_path())->run(['git', 'diff', '--stat'])->output());
@@ -137,16 +163,53 @@ class RespondCommand extends Command
         try {
             $sha = $this->commitAndPush($pr, $comment);
         } catch (RuntimeException $e) {
-            $responder->reply($pr->number, $comment, "❌ Tackle made the change locally but couldn't push it: {$e->getMessage()}");
+            $this->reply($responder, $pr->number, $comment, "❌ Tackle made the change locally but couldn't push it: {$e->getMessage()}");
             $this->error($e->getMessage());
 
-            return self::FAILURE;
+            return $this->finish(self::FAILURE, 'error', $e->getMessage());
         }
 
-        $responder->reply($pr->number, $comment, "🔧 {$this->truncate($summary)}\n\nPushed `{$sha}`:\n```\n{$diffStat}\n```");
+        $this->pushed = true;
+
+        $this->reply($responder, $pr->number, $comment, "🔧 {$this->truncate($summary)}\n\nPushed `{$sha}`:\n```\n{$diffStat}\n```");
         $this->info("Pushed {$sha} to {$pr->headRef} and replied.");
 
-        return self::SUCCESS;
+        return $this->finish(self::SUCCESS, 'completed');
+    }
+
+    /**
+     * Post a thread reply and remember whether one actually landed, so the
+     * JSON document can report it.
+     */
+    private function reply(CommentResponder $responder, int $prNumber, CommentThread $comment, string $body): void
+    {
+        if ($responder->reply($prNumber, $comment, $body)) {
+            $this->replyPosted = true;
+        }
+    }
+
+    /**
+     * Resolve the exit code, and in JSON mode emit the single result document
+     * on stdout — every post-validation return funnels through here.
+     */
+    private function finish(int $exit, string $outcome, ?string $error = null): int
+    {
+        if (! $this->jsonOutput) {
+            return $exit;
+        }
+
+        $this->emitJsonDocument([
+            'ok' => $exit === self::SUCCESS,
+            'outcome' => $outcome,
+            'error' => $error,
+            'pr_number' => $this->prNumber,
+            'comment_id' => $this->commentId,
+            'reply_posted' => $this->replyPosted,
+            'pushed' => $this->pushed,
+            'usage' => $this->usageSummary($this->budget),
+        ]);
+
+        return $exit;
     }
 
     private function validateOptions(): ?string
@@ -180,7 +243,12 @@ class RespondCommand extends Command
         $agent->stream($prompt)->each(function ($event) use (&$text, $budget) {
             if ($event instanceof TextDelta) {
                 $text .= $event->delta;
-                $this->output->write($event->delta);
+
+                // In JSON mode stdout is reserved for the result document, so
+                // the narration streams to stderr instead.
+                $this->jsonOutput
+                    ? $this->output->getErrorStyle()->write($event->delta)
+                    : $this->output->write($event->delta);
             } elseif ($event instanceof ToolCall) {
                 // Narration between tool calls ("Let me look at...") is not
                 // the reply — only text after the LAST tool call is kept, so
