@@ -4,21 +4,29 @@ namespace Tackle\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
+use Laravel\Ai\Streaming\Events\StreamEnd;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use RuntimeException;
 use Tackle\Agents\ReviewAgent;
+use Tackle\Commands\Concerns\EmitsJsonDocument;
 use Tackle\Review\DiffLineIndex;
+use Tackle\Review\Finding;
 use Tackle\Review\FindingsParser;
 use Tackle\Review\ParsedReview;
 use Tackle\Review\PullRequest;
 use Tackle\Review\PullRequestFetcher;
 use Tackle\Review\ReviewHistory;
 use Tackle\Review\ReviewPublisher;
+use Tackle\Support\BudgetTracker;
 use Tackle\Support\Utf8;
+use Throwable;
 
 class ReviewCommand extends Command
 {
+    use EmitsJsonDocument;
+
     protected $signature = 'ai:review
+        {--output=text   : Result format (text|json)}
         {--staged        : Review only staged changes (git diff --staged)}
         {--commit=       : Review a specific commit\'s changes}
         {--against=      : Review everything not yet in this branch, e.g. --against=main}
@@ -30,8 +38,22 @@ class ReviewCommand extends Command
 
     protected $description = 'Review code changes with AI — reads the git diff and highlights real issues.';
 
-    public function handle(ReviewAgent $agent, PullRequestFetcher $fetcher, ReviewHistory $history, FindingsParser $parser, ReviewPublisher $publisher): int
+    private ?PullRequest $pr = null;
+
+    private ?ParsedReview $review = null;
+
+    private ?BudgetTracker $budget = null;
+
+    private string $reviewText = '';
+
+    public function handle(ReviewAgent $agent, PullRequestFetcher $fetcher, ReviewHistory $history, FindingsParser $parser, ReviewPublisher $publisher, BudgetTracker $budget): int
     {
+        $this->budget = $budget;
+
+        if (! $this->resolveOutputFormat()) {
+            return self::FAILURE;
+        }
+
         if (($error = $this->validateOptions()) !== null) {
             $this->error($error);
 
@@ -44,11 +66,11 @@ class ReviewCommand extends Command
 
         if ($this->option('pr')) {
             try {
-                $pr = $fetcher->fetch((int) $this->option('pr'));
+                $pr = $this->pr = $fetcher->fetch((int) $this->option('pr'));
             } catch (RuntimeException $e) {
                 $this->error($e->getMessage());
 
-                return self::FAILURE;
+                return $this->finish(self::FAILURE, 'error', $e->getMessage());
             }
 
             $diff = $pr->diff;
@@ -59,7 +81,7 @@ class ReviewCommand extends Command
                 if ($lastSha === $pr->headSha) {
                     $this->info('Nothing new to review — the head commit was already reviewed. Use --full to re-review the whole PR.');
 
-                    return self::SUCCESS;
+                    return $this->finish(self::SUCCESS, 'nothing_to_review');
                 }
 
                 $delta = $history->deltaDiff($lastSha, $pr->headSha);
@@ -67,7 +89,7 @@ class ReviewCommand extends Command
                 if ($delta === '') {
                     $this->info('Nothing new to review — no changes since the last Tackle review. Use --full to re-review the whole PR.');
 
-                    return self::SUCCESS;
+                    return $this->finish(self::SUCCESS, 'nothing_to_review');
                 }
 
                 if ($delta !== null) {
@@ -80,7 +102,7 @@ class ReviewCommand extends Command
             if (! is_dir(base_path('.git'))) {
                 $this->error('ai:review requires a git repository.');
 
-                return self::FAILURE;
+                return $this->finish(self::FAILURE, 'error', 'ai:review requires a git repository.');
             }
 
             $diff = $this->getDiff();
@@ -88,14 +110,14 @@ class ReviewCommand extends Command
             if ($diff === null) {
                 $this->error('Could not read git diff. Check that git is installed and this is a repository.');
 
-                return self::FAILURE;
+                return $this->finish(self::FAILURE, 'error', 'Could not read git diff. Check that git is installed and this is a repository.');
             }
         }
 
         if ($diff === '') {
             $this->info('Nothing to review — no changes detected for the selected scope.');
 
-            return self::SUCCESS;
+            return $this->finish(self::SUCCESS, 'nothing_to_review');
         }
 
         if ($pr !== null) {
@@ -109,18 +131,32 @@ class ReviewCommand extends Command
         $structured = $this->needsStructuredFindings();
         $text = '';
 
-        $response = $agent->stream($prompt);
-        $response->each(function ($event) use (&$text, $structured) {
-            if ($event instanceof TextDelta) {
-                $text .= $event->delta;
+        try {
+            $response = $agent->stream($prompt);
+            $response->each(function ($event) use (&$text, $structured, $budget) {
+                if ($event instanceof TextDelta) {
+                    $text .= $event->delta;
 
-                // In structured mode the response ends with a machine-readable
-                // block, so buffer and print a cleaned version at the end.
-                if (! $structured) {
-                    $this->output->write($event->delta);
+                    // In structured mode the response ends with a machine-readable
+                    // block, so buffer and print a cleaned version at the end.
+                    if (! $structured) {
+                        $this->output->write($event->delta);
+                    }
+                } elseif ($event instanceof StreamEnd) {
+                    $budget->record($event->usage->promptTokens, $event->usage->completionTokens);
                 }
+            });
+        } catch (Throwable $e) {
+            // Text mode keeps the rendered exception; JSON mode owes the
+            // caller a document whatever happened.
+            if (! $this->jsonOutput) {
+                throw $e;
             }
-        });
+
+            $this->error($e->getMessage());
+
+            return $this->finish(self::FAILURE, 'error', $e->getMessage());
+        }
 
         if (! $structured) {
             $this->newLine(2);
@@ -128,15 +164,18 @@ class ReviewCommand extends Command
             return self::SUCCESS;
         }
 
-        $this->line($parser->strip($text));
+        $this->reviewText = $parser->strip($text);
+
+        $this->line($this->reviewText);
         $this->newLine();
 
-        $review = $parser->parse($text);
+        $review = $this->review = $parser->parse($text);
 
         if ($review === null) {
-            $this->error('The agent did not return a parseable findings block, so the review cannot be posted or gated. Re-run to retry.');
+            $error = 'The agent did not return a parseable findings block, so the review cannot be posted or gated. Re-run to retry.';
+            $this->error($error);
 
-            return self::FAILURE;
+            return $this->finish(self::FAILURE, 'error', $error);
         }
 
         if ($this->option('comment')) {
@@ -148,11 +187,44 @@ class ReviewCommand extends Command
             } catch (RuntimeException $e) {
                 $this->error($e->getMessage());
 
-                return self::FAILURE;
+                return $this->finish(self::FAILURE, 'error', $e->getMessage());
             }
         }
 
         return $this->applyFailOn($review);
+    }
+
+    /**
+     * Resolve the exit code, and in JSON mode emit the single result document
+     * on stdout — every post-validation return funnels through here.
+     */
+    private function finish(int $exit, string $outcome, ?string $error = null): int
+    {
+        if (! $this->jsonOutput) {
+            return $exit;
+        }
+
+        $this->emitJsonDocument([
+            'ok' => $exit === self::SUCCESS,
+            'outcome' => $outcome,
+            'error' => $error,
+            'verdict' => $this->review?->verdict,
+            'findings' => array_map(
+                fn (Finding $finding) => [
+                    'path' => $finding->path,
+                    'line' => $finding->line,
+                    'severity' => $finding->severity,
+                    'message' => $finding->message,
+                ],
+                $this->review->findings ?? [],
+            ),
+            'text' => $this->reviewText,
+            'head_sha' => $this->pr?->headSha,
+            'pr_number' => $this->pr?->number,
+            'usage' => $this->usageSummary($this->budget),
+        ]);
+
+        return $exit;
     }
 
     /**
@@ -214,7 +286,9 @@ class ReviewCommand extends Command
 
     private function needsStructuredFindings(): bool
     {
-        return (bool) ($this->option('comment') || $this->option('fail-on'));
+        // JSON output always needs the block — the document reports the
+        // verdict and findings even when nothing gates or posts them.
+        return (bool) ($this->option('comment') || $this->option('fail-on') || $this->jsonOutput);
     }
 
     private function applyFailOn(ParsedReview $review): int
@@ -222,7 +296,7 @@ class ReviewCommand extends Command
         $failOn = $this->option('fail-on');
 
         if (! $failOn) {
-            return self::SUCCESS;
+            return $this->finish(self::SUCCESS, 'completed');
         }
 
         $gated = match ($failOn) {
@@ -235,11 +309,11 @@ class ReviewCommand extends Command
             if ($review->has($severity)) {
                 $this->error("Failing: the review contains {$severity}-level findings (--fail-on={$failOn}).");
 
-                return self::FAILURE;
+                return $this->finish(self::FAILURE, 'findings_gate_failed');
             }
         }
 
-        return self::SUCCESS;
+        return $this->finish(self::SUCCESS, 'completed');
     }
 
     private function getDiff(): ?string

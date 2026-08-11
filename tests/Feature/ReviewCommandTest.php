@@ -4,7 +4,10 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Responses\StreamableAgentResponse;
+use Laravel\Ai\Streaming\Events\StreamEnd;
+use Laravel\Ai\Streaming\Events\TextDelta;
 use Tackle\Agents\ReviewAgent;
 use Tackle\Tools\EditFile;
 use Tackle\Tools\Glob;
@@ -196,4 +199,157 @@ it('ai:review reports nothing when there are no changes', function () {
     // The git repo check requires .git — we test the agent-not-called contract
     // rather than the full command flow, since .git presence varies by test env.
     expect($mockAgent)->toBeObject();
+});
+
+// ---------------------------------------------------------------------------
+// ai:review — JSON output
+// ---------------------------------------------------------------------------
+
+/**
+ * Replace the review agent with one that replays a scripted event stream.
+ */
+function fakeReviewStream(array $events): void
+{
+    $response = Mockery::mock(StreamableAgentResponse::class);
+    $response->shouldReceive('each')->andReturnUsing(function (Closure $callback) use ($events, $response) {
+        foreach ($events as $event) {
+            $callback($event);
+        }
+
+        return $response;
+    });
+
+    $agent = Mockery::mock(ReviewAgent::class);
+    $agent->shouldReceive('stream')->andReturn($response);
+    app()->instance(ReviewAgent::class, $agent);
+}
+
+/**
+ * Fake the GitHub API for PR #7 with no previous Tackle review.
+ */
+function fakeReviewPr(): void
+{
+    config()->set('tackle.github.token', 'ghp_token');
+    config()->set('tackle.github.repo', 'acme/app');
+
+    Http::fake(function ($request) {
+        if (str_contains($request->url(), '/reviews')) {
+            return Http::response([], 200);
+        }
+
+        if ($request->hasHeader('Accept', 'application/vnd.github.v3.diff')) {
+            return Http::response("diff --git a/a.php b/a.php\n", 200);
+        }
+
+        return Http::response([
+            'title' => 'T',
+            'body' => '',
+            'head' => ['ref' => 'feat', 'sha' => 'abc9999'],
+            'base' => ['ref' => 'main'],
+            'html_url' => 'https://github.com/acme/app/pull/7',
+        ], 200);
+    });
+}
+
+/**
+ * Decode the JSON document the command wrote to stdout. Under Artisan::call
+ * both streams share one buffer, so the stderr diagnostics are trimmed off.
+ */
+function reviewJson(string $output): ?array
+{
+    $start = strpos($output, '{');
+
+    return $start === false ? null : json_decode(substr($output, $start), true);
+}
+
+it('ai:review rejects an unknown --output format', function () {
+    $this->artisan('ai:review', ['--output' => 'yaml'])
+        ->expectsOutputToContain('Invalid --output')
+        ->assertExitCode(1);
+});
+
+it('ai:review --output=json emits a single JSON document with the review result', function () {
+    fakeReviewPr();
+
+    Process::fake(['*' => Process::result("abc9999\n")]); // checkout matches the PR head
+
+    fakeReviewStream([
+        new TextDelta('e', 'm', 'Looks solid overall.', 0),
+        new TextDelta('e', 'm', "\n\n```tackle-findings\n".'{"verdict": "needs_changes", "findings": [{"path": "app/A.php", "line": 5, "severity": "critical", "message": "Unchecked null."}]}'."\n```", 0),
+        new StreamEnd('e', 'stop', new Usage(2000, 300), 0),
+    ]);
+
+    $exit = Artisan::call('ai:review', ['--pr' => '7', '--output' => 'json']);
+    $json = reviewJson(Artisan::output());
+
+    expect($exit)->toBe(0)
+        ->and($json)->toBeArray()
+        ->and($json['ok'])->toBeTrue()
+        ->and($json['outcome'])->toBe('completed')
+        ->and($json['error'])->toBeNull()
+        ->and($json['verdict'])->toBe('needs_changes')
+        ->and($json['findings'])->toHaveCount(1)
+        ->and($json['findings'][0])->toBe(['path' => 'app/A.php', 'line' => 5, 'severity' => 'critical', 'message' => 'Unchecked null.'])
+        ->and($json['text'])->toBe('Looks solid overall.')
+        ->and($json['head_sha'])->toBe('abc9999')
+        ->and($json['pr_number'])->toBe(7)
+        ->and($json['usage']['input_tokens'])->toBe(2000)
+        ->and($json['usage']['output_tokens'])->toBe(300);
+});
+
+it('ai:review --output=json reports a failed severity gate without changing the exit code', function () {
+    fakeReviewPr();
+
+    Process::fake(['*' => Process::result("abc9999\n")]);
+
+    fakeReviewStream([
+        new TextDelta('e', 'm', "Found a bug.\n\n```tackle-findings\n".'{"verdict": "needs_changes", "findings": [{"path": "app/A.php", "line": 5, "severity": "critical", "message": "Unchecked null."}]}'."\n```", 0),
+        new StreamEnd('e', 'stop', new Usage(1000, 100), 0),
+    ]);
+
+    $exit = Artisan::call('ai:review', ['--pr' => '7', '--fail-on' => 'critical', '--output' => 'json']);
+    $json = reviewJson(Artisan::output());
+
+    expect($exit)->toBe(1)
+        ->and($json['ok'])->toBeFalse()
+        ->and($json['outcome'])->toBe('findings_gate_failed')
+        ->and($json['error'])->toBeNull()
+        ->and($json['verdict'])->toBe('needs_changes');
+});
+
+it('ai:review --output=json reports nothing_to_review when the head commit was already reviewed', function () {
+    config()->set('tackle.github.token', 'ghp_token');
+    config()->set('tackle.github.repo', 'acme/app');
+
+    Http::fake(function ($request) {
+        if (str_contains($request->url(), '/reviews')) {
+            return Http::response([
+                ['body' => "## Tackle AI Review\n\n<!-- tackle-review:sha=abcd123 -->"],
+            ], 200);
+        }
+
+        if ($request->hasHeader('Accept', 'application/vnd.github.v3.diff')) {
+            return Http::response("diff --git a/a.php b/a.php\n", 200);
+        }
+
+        return Http::response([
+            'title' => 'T',
+            'body' => '',
+            'head' => ['ref' => 'feat', 'sha' => 'abcd123'],
+            'base' => ['ref' => 'main'],
+            'html_url' => 'https://github.com/acme/app/pull/7',
+        ], 200);
+    });
+
+    $exit = Artisan::call('ai:review', ['--pr' => '7', '--output' => 'json']);
+    $json = reviewJson(Artisan::output());
+
+    expect($exit)->toBe(0)
+        ->and($json['ok'])->toBeTrue()
+        ->and($json['outcome'])->toBe('nothing_to_review')
+        ->and($json['error'])->toBeNull()
+        ->and($json['verdict'])->toBeNull()
+        ->and($json['findings'])->toBe([])
+        ->and($json['head_sha'])->toBe('abcd123')
+        ->and($json['pr_number'])->toBe(7);
 });
