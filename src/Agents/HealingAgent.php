@@ -8,6 +8,7 @@ use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Healing\TelescopeReader;
+use Tackle\Support\CommandGuard;
 use Tackle\Support\EventedTool;
 use Tackle\Support\PathGuard;
 use Tackle\Support\ProjectMemory;
@@ -92,7 +93,7 @@ class HealingAgent implements CodingAgent
             new Glob($this->guard),
             new SearchCode($this->guard),
             new EditFile($this->guard),
-            new RunTests($this->guard),
+            new RunTests($this->guard, app(CommandGuard::class)),
             new ReadTelescopeEntry(new TelescopeReader),
         ]);
     }

@@ -3,6 +3,7 @@
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Queue;
+use Tackle\Agents\HealingAgent;
 use Tackle\Healing\JobFailureListener;
 use Tackle\Jobs\HealJobFailure;
 
@@ -82,4 +83,12 @@ it('builds HealJobFailure with correct queue name', function () {
     $listener->handle($event);
 
     Queue::assertPushed(HealJobFailure::class, fn ($j) => $j->queue === 'custom-healer');
+});
+
+it('constructs every healing agent tool without errors', function () {
+    $agent = new HealingAgent(sys_get_temp_dir());
+
+    // Regression: RunTests gained a CommandGuard argument and HealingAgent
+    // was not updated, breaking every heal attempt at tool construction.
+    expect(iterator_count(collect($agent->tools())->getIterator()))->toBeGreaterThan(0);
 });
