@@ -951,7 +951,7 @@ The terminal isn't the only way in. The companion package
 serves a mobile-first browser UI for the same harness:
 
 ```bash
-composer require jordandalton/laravel-tackle-remote --dev
+php artisan tackle:install remote     # composer-requires the package (--no-dev to add to require)
 php artisan tackle:remote --host=0.0.0.0
 ```
 
@@ -1511,8 +1511,11 @@ php artisan ai:review --pr=42 --output=json | jq -r '.verdict'
 
 ### Reviewing every PR automatically
 
-The easiest path is the [tackle-review action](https://github.com/JordanDalton/tackle-review),
-which wraps the whole job in one step:
+The easiest path is `php artisan tackle:install review`, which scaffolds
+`.github/workflows/tackle-review.yml` using the
+[tackle-review action](https://github.com/JordanDalton/tackle-review) —
+add the `ANTHROPIC_API_KEY` secret to the repository and every PR gets
+reviewed. The generated workflow wraps the whole job in one step:
 
 ```yaml
 name: Tackle Review

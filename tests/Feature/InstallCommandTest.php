@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Support\Composer;
+
 beforeEach(function () {
     // Create a blank .env for tests
     file_put_contents(base_path('.env'), '');
@@ -48,4 +50,59 @@ it('does not output migration confirmation unless --migrate is passed', function
         ->assertSuccessful()
         ->expectsOutputToContain('Migrations published')
         ->doesntExpectOutputToContain('Migrations run');
+});
+
+it('installs tackle-remote via composer as a dev dependency', function () {
+    $this->mock(Composer::class, function ($mock) {
+        $mock->shouldReceive('setWorkingPath')->once()->with(base_path())->andReturnSelf();
+        $mock->shouldReceive('requirePackages')
+            ->once()
+            ->withArgs(fn ($packages, $dev) => $packages === ['jordandalton/laravel-tackle-remote'] && $dev === true)
+            ->andReturnTrue();
+    });
+
+    $this->artisan('tackle:install', ['component' => 'remote'])->assertSuccessful();
+});
+
+it('installs tackle-remote into require with --no-dev', function () {
+    $this->mock(Composer::class, function ($mock) {
+        $mock->shouldReceive('setWorkingPath')->andReturnSelf();
+        $mock->shouldReceive('requirePackages')
+            ->once()
+            ->withArgs(fn ($packages, $dev) => $dev === false)
+            ->andReturnTrue();
+    });
+
+    $this->artisan('tackle:install', ['component' => 'remote', '--no-dev' => true])->assertSuccessful();
+});
+
+it('fails loudly when composer require fails', function () {
+    $this->mock(Composer::class, function ($mock) {
+        $mock->shouldReceive('setWorkingPath')->andReturnSelf();
+        $mock->shouldReceive('requirePackages')->once()->andReturnFalse();
+    });
+
+    $this->artisan('tackle:install', ['component' => 'remote'])->assertFailed();
+});
+
+it('scaffolds the tackle-review workflow without overwriting', function () {
+    $path = base_path('.github/workflows/tackle-review.yml');
+    @unlink($path);
+
+    $this->artisan('tackle:install', ['component' => 'review'])->assertSuccessful();
+
+    expect(file_get_contents($path))
+        ->toContain('JordanDalton/tackle-review@v1')
+        ->toContain('pull-requests: write');
+
+    file_put_contents($path, 'custom: workflow');
+    $this->artisan('tackle:install', ['component' => 'review'])->assertSuccessful();
+
+    expect(file_get_contents($path))->toBe('custom: workflow');
+
+    @unlink($path);
+});
+
+it('rejects unknown components with the available list', function () {
+    $this->artisan('tackle:install', ['component' => 'nope'])->assertFailed();
 });
