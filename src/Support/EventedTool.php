@@ -12,10 +12,12 @@ use Tackle\Events\ToolCalled;
 use Tackle\Events\ToolCalling;
 
 /**
- * Wraps a tool so Laravel events fire around its execution — ToolCalling
- * before (vetoable), ToolCalled after. The wrapped tool keeps its identity:
- * laravel/ai resolves tool names via name() when present, so this decorator
- * forwards the inner tool's resolved name.
+ * Wraps a tool so user-defined hooks (config tackle.hooks) and Laravel events
+ * fire around its execution — pre_tool hooks and ToolCalling before (both may
+ * block; pre_tool hooks may also rewrite arguments), ToolCalled and post_tool
+ * hooks after. The wrapped tool keeps its identity: laravel/ai resolves tool
+ * names via name() when present, so this decorator forwards the inner tool's
+ * resolved name.
  *
  * On laravel/ai versions without ToolNameResolver, wrapping would rename every
  * tool to "EventedTool" and break dispatch — wrap() detects that and returns
@@ -70,7 +72,21 @@ class EventedTool implements Tool
 
     public function handle(Request $request): Stringable|string
     {
-        $veto = Event::until(new ToolCalling($this->name(), $request->all()));
+        $hooks = app(HookRunner::class);
+        $arguments = $request->all();
+
+        $pre = $hooks->preTool($this->name(), $arguments);
+
+        if ($pre->blocked) {
+            return (string) $pre->message;
+        }
+
+        if ($pre->arguments !== null && $pre->arguments !== $arguments) {
+            $arguments = $pre->arguments;
+            $request = new Request($arguments, $request->toolCallId());
+        }
+
+        $veto = Event::until(new ToolCalling($this->name(), $arguments));
 
         if ($veto === false) {
             return 'Refused: a ToolCalling event listener vetoed this call.';
@@ -83,13 +99,11 @@ class EventedTool implements Tool
         $start = microtime(true);
 
         $result = $this->inner->handle($request);
+        $durationMs = round((microtime(true) - $start) * 1000, 2);
 
-        ToolCalled::dispatch(
-            $this->name(),
-            $request->all(),
-            (string) $result,
-            round((microtime(true) - $start) * 1000, 2),
-        );
+        ToolCalled::dispatch($this->name(), $arguments, (string) $result, $durationMs);
+
+        $hooks->postTool($this->name(), $arguments, (string) $result, $durationMs);
 
         return $result;
     }

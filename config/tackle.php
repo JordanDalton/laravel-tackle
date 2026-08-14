@@ -243,6 +243,49 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Hooks
+    |--------------------------------------------------------------------------
+    |
+    | User-defined hooks run around agent activity — deterministic policy
+    | enforced in PHP or shell, not by the model. Four events:
+    |
+    |   pre_tool       before a tool executes. May block the call or rewrite
+    |                  its arguments. First block wins; rewrites chain.
+    |   post_tool      after a tool executes. Observe only.
+    |   session_start  when an agent session begins. Observe only.
+    |   session_end    when an agent session ends. Observe only.
+    |
+    | Each hook is an array with either `run` (a shell command) or `using`
+    | (a class name — implements Tackle\Contracts\ToolHook or is invokable).
+    | Tool hooks may also set `match` (a tool-name glob or array of globs,
+    | e.g. 'Run*' or ['EditFile', 'WriteFile']; default '*') and `timeout`
+    | (seconds, default 10).
+    |
+    | Shell protocol: the JSON event payload arrives on stdin. Exit 0 allows
+    | the call — for pre_tool, stdout may contain {"arguments": {...}} to
+    | rewrite the tool arguments. Exit 2 blocks the call, and stderr becomes
+    | the refusal message the agent sees. Any other exit code, a timeout, or
+    | a crash is logged and ignored — a broken hook never blocks a session.
+    |
+    | Class hooks receive the payload array and return null (allow), false
+    | (block), a string (block with that message), or an array (pre_tool
+    | only: replacement arguments).
+    |
+    */
+    'hooks' => [
+        'pre_tool' => [
+            // ['match' => 'RunShell', 'run' => 'scripts/tackle/guard-shell.sh'],
+            // ['match' => '*', 'using' => \App\Hooks\AuditToolCalls::class],
+        ],
+        'post_tool' => [
+            // ['match' => ['EditFile', 'WriteFile'], 'run' => 'vendor/bin/pint --dirty'],
+        ],
+        'session_start' => [],
+        'session_end' => [],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Self-Healing Queue Workers
     |--------------------------------------------------------------------------
     |

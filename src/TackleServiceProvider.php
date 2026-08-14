@@ -26,8 +26,11 @@ use Tackle\Commands\RunCommand;
 use Tackle\Commands\TestCommand;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Contracts\InteractionPolicy;
+use Tackle\Events\SessionEnded;
+use Tackle\Events\SessionStarted;
 use Tackle\Healing\JobFailureListener;
 use Tackle\Healing\ScheduledTaskFailureListener;
+use Tackle\Support\HookRunner;
 use Tackle\Support\TerminalInteraction;
 use Tackle\Support\WorktreeManager;
 
@@ -63,6 +66,7 @@ class TackleServiceProvider extends PackageServiceProvider
     {
         $this->app->bind(CodingAgent::class, DefaultCodingAgent::class);
         $this->app->singleton(WorktreeManager::class);
+        $this->app->singleton(HookRunner::class);
 
         // Prompting through the terminal is the default. Contexts without one
         // (ai:run, tackle:mcp, the healer) rebind this before resolving an agent.
@@ -79,5 +83,22 @@ class TackleServiceProvider extends PackageServiceProvider
             Event::listen(JobFailed::class, JobFailureListener::class);
             Event::listen(ScheduledTaskFailed::class, ScheduledTaskFailureListener::class);
         }
+
+        Event::listen(SessionStarted::class, function (SessionStarted $event) {
+            $this->app->make(HookRunner::class)->sessionEvent('session_start', [
+                'command' => $event->command,
+                'provider' => $event->provider,
+                'model' => $event->model,
+            ]);
+        });
+
+        Event::listen(SessionEnded::class, function (SessionEnded $event) {
+            $this->app->make(HookRunner::class)->sessionEvent('session_end', [
+                'command' => $event->command,
+                'input_tokens' => $event->inputTokens,
+                'output_tokens' => $event->outputTokens,
+                'estimated_cost_usd' => $event->estimatedCostUsd,
+            ]);
+        });
     }
 }
