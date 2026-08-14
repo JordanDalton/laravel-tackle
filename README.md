@@ -2019,9 +2019,11 @@ automatically through the container.
 
 ## Safety
 
-- **Protected paths** — the agent cannot read or write `.env`, `storage/`,
-  `vendor/`, or `.git/` by default. Enforced in `PathGuard`, not via prompting.
-  The model cannot talk its way around this.
+- **Protected paths** — Tackle's file tools cannot read or write `.env`,
+  `storage/`, `vendor/`, or `.git/` by default. Enforced in `PathGuard`, not via
+  prompting — no wording in a prompt makes `ReadFile` return your `.env`. (This
+  guards the *tools*, not the whole process — see
+  [What the guards do and don't stop](#what-the-guards-do-and-dont-stop).)
 - **Unstaged edits** — in standard mode all file changes are left unstaged.
   Review with `git diff`; discard with `git checkout -- .`.
 - **Worktree isolation** — in worktree mode all edits go to a temp copy of the
@@ -2040,6 +2042,57 @@ automatically through the container.
   all run as child processes. A broken generated file cannot crash the session.
 - **Shell is gated** — the default `approve` mode requires your confirmation
   before any shell command runs. Use `--off` for read-only exploration.
+
+### What the guards do and don't stop
+
+Be clear-eyed about what these guarantees are worth, because it changes how you
+should deploy Tackle.
+
+**By default, the agent runs as you.** Every subprocess it starts — `RunTests`,
+`RunArtisan`, `RunPint`, an allowlisted `composer` under `RunShell` — executes
+with your operating-system user's full privileges. Those are separate processes
+that Tackle's in-PHP guards do not sit inside.
+
+The consequence: an agent that can **write code** and **trigger its execution**
+can reach anything your user can, `PathGuard` notwithstanding. It never needs to
+call `ReadFile` on `.env` — it can write a Pest test that reads `env('APP_KEY')`
+and surfaces it, then call `RunTests`; the subprocess reads the file your user
+can already read, and `PathGuard` is never in the path. Composer scripts are
+arbitrary PHP and are the same story. **Worktree mode does not change this** —
+the subprocess still runs as you and still reads the real `.env`.
+
+This is not a bug in the implementation. It is the fundamental limit of running
+an agent at your own privilege level: **in-process guards cannot contain
+in-process code execution.** So:
+
+- **What the guards *do* stop:** honest mistakes, casual missteps, and the
+  accidental blast radius of a confused agent — a stray `rm`, an edit to the
+  wrong file, a `migrate:fresh` on the wrong database. This is the overwhelming
+  majority of what actually goes wrong day to day, and it is real protection.
+- **What they *do not* stop:** a determined agent — or, more realistically, a
+  **prompt-injected** one. `ai:fix --sentry=`, `ai:respond`, and issue-driven
+  runs all ingest text an attacker can influence (a crafted exception message, a
+  PR comment, an issue body). Treat that text as untrusted input that reaches an
+  agent running as you.
+
+**How to actually bound it**, in ascending order of real containment:
+
+1. **Keep the production defaults.** In `production`, shell is `off`, worktree is
+   `on`, and the artisan allowlist narrows to `route:list` — the code-execution
+   paths above are closed there. The exposure is real mainly on a developer's own
+   machine and in staging.
+2. **Run untrusted-input jobs (`ai:fix`, `ai:respond`, self-healing) in CI or a
+   container with scoped, throwaway credentials** — never with your production
+   secrets in the environment. If the agent exfiltrates the env, there is nothing
+   there worth taking.
+3. **Isolate the process.** True containment comes from an OS-level jail (a
+   locked-down container, a disposable VM, throwaway credentials), not from
+   in-language checks. If you need a *structural* guarantee rather than a
+   best-effort one, that is the layer that provides it.
+
+The short version: Tackle's guards make the agent safe to *work with*. They do
+not make an agent running on your machine safe to *distrust*. Deploy the
+untrusted-input paths accordingly.
 
 ---
 
