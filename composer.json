@@ -46,6 +46,9 @@
             "providers": [
                 "Tackle\\TackleServiceProvider"
             ]
+        },
+        "branch-alias": {
+            "dev-main": "1.x-dev"
         }
     },
     "config": {

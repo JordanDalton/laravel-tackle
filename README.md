@@ -22,7 +22,9 @@ can extend or build on top of:
 
 Every agent runs through the same tool infrastructure and safety layer. You can
 add your own tools, write new agents, and swap the default agent entirely —
-all without forking the package.
+all without forking the package. And the terminal isn't the only way to drive
+it: [Tackle Remote](#tackle-remote-drive-it-from-your-phone) puts the same
+harness in your phone's browser, approval prompts and all.
 
 Built on top of [`laravel/ai`](https://github.com/laravel/ai) — and **provider-agnostic**
 like it: Tackle runs on any provider `laravel/ai` supports with tool calling.
@@ -47,6 +49,7 @@ via Ollama are two env vars away. See
 - [Configuration](#configuration)
 - [Built-in tools](#built-in-tools)
 - [Headless mode (CI, cron, scripts)](#headless-mode-ci-cron-scripts)
+- [Tackle Remote (drive it from your phone)](#tackle-remote-drive-it-from-your-phone)
 - [MCP server](#mcp-server)
 - [Self-healing queue workers](#self-healing-queue-workers)
   - [Scheduled command healing](#scheduled-command-healing)
@@ -938,6 +941,33 @@ jobs:
 The job fails on any non-zero exit, so a run that blows the budget or hits the
 step ceiling fails the workflow rather than reporting success with half the work
 done.
+
+---
+
+## Tackle Remote (drive it from your phone)
+
+The terminal isn't the only way in. The companion package
+[**laravel-tackle-remote**](https://github.com/JordanDalton/laravel-tackle-remote)
+serves a mobile-first browser UI for the same harness:
+
+```bash
+composer require jordandalton/laravel-tackle-remote --dev
+php artisan tackle:remote --host=0.0.0.0
+```
+
+Scan the QR code printed in your terminal and your phone is driving the agent
+— send tasks (including photos as context), watch it work tool-by-tool, and
+answer approval prompts from a bottom sheet: *Deny / Allow once / Always
+allow*. Slash commands and `@`-file mentions work like they do in the
+terminal, "always allow" writes to the same permission store, and every
+safety guarantee in this README still applies — it's the same agents, tools,
+and enforcement underneath, with a web page where the terminal used to be.
+
+Pairing links are single-use, sessions are signed with a per-run secret, and
+the recommended remote path is a [Tailscale](https://tailscale.com) tailnet
+rather than an exposed port — see the
+[security model](https://github.com/JordanDalton/laravel-tackle-remote#security)
+for details.
 
 ---
 
