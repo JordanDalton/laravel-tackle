@@ -346,6 +346,24 @@ return [
 
         // Extra regex bodies (no delimiters) appended to SecretExfiltrationGuard.
         'secret_patterns' => [],
+
+        /*
+        | Injection classifier (experimental, off by default). Screens the
+        | untrusted-input readers — Sentry issues, GitHub issues, PR comments,
+        | the inbound prompt-injection surface — with a cheap model. Flagged
+        | content is fenced and labelled as untrusted data rather than blocked,
+        | so the readers still work. Fails OPEN: a classifier error passes the
+        | content through unshielded. It is itself an LLM and can be injected —
+        | it lowers the odds a crafted payload steers the agent, it does not
+        | eliminate them. Defense-in-depth, below OS isolation. Enabling it adds
+        | one cheap model call per untrusted read.
+        */
+        'injection_classifier' => [
+            'enabled' => env('AI_CODE_GUARD_INJECTION', false),
+            'provider' => env('AI_CODE_GUARD_INJECTION_PROVIDER'),
+            'model' => env('AI_CODE_GUARD_INJECTION_MODEL'),
+            'tools' => ['ReadSentryIssue', 'ReadGitHubIssue', 'ReadPullRequest'],
+        ],
     ],
 
     /*

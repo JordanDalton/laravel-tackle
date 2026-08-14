@@ -15,6 +15,7 @@ use Tackle\Support\CommandGuard;
 use Tackle\Support\EventedTool;
 use Tackle\Support\PathGuard;
 use Tackle\Support\ProjectMemory;
+use Tackle\Support\ShieldedTool;
 use Tackle\Tools\AskUser;
 use Tackle\Tools\CommitAndPush;
 use Tackle\Tools\ConfirmAction;
@@ -226,7 +227,7 @@ class DefaultCodingAgent implements CodingAgent
 
     public function tools(): iterable
     {
-        return EventedTool::wrap([
+        return EventedTool::wrap(ShieldedTool::wrap([
             $this->readFile,
             $this->glob,
             $this->searchCode,
@@ -251,6 +252,6 @@ class DefaultCodingAgent implements CodingAgent
             $this->askUser,
             $this->confirmAction,
             ...(config('tackle.subagents', []) ? [$this->delegate] : []),
-        ]);
+        ]));
     }
 }

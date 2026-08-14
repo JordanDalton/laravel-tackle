@@ -2124,6 +2124,32 @@ unsophisticated injection, but it runs in-process at the agent's privilege and
 a determined attacker who avoids the signatures is not stopped by it. It sits
 *below* mitigation #3 (OS-level isolation), never in place of it.
 
+### Injection shield (experimental)
+
+The guards above defend the *outbound* paths — code the agent writes. The
+*inbound* threat is prompt injection through the untrusted text the agent
+reads: a crafted exception message, an issue body, a PR comment carrying
+instructions aimed at the agent. The injection shield screens the untrusted
+readers (`ReadSentryIssue`, `ReadGitHubIssue`, `ReadPullRequest`) with a cheap
+classifier model. Flagged content is returned **fenced and labelled as
+untrusted data the agent must not obey** — reframed, not blocked, so the reader
+still works. Enable it in `config/tackle.php`:
+
+```php
+'guard' => [
+    'injection_classifier' => [
+        'enabled' => env('AI_CODE_GUARD_INJECTION', true),
+        'model'   => 'claude-haiku-4-5-20251001',   // a small, fast model
+    ],
+],
+```
+
+It costs one cheap model call per untrusted read and **fails open** — a
+classifier error passes the content through unshielded rather than breaking the
+read. Same honest caveat, doubly so here: the classifier is itself an LLM and
+can be injected. It lowers the odds a crafted payload steers the main agent; it
+does not eliminate them. Defense-in-depth, still below OS isolation.
+
 ---
 
 ## Troubleshooting
