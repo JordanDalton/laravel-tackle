@@ -9,7 +9,7 @@ use TackleRemote\TackleRemoteServiceProvider;
 class InstallCommand extends Command
 {
     protected $signature = 'tackle:install
-        {component? : Optional add-on: "remote" (phone/browser UI) or "review" (PR review workflow)}
+        {component? : Optional add-on: "remote" (phone/browser UI), "review" (PR review workflow), or "guard" (exfiltration guard hooks)}
         {--stubs : Also publish customisable stubs to stubs/tackle/}
         {--migrate : Run migrations automatically after publishing}
         {--no-dev : For "remote": add to require instead of require-dev}';
@@ -24,6 +24,7 @@ class InstallCommand extends Command
             return match ($component) {
                 'remote' => $this->installRemote(),
                 'review' => $this->installReview(),
+                'guard' => $this->installGuard(),
                 default => $this->unknownComponent($component),
             };
         }
@@ -140,11 +141,36 @@ class InstallCommand extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * Print the recommended tackle.hooks.pre_tool entries for the guard pack.
+     * We show rather than rewrite config/tackle.php: editing a published,
+     * possibly-customised config file programmatically is worse than a
+     * copy-paste the developer can place deliberately.
+     */
+    private function installGuard(): int
+    {
+        $this->line('');
+        $this->line('<fg=green;options=bold>Guard pack</> — add these to <fg=cyan>config/tackle.php</> under <fg=cyan>hooks.pre_tool</>:');
+        $this->line('');
+        $this->line(<<<'PHP'
+          ['match' => ['WriteFile', 'EditFile'], 'using' => \Tackle\Guards\SecretExfiltrationGuard::class],
+          ['match' => ['WriteFile', 'EditFile', 'RunShell'], 'using' => \Tackle\Guards\NetworkExfiltrationGuard::class],
+          ['match' => 'RunShell', 'using' => \Tackle\Guards\ComposerScriptGuard::class],
+        PHP);
+        $this->line('');
+        $this->line('  Tune with <fg=cyan>tackle.guard</> (each mode is block | off; network also confirm).');
+        $this->line('  <fg=yellow>Defense-in-depth, not containment</> — see the Safety section of the README.');
+        $this->line('');
+
+        return self::SUCCESS;
+    }
+
     private function unknownComponent(string $component): int
     {
         $this->components->error("Unknown component '{$component}'. Available:");
         $this->line('  <fg=cyan>php artisan tackle:install remote</>  — browser/phone UI for the agent');
         $this->line('  <fg=cyan>php artisan tackle:install review</>  — GitHub Actions workflow reviewing every PR');
+        $this->line('  <fg=cyan>php artisan tackle:install guard</>   — exfiltration/injection guard hooks');
 
         return self::FAILURE;
     }

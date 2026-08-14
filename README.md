@@ -2094,6 +2094,36 @@ The short version: Tackle's guards make the agent safe to *work with*. They do
 not make an agent running on your machine safe to *distrust*. Deploy the
 untrusted-input paths accordingly.
 
+### Guard pack
+
+Tackle ships optional first-party hooks that block the concrete paths above.
+Install the recommended registration with:
+
+```bash
+php artisan tackle:install guard
+```
+
+It prints three `pre_tool` hook entries to add under `hooks.pre_tool` in
+`config/tackle.php`:
+
+- **`SecretExfiltrationGuard`** (WriteFile, EditFile) — refuses writing code
+  that reads secrets to surface them: `env('…_KEY')`, `config('app.key')`,
+  reading `.env` directly. This closes the write-a-test-that-dumps-env path.
+- **`NetworkExfiltrationGuard`** (WriteFile, EditFile, RunShell) — flags the
+  exfiltration transport: outbound HTTP in agent-authored code, `curl … | sh`,
+  external `curl`/`wget`. Mode `block` (default), `confirm`, or `off`.
+- **`ComposerScriptGuard`** (RunShell) — blocks `composer run-script`/`exec`
+  and lifecycle-script invocations, since composer scripts are arbitrary PHP.
+
+Tune each via `tackle.guard` (`AI_CODE_GUARD_SECRETS`, `…_NETWORK`,
+`…_COMPOSER`); extend the secret patterns with `tackle.guard.secret_patterns`.
+
+**This is defense-in-depth — one more layer, not the wall.** The guard pack
+raises the cost of the known exfiltration paths and catches mistakes and
+unsophisticated injection, but it runs in-process at the agent's privilege and
+a determined attacker who avoids the signatures is not stopped by it. It sits
+*below* mitigation #3 (OS-level isolation), never in place of it.
+
 ---
 
 ## Troubleshooting

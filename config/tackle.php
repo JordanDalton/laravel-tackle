@@ -320,6 +320,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Guard Pack
+    |--------------------------------------------------------------------------
+    |
+    | First-party pre_tool hooks that block the concrete exfiltration and
+    | circumvention paths described in the README's Safety section: writing
+    | code that dumps env() secrets, outbound-network exfiltration transport,
+    | and composer scripts (arbitrary PHP). Register them by adding the guards
+    | to tackle.hooks.pre_tool, or run `php artisan tackle:install guard`.
+    |
+    | IMPORTANT: this is DEFENSE-IN-DEPTH, not containment. These guards run
+    | in-process at the same privilege as the agent — they raise the cost of
+    | an attack and catch mistakes and unsophisticated prompt injection, but
+    | a determined agent that avoids the known signatures is not stopped. Real
+    | containment is OS-level isolation (throwaway credentials in a jailed
+    | container). See "What the guards do and don't stop" in the README.
+    |
+    | Each mode is 'block' (default) or 'off'; network also accepts 'confirm'.
+    |
+    */
+    'guard' => [
+        'secrets' => env('AI_CODE_GUARD_SECRETS', 'block'),
+        'network' => env('AI_CODE_GUARD_NETWORK', 'block'),
+        'composer_scripts' => env('AI_CODE_GUARD_COMPOSER', 'block'),
+
+        // Extra regex bodies (no delimiters) appended to SecretExfiltrationGuard.
+        'secret_patterns' => [],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Self-Healing Queue Workers
     |--------------------------------------------------------------------------
     |
