@@ -30,6 +30,7 @@ use Tackle\Events\SessionEnded;
 use Tackle\Events\SessionStarted;
 use Tackle\Healing\JobFailureListener;
 use Tackle\Healing\ScheduledTaskFailureListener;
+use Tackle\Support\BudgetTracker;
 use Tackle\Support\HookRunner;
 use Tackle\Support\TerminalInteraction;
 use Tackle\Support\WorktreeManager;
@@ -67,6 +68,11 @@ class TackleServiceProvider extends PackageServiceProvider
         $this->app->bind(CodingAgent::class, DefaultCodingAgent::class);
         $this->app->singleton(WorktreeManager::class);
         $this->app->singleton(HookRunner::class);
+
+        // One budget per process: the Delegate tool records subagent usage
+        // into the same tracker the driving command enforces, so delegated
+        // work counts against the session's spend limit.
+        $this->app->singleton(BudgetTracker::class);
 
         // Prompting through the terminal is the default. Contexts without one
         // (ai:run, tackle:mcp, the healer) rebind this before resolving an agent.

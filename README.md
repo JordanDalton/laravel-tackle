@@ -42,6 +42,7 @@ via Ollama are two env vars away. See
 - [Tips for better results](#tips-for-better-results)
 - [Project instructions (TACKLE.md)](#project-instructions-tacklemd)
 - [Session memory](#session-memory)
+- [Subagents](#subagents)
 - [Hooks](#hooks)
 - [Configuration](#configuration)
 - [Built-in tools](#built-in-tools)
@@ -503,6 +504,66 @@ Notes:
 
 ---
 
+## Subagents
+
+The main coding agent can delegate self-contained work to **subagents** —
+separate agents that run the task in their own fresh context with their own
+(usually narrower) toolset, and hand back only their final report. Exploration
+happens in the child; conclusions come back. Long sessions stay coherent
+because reading twenty files to answer "how does billing work?" no longer
+costs the main conversation twenty files of context.
+
+Two subagents ship enabled:
+
+| Name | What it does |
+|---|---|
+| `explorer` | Read-only codebase exploration — locates files, traces how a feature works across classes, reports back with precise file references. |
+| `test-writer` | Writes a Pest test file for a class or behaviour and runs it. |
+
+The agent decides when to delegate (its instructions steer it toward broad
+research and away from small lookups), calling the `Delegate` tool with a
+subagent name and a complete brief. You'll see the call in the session like
+any other tool call.
+
+### Guarantees
+
+- **Shared budget.** Subagent token usage records into the same
+  `BudgetTracker` as the parent session — delegation cannot exceed your
+  spend limit, and a subagent is stopped mid-task if it exhausts it.
+- **Same safety layer.** Subagent tools go through `PathGuard`, allowlists,
+  [hooks](#hooks), and `ToolCalling`/`ToolCalled` events — exactly like the
+  parent's.
+- **One level deep.** A subagent cannot delegate further.
+- **No user prompts.** Subagents never ask questions; they make judgment
+  calls and note them in the report.
+- **Fail-soft.** A subagent that crashes returns an error message to the
+  parent agent, which continues the session.
+
+### Adding your own
+
+Register any `Tackle\Contracts\CodingAgent` implementation in
+`config/tackle.php` — including agents you've written (see
+[Swapping the agent entirely](#swapping-the-agent-entirely)):
+
+```php
+'subagents' => [
+    'explorer' => [
+        'agent' => \Tackle\Agents\ExplorerAgent::class,
+        'description' => 'Read-only codebase exploration...',
+    ],
+    'schema-expert' => [
+        'agent' => \App\Ai\SchemaExpertAgent::class,
+        'description' => 'Answers questions about the database schema, migrations, and model relationships.',
+    ],
+],
+```
+
+The `description` is what the delegating model reads when deciding where to
+send work — write it like a tool description. Set `subagents` to an empty
+array to remove the `Delegate` tool entirely.
+
+---
+
 ## Hooks
 
 Hooks are deterministic commands that run around agent activity — enforced in
@@ -730,6 +791,7 @@ These tools are available to the agent in every session.
 | `CommitAndPush` | Stages all changes, fetches the remote branch tip, rebases onto it, commits, and pushes via `HEAD:<branch>` — without checking out the branch. Use this to add follow-up commits to an existing PR from a worktree session. Always pass the `branch` parameter (get it from `ReadPullRequest`). |
 | `AskUser` | Presents the user with a `select()` or `multiselect()` prompt and returns their choice. The agent calls this when there are multiple valid paths and it wants the user to decide. |
 | `ConfirmAction` | Presents the user with a `confirm()` prompt before a destructive or irreversible operation. Returns `"confirmed"` or `"cancelled"`. |
+| `Delegate` | Runs a self-contained task in a [subagent](#subagents) — a separate agent with its own fresh context and narrower toolset — and returns only its final report. Present only when `tackle.subagents` is non-empty. |
 
 All file reads happen in-process. Everything that executes code runs as a
 subprocess, so a broken generated file cannot crash the agent session.

@@ -20,6 +20,7 @@ use Tackle\Tools\CommitAndPush;
 use Tackle\Tools\ConfirmAction;
 use Tackle\Tools\CreateGitHubIssue;
 use Tackle\Tools\CreatePullRequest;
+use Tackle\Tools\Delegate;
 use Tackle\Tools\EditFile;
 use Tackle\Tools\GitDiff;
 use Tackle\Tools\Glob;
@@ -73,6 +74,7 @@ class DefaultCodingAgent implements CodingAgent
         private readonly CommitAndPush $commitAndPush,
         private readonly AskUser $askUser,
         private readonly ConfirmAction $confirmAction,
+        private readonly Delegate $delegate,
         #[AiProvider] private string $provider = 'anthropic',
         #[AiModel] private string $model = 'claude-sonnet-4-6',
     ) {}
@@ -99,6 +101,7 @@ class DefaultCodingAgent implements CodingAgent
         $destructiveStr = $destructive ? implode(', ', $destructive) : '(none)';
 
         $projectMemory = (new ProjectMemory($workspace))->section();
+        $delegation = $this->delegationGuidance();
 
         return <<<INSTRUCTIONS
         You are an expert Laravel coding assistant running inside the project at: {$workspace}
@@ -122,7 +125,7 @@ class DefaultCodingAgent implements CodingAgent
         - Use WriteFile only for genuinely new files; never for files that already exist.
         - Use RunArtisan for framework operations (make:model, migrate, etc.). Allowed for this environment: {$allowlistStr}. Destructive (terminal confirmation required): {$destructiveStr}. Do NOT attempt RunArtisan with commands outside both lists — they will be refused. For blocked operations, tell the user to run the command themselves in their terminal.
         - Use RunTests after any code change.
-        - Use RunShell only when no other tool suffices.
+        - Use RunShell only when no other tool suffices.{$delegation}
         - Use ReadPullRequest (not ReadGitHubIssue) when the user references a PR number. ReadPullRequest returns the branch name (head ref) which you MUST pass to CommitAndPush as the `branch` parameter.
         - Use CommitAndPush to stage, commit, and push additional changes to an existing PR branch. Always pass the `branch` parameter — the branch name returned by ReadPullRequest or the one you passed to CreatePullRequest. CommitAndPush will show the user a diff preview and ask for confirmation before pushing — you do not need to call ConfirmAction separately. CommitAndPush pushes via `HEAD:<branch>` so no checkout is needed and you will never hit a "branch already checked out" error. Do NOT use RunShell for git add/commit/push — it may be blocked in this environment.
 
@@ -149,6 +152,21 @@ class DefaultCodingAgent implements CodingAgent
         - All edits are left unstaged. The user can review them with `git diff`.
         - Do not auto-commit or push changes.{$projectMemory}
         INSTRUCTIONS;
+    }
+
+    /**
+     * Extra tool guidance included only when subagents are configured, since
+     * the Delegate tool itself is only in the toolset then.
+     */
+    private function delegationGuidance(): string
+    {
+        if (! config('tackle.subagents', [])) {
+            return '';
+        }
+
+        return "\n".<<<'GUIDANCE'
+        - Use Delegate for self-contained research that would flood your context with intermediate output — e.g. "trace how feature X works" across many files, or writing a test file. The subagent starts fresh and cannot see this conversation, so give it a complete brief; then act on its report instead of re-reading the files yourself. Do not delegate small lookups (a single ReadFile or SearchCode is cheaper), and never delegate the actual code edits you were asked to make.
+        GUIDANCE;
     }
 
     /**
@@ -232,6 +250,7 @@ class DefaultCodingAgent implements CodingAgent
             $this->commitAndPush,
             $this->askUser,
             $this->confirmAction,
+            ...(config('tackle.subagents', []) ? [$this->delegate] : []),
         ]);
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+use Tackle\Agents\ExplorerAgent;
+use Tackle\Agents\TestWriterAgent;
 use Tackle\Tools\GitDiff;
 use Tackle\Tools\Glob;
 use Tackle\Tools\ListRoutes;
@@ -240,6 +242,38 @@ return [
     |
     */
     'memory' => env('AI_CODE_MEMORY', 'file'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Subagents
+    |--------------------------------------------------------------------------
+    |
+    | Agents the main coding agent may delegate to via the Delegate tool. A
+    | subagent runs the delegated task in its own fresh context with its own
+    | (usually narrower) toolset and returns only its final report — the
+    | delegating agent's context stays clean.
+    |
+    | Each entry maps a name to an agent class and a description. The
+    | description is what the delegating model reads when deciding whether
+    | and where to delegate — write it like you would a tool description.
+    |
+    | Subagents share the session's budget, their tools pass through the same
+    | safety layer (protected paths, allowlists, hooks, events), and they can
+    | never delegate further or prompt the user. Any class implementing
+    | Tackle\Contracts\CodingAgent works — including your own. Set to an
+    | empty array to remove the Delegate tool entirely.
+    |
+    */
+    'subagents' => [
+        'explorer' => [
+            'agent' => ExplorerAgent::class,
+            'description' => 'Read-only codebase exploration: locates files, traces how a feature works across classes, and reports back with precise file references. Delegate broad "find/understand X" research here.',
+        ],
+        'test-writer' => [
+            'agent' => TestWriterAgent::class,
+            'description' => 'Writes a Pest test file for a class or behaviour and runs it. Give it the class or method to cover and any edge cases worth testing.',
+        ],
+    ],
 
     /*
     |--------------------------------------------------------------------------
