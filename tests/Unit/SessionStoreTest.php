@@ -35,6 +35,13 @@ it('round-trips a transcript preserving roles, content, and order', function () 
         ->and($loaded[2]->content)->toBe('Now add tests');
 });
 
+it('gitignores the transcript dir so app file watchers skip it', function () {
+    $store = new SessionStore;
+    $store->save('test-session', [new UserMessage('hello')]);
+
+    expect(file_get_contents(dirname($store->path('test-session')).'/.gitignore'))->toBe("*\n");
+});
+
 it('returns an empty transcript for unknown sessions', function () {
     expect((new SessionStore)->load('never-existed'))->toBe([]);
 });

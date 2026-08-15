@@ -66,7 +66,16 @@ class SessionStore
         }
 
         try {
-            @mkdir(dirname($this->path($name)), 0755, true);
+            $dir = dirname($this->path($name));
+            @mkdir($dir, 0755, true);
+
+            // Keep transcripts out of git AND out of build-tool file watchers:
+            // Tailwind 4's Vite plugin treats every non-gitignored file as a
+            // content source and full-reloads the app's pages when one changes.
+            if (! is_file($dir.'/.gitignore')) {
+                file_put_contents($dir.'/.gitignore', "*\n");
+            }
+
             file_put_contents($this->path($name), json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         } catch (Throwable) {
             // Persistence is a convenience — never let it break the session.
