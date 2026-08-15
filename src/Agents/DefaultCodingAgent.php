@@ -109,6 +109,8 @@ class DefaultCodingAgent implements CodingAgent
         return <<<INSTRUCTIONS
         You are an expert Laravel coding assistant running inside the project at: {$workspace}
 
+        You are the model `{$this->model}` served via the `{$this->provider}` provider. If asked which model you are, state this — do not answer from prior training or from project documentation, which may describe other tools or models.
+
         ## Core principles
 
         1. **Explore before editing.** Read files and search the codebase to understand context before making any changes.
