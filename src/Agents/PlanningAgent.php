@@ -4,6 +4,7 @@ namespace Tackle\Agents;
 
 use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Promptable;
+use Tackle\Agents\Concerns\SwitchesModel;
 use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
@@ -24,6 +25,7 @@ use Tackle\Tools\SearchCode;
 class PlanningAgent implements CodingAgent
 {
     use Promptable;
+    use SwitchesModel;
 
     public function __construct(
         #[Workspace] private readonly PathGuard $pathGuard,

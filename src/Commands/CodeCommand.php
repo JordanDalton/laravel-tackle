@@ -19,6 +19,7 @@ use Tackle\Support\BudgetTracker;
 use Tackle\Support\ConversationCompactor;
 use Tackle\Support\CustomCommands;
 use Tackle\Support\ImageAttachments;
+use Tackle\Support\ModelCatalog;
 use Tackle\Support\SessionStore;
 use Tackle\Support\ToolSummary;
 use Tackle\Support\WorktreeManager;
@@ -39,6 +40,8 @@ class CodeCommand extends Command
 
     protected $signature = 'ai:code
         {--session= : Resume a named session}
+        {--model= : Override the model for this session (also switchable mid-session with /model)}
+        {--provider= : Override the laravel/ai provider for this session}
         {--plan : Plan first — every task produces a read-only plan you approve before edits happen}
         {--shell= : Override the shell mode for this session (off|allowlist|approve|yolo)}
         {--off : Shorthand for --shell=off}
@@ -64,12 +67,13 @@ class CodeCommand extends Command
 
     private SessionStore $sessions;
 
+    private BudgetTracker $budget;
+
     private string $sessionName = 'default';
 
-    public function handle(CodingAgent $agent, BudgetTracker $budget, WorktreeManager $worktrees, CustomCommands $commands, PlanningAgent $planner, ConversationCompactor $compactor, SessionStore $sessions): int
+    public function handle(WorktreeManager $worktrees, CustomCommands $commands, ConversationCompactor $compactor, SessionStore $sessions): int
     {
         $this->customCommands = $commands;
-        $this->planner = $planner;
         $this->compactor = $compactor;
         $this->sessions = $sessions;
         $this->sessionName = (string) ($this->option('session') ?: 'default');
@@ -89,6 +93,16 @@ class CodeCommand extends Command
         if (! $this->applyShellOverride()) {
             return self::FAILURE;
         }
+
+        $this->applyModelOverride();
+
+        // Resolved after the overrides above — the agent, planner, and
+        // budget tracker all read tackle.model / tackle.pricing at
+        // construction time.
+        $agent = $this->laravel->make(CodingAgent::class);
+        $budget = $this->laravel->make(BudgetTracker::class);
+        $this->planner = $this->laravel->make(PlanningAgent::class);
+        $this->budget = $budget;
 
         $useWorktree = $this->resolveWorktreeMode();
 
@@ -272,6 +286,7 @@ class CodeCommand extends Command
         switch ($name) {
             case 'help':
                 $builtins = "/plan <task> — plan first, edit after your approval\n"
+                    ."/model [name] — switch the model (no name lists models with rates)\n"
                     ."/compact — summarize older session history now\n"
                     ."/clear — forget the session history\n"
                     ."/sessions — list saved sessions\n"
@@ -306,6 +321,11 @@ class CodeCommand extends Command
 
                 return null;
 
+            case 'model':
+                $this->handleModelCommand(trim($args), $agent);
+
+                return null;
+
             case 'sessions':
                 $saved = $this->sessions->all();
 
@@ -333,6 +353,94 @@ class CodeCommand extends Command
         }
 
         return $rendered;
+    }
+
+    /**
+     * /model — switch the session's model. With no argument, shows a picker
+     * listing known models with their per-MTok rates. With one argument,
+     * switches to that model on the current provider; with two ("provider
+     * model"), switches both.
+     */
+    private function handleModelCommand(string $args, CodingAgent $agent): void
+    {
+        if (! method_exists($agent, 'useModel')) {
+            warning('The bound agent does not support /model — restart with --model or AI_CODE_MODEL set instead.');
+
+            return;
+        }
+
+        $provider = null;
+        $model = $args;
+
+        if (str_contains($model, ' ')) {
+            [$provider, $model] = preg_split('/\s+/', $model, 2);
+        }
+
+        if ($model === '') {
+            $current = (string) config('tackle.model');
+            $options = [];
+
+            foreach (ModelCatalog::all() as $id => $rates) {
+                $options[$id] = sprintf(
+                    '%s — $%s in / $%s out per MTok%s',
+                    $id,
+                    $this->formatRate($rates['input']),
+                    $this->formatRate($rates['output']),
+                    $id === $current ? '  (current)' : '',
+                );
+            }
+
+            $options['__custom'] = 'Other — type a model id';
+
+            $model = select(
+                label: 'Switch to which model?',
+                options: $options,
+                default: array_key_exists($current, $options) ? $current : '__custom',
+                scroll: 12,
+            );
+
+            if ($model === '__custom') {
+                $model = trim(text(label: 'Model id', required: true));
+                $providerInput = trim(text(
+                    label: 'Provider',
+                    default: (string) config('tackle.provider', 'anthropic'),
+                    hint: 'Must match a key in config/ai.php',
+                ));
+                $provider = $providerInput !== '' ? $providerInput : null;
+            }
+        }
+
+        if ($model === (string) config('tackle.model') && ($provider === null || $provider === (string) config('tackle.provider'))) {
+            note("Already using {$model}.");
+
+            return;
+        }
+
+        $provider ??= (string) config('tackle.provider', 'anthropic');
+        config(['tackle.provider' => $provider, 'tackle.model' => $model]);
+
+        // The session agent and planner were built before the switch; freshly
+        // resolved agents (subagents, compaction) read the new config.
+        $agent->useModel($provider, $model);
+
+        if (method_exists($this->planner, 'useModel')) {
+            $this->planner->useModel($provider, $model);
+        }
+
+        $repriced = $this->budget->repriceFor($model);
+        $rates = $this->budget->rates();
+        $label = sprintf('$%s in / $%s out per MTok', $this->formatRate($rates['input']), $this->formatRate($rates['output']));
+
+        if ($repriced) {
+            note("Switched to {$model} ({$provider}) — {$label}. Spend so far is kept; future usage bills at the new rates.");
+        } else {
+            warning("Switched to {$model} ({$provider}) — no known rates for this model, so budget tracking continues at {$label}. Add it to tackle.pricing.models for accurate enforcement.");
+        }
+    }
+
+    private function formatRate(float $rate): string
+    {
+        return rtrim(rtrim(number_format($rate, 2, '.', ''), '0'), '.');
     }
 
     /**
@@ -552,7 +660,7 @@ class CodeCommand extends Command
         // Slash-command completion while typing the command name itself.
         if (str_starts_with($input, '/') && ! str_contains($input, ' ')) {
             $query = substr($input, 1);
-            $names = ['plan', 'compact', 'clear', 'sessions', 'help', ...array_keys($this->customCommands->all())];
+            $names = ['plan', 'model', 'compact', 'clear', 'sessions', 'help', ...array_keys($this->customCommands->all())];
 
             return collect($names)
                 ->filter(fn (string $name) => $query === '' || stripos($name, $query) !== false)

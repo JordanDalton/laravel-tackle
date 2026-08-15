@@ -60,6 +60,38 @@ it('does not report over budget when under limit', function () {
     expect($tracker->overBudget())->toBeFalse();
 });
 
+it('resolves rates from the model catalog when no explicit pricing is set', function () {
+    config()->set('tackle.model', 'claude-opus-5');
+    config()->set('tackle.pricing.input_per_mtok', null);
+    config()->set('tackle.pricing.output_per_mtok', null);
+
+    $tracker = app(BudgetTracker::class);
+    $tracker->record(1_000_000, 1_000_000);
+
+    // Opus-class: $5 in / $25 out per MTok.
+    expect($tracker->estimatedCost())->toBe(30.00)
+        ->and($tracker->hasExplicitPricing())->toBeFalse();
+});
+
+it('reprices only future usage when switching models', function () {
+    $tracker = new BudgetTracker(100.00, 3.00, 15.00);
+    $tracker->record(1_000_000, 0); // $3 at the old rate
+
+    expect($tracker->repriceFor('claude-opus-5'))->toBeTrue();
+
+    $tracker->record(1_000_000, 0); // $5 at the new rate
+
+    expect($tracker->estimatedCost())->toBe(8.00)
+        ->and($tracker->rates())->toBe(['input' => 5.00, 'output' => 25.00]);
+});
+
+it('keeps current rates when repricing to an unknown model', function () {
+    $tracker = new BudgetTracker(100.00, 3.00, 15.00);
+
+    expect($tracker->repriceFor('mystery-model-9000'))->toBeFalse()
+        ->and($tracker->rates())->toBe(['input' => 3.00, 'output' => 15.00]);
+});
+
 it('produces a readable summary string', function () {
     $tracker = new BudgetTracker(1.00);
     $tracker->record(1000, 500);

@@ -35,7 +35,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | The model used by the coding agent. Defaults to Claude Sonnet which
-    | offers a good balance of capability and cost. Override via env.
+    | offers a good balance of capability and cost. Override via env, per
+    | session with `ai:code --model=...`, or mid-session with /model.
     |
     */
     'model' => env('AI_CODE_MODEL', 'claude-sonnet-4-6'),
@@ -74,15 +75,27 @@ return [
     | Token Pricing
     |--------------------------------------------------------------------------
     |
-    | Per-million-token rates used to estimate spend against the budget. The
-    | defaults approximate Claude Sonnet. When using another model or provider
-    | (OpenAI, Gemini, Groq, Ollama, ...), set these to its actual rates so
-    | budget enforcement stays meaningful — for local models, set both to 0.
+    | Per-million-token rates used to estimate spend against the budget.
+    |
+    | Leave input/output unset (the default) and Tackle resolves rates
+    | automatically from its built-in model catalog (Tackle\Support\
+    | ModelCatalog — Anthropic, OpenAI, Gemini, and Grok models), including
+    | when you switch models with /model. Setting AI_CODE_PRICE_INPUT /
+    | AI_CODE_PRICE_OUTPUT pins explicit rates instead — for local models,
+    | set both to 0.
+    |
+    | 'models' teaches the catalog about models it doesn't know (or corrects
+    | a stale built-in rate). Matching is by exact id, then prefix.
     |
     */
     'pricing' => [
-        'input_per_mtok' => env('AI_CODE_PRICE_INPUT', 3.00),
-        'output_per_mtok' => env('AI_CODE_PRICE_OUTPUT', 15.00),
+        'input_per_mtok' => env('AI_CODE_PRICE_INPUT'),
+        'output_per_mtok' => env('AI_CODE_PRICE_OUTPUT'),
+
+        'models' => [
+            // 'llama-3.3-70b' => ['input' => 0.0, 'output' => 0.0],
+            // 'gpt-5.2' => ['input' => 1.75, 'output' => 14.00],
+        ],
     ],
 
     /*

@@ -48,6 +48,8 @@ class RunCommand extends Command
         {--output=text : Result format (text|json)}
         {--session= : Resume a named session}
         {--budget= : Override the spend limit in USD for this run}
+        {--model= : Override the model for this run}
+        {--provider= : Override the laravel/ai provider for this run}
         {--max-steps= : Stop after this many tool calls}
         {--yes : Approve confirmations automatically instead of denying them}
         {--fail-on-denied : Exit non-zero if any confirmation was auto-denied}
@@ -98,6 +100,8 @@ class RunCommand extends Command
         if (! $this->applyShellOverride()) {
             return self::EXIT_ERROR;
         }
+
+        $this->applyModelOverride();
 
         if (($budgetOverride = $this->option('budget')) !== null) {
             if (! is_numeric($budgetOverride) || (float) $budgetOverride <= 0) {

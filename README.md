@@ -137,15 +137,15 @@ block — just add the env var and you're ready.
 
 ```env
 AI_CODE_PROVIDER=openai
-AI_CODE_MODEL=gpt-5.2
+AI_CODE_MODEL=gpt-4o
 OPENAI_API_KEY=sk-...
-
-# Keep budget enforcement accurate: your model's per-Mtok rates
-AI_CODE_PRICE_INPUT=1.75
-AI_CODE_PRICE_OUTPUT=14.00
 ```
 
-Or fully local via Ollama — no API key, no cost:
+Budget rates resolve automatically from Tackle's built-in model catalog
+(Anthropic, plus common OpenAI, Gemini, and Grok models — run `/model` in
+`ai:code` to see them with their rates). For models the catalog doesn't know, pin rates
+explicitly so budget enforcement stays meaningful — e.g. fully local via
+Ollama, no API key, no cost:
 
 ```env
 AI_CODE_PROVIDER=ollama
@@ -153,6 +153,14 @@ AI_CODE_MODEL=qwen3-coder
 AI_CODE_PRICE_INPUT=0
 AI_CODE_PRICE_OUTPUT=0
 ```
+
+You can also teach the catalog new models (or correct a stale built-in rate)
+in `config/tackle.php` under `pricing.models`. Non-Anthropic built-in rates
+are best-effort snapshots — verify against your provider's pricing page when
+the budget matters.
+
+Switch models per session with `ai:code --model=... [--provider=...]` (also on
+`ai:run`), or mid-session with `/model`.
 
 Agent quality tracks the model: the coding and review agents lean heavily on
 tool calling, so weaker models produce weaker results. The plumbing is neutral;
@@ -173,8 +181,8 @@ All config options can be set via `.env`. Nothing requires editing a PHP file.
 | `AI_CODE_BUDGET` | `1.00` | Hard spend limit in USD per session |
 | `AI_CODE_COMPACTION_THRESHOLD` | `60000` | Conversation size (chars) that triggers automatic history compaction |
 | `AI_CODE_COMPACTION_KEEP` | `4` | Recent messages kept verbatim when compacting |
-| `AI_CODE_PRICE_INPUT` | `3.00` | Input price per million tokens used for budget estimation — set to your model's rate |
-| `AI_CODE_PRICE_OUTPUT` | `15.00` | Output price per million tokens used for budget estimation — set to your model's rate |
+| `AI_CODE_PRICE_INPUT` | auto | Input price per million tokens for budget estimation. Unset = resolved from the built-in model catalog (falls back to `3.00` for unknown models) |
+| `AI_CODE_PRICE_OUTPUT` | auto | Output price per million tokens for budget estimation. Unset = resolved from the built-in model catalog (falls back to `15.00` for unknown models) |
 | `AI_CODE_SHELL` | `approve` | Shell mode: `off` \| `allowlist` \| `approve` \| `yolo`. Can be set per-environment in `config/tackle.php` — production defaults to `off`. |
 | `AI_CODE_WORKTREE` | `false` | Enable worktree isolation (production defaults to `true`). |
 | `AI_CODE_MEMORY` | `file` | Session persistence: `file` (resume on next run) \| `none` |
@@ -274,6 +282,7 @@ The `ai:code` prompt understands commands. Type `/` to autocomplete them:
 | Command | What it does |
 |---|---|
 | `/plan <task>` | Plan first, edit only after your approval |
+| `/model [name]` | Switch the model mid-session — no name shows a picker listing known models with their per-MTok rates. `/model <provider> <model>` switches provider too. Budget rates update automatically for known models. |
 | `/compact` | Summarize older session history to free context |
 | `/clear` | Forget the session history entirely |
 | `/sessions` | List saved sessions and how to resume them |

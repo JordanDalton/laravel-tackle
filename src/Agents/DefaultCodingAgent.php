@@ -7,6 +7,7 @@ use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Promptable;
 use Laravel\Ai\Responses\StreamableAgentResponse;
+use Tackle\Agents\Concerns\SwitchesModel;
 use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
@@ -47,6 +48,7 @@ class DefaultCodingAgent implements CodingAgent
     use Promptable {
         stream as traitStream;
     }
+    use SwitchesModel;
 
     private array $conversationMessages = [];
 
