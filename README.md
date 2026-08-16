@@ -172,6 +172,14 @@ billing, usage records as $0 against the session budget:
 php artisan tackle:install codex   # then: AI_CODE_PROVIDER=codex
 ```
 
+**Prefer Grok?** The [tackle-grok](https://github.com/JordanDalton/tackle-grok)
+add-on runs the agents on xAI's Grok models — an xAI API key (the recommended
+path) or your grok.com plan:
+
+```bash
+php artisan tackle:install grok    # then: AI_CODE_PROVIDER=grok
+```
+
 Switch models per session with `ai:code --model=... [--provider=...]` (also on
 `ai:run`), or mid-session with `/model`.
 

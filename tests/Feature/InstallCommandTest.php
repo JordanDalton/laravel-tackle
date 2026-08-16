@@ -120,6 +120,41 @@ it('fails loudly when the tackle-codex require fails', function () {
     $this->artisan('tackle:install', ['component' => 'codex'])->assertFailed();
 });
 
+it('installs tackle-grok via composer as a dev dependency', function () {
+    $this->mock(Composer::class, function ($mock) {
+        $mock->shouldReceive('setWorkingPath')->once()->with(base_path())->andReturnSelf();
+        $mock->shouldReceive('requirePackages')
+            ->once()
+            ->withArgs(fn ($packages, $dev) => $packages === ['jordandalton/tackle-grok'] && $dev === true)
+            ->andReturnTrue();
+    });
+
+    $this->artisan('tackle:install', ['component' => 'grok'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('AI_CODE_PROVIDER=grok');
+});
+
+it('installs tackle-grok into require with --no-dev', function () {
+    $this->mock(Composer::class, function ($mock) {
+        $mock->shouldReceive('setWorkingPath')->andReturnSelf();
+        $mock->shouldReceive('requirePackages')
+            ->once()
+            ->withArgs(fn ($packages, $dev) => $dev === false)
+            ->andReturnTrue();
+    });
+
+    $this->artisan('tackle:install', ['component' => 'grok', '--no-dev' => true])->assertSuccessful();
+});
+
+it('fails loudly when the tackle-grok require fails', function () {
+    $this->mock(Composer::class, function ($mock) {
+        $mock->shouldReceive('setWorkingPath')->andReturnSelf();
+        $mock->shouldReceive('requirePackages')->once()->andReturnFalse();
+    });
+
+    $this->artisan('tackle:install', ['component' => 'grok'])->assertFailed();
+});
+
 it('scaffolds the tackle-review workflow without overwriting', function () {
     $path = base_path('.github/workflows/tackle-review.yml');
     @unlink($path);

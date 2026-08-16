@@ -5,15 +5,16 @@ namespace Tackle\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Composer;
 use TackleCodex\TackleCodexServiceProvider;
+use TackleGrok\TackleGrokServiceProvider;
 use TackleRemote\TackleRemoteServiceProvider;
 
 class InstallCommand extends Command
 {
     protected $signature = 'tackle:install
-        {component? : Optional add-on: "remote" (phone/browser UI), "review" (PR review workflow), "codex" (OpenAI Codex provider), or "guard" (exfiltration guard hooks)}
+        {component? : Optional add-on: "remote" (phone/browser UI), "review" (PR review workflow), "codex" (OpenAI Codex provider), "grok" (xAI Grok provider), or "guard" (exfiltration guard hooks)}
         {--stubs : Also publish customisable stubs to stubs/tackle/}
         {--migrate : Run migrations automatically after publishing}
-        {--no-dev : For "remote" / "codex": add to require instead of require-dev}';
+        {--no-dev : For "remote" / "codex" / "grok": add to require instead of require-dev}';
 
     protected $description = 'Install Laravel Tackle — publish config, migrations, and optionally stubs — or an ecosystem add-on.';
 
@@ -26,6 +27,7 @@ class InstallCommand extends Command
                 'remote' => $this->installRemote(),
                 'review' => $this->installReview(),
                 'codex' => $this->installCodex(),
+                'grok' => $this->installGrok(),
                 'guard' => $this->installGuard(),
                 default => $this->unknownComponent($component),
             };
@@ -134,6 +136,47 @@ class InstallCommand extends Command
     }
 
     /**
+     * composer-require the tackle-grok companion package — an xAI Grok
+     * provider that runs the agents on an xAI API key or a grok.com plan.
+     */
+    private function installGrok(): int
+    {
+        if (class_exists(TackleGrokServiceProvider::class)) {
+            $this->components->info('Tackle Grok is already installed.');
+            $this->line('  Set <fg=cyan>AI_CODE_PROVIDER=grok</> and check <fg=cyan>php artisan grok:status</>.');
+
+            return self::SUCCESS;
+        }
+
+        $dev = ! $this->option('no-dev');
+
+        $this->line('');
+        $this->line('<fg=green;options=bold>Installing Tackle Grok'.($dev ? ' (require-dev)' : '').'...</>');
+        $this->line('');
+
+        $composer = $this->laravel->make(Composer::class)->setWorkingPath(base_path());
+
+        if (! $composer->requirePackages(['jordandalton/tackle-grok'], $dev, $this->output)) {
+            $this->components->error('composer require failed — see the output above. Nothing was installed.');
+
+            return self::FAILURE;
+        }
+
+        $this->line('');
+        $this->line('<fg=green;options=bold>Done!</> Run the agents on Grok:');
+        $this->line('');
+        $this->line('  1. Set an xAI API key from <fg=cyan>console.x.ai</> (the recommended path):');
+        $this->line('     <fg=cyan>XAI_API_KEY=xai-...</>');
+        $this->line('     — or sign in with the Grok CLI to use your grok.com plan (best-effort;');
+        $this->line('       see the package README).');
+        $this->line('  2. Set <fg=cyan>AI_CODE_PROVIDER=grok</> in .env.');
+        $this->line('  3. Verify with <fg=cyan>php artisan grok:status</>, then <fg=cyan>php artisan ai:code</>.');
+        $this->line('');
+
+        return self::SUCCESS;
+    }
+
+    /**
      * Scaffold the tackle-review GitHub Actions workflow so every pull
      * request gets reviewed. Never overwrites an existing workflow.
      */
@@ -214,6 +257,7 @@ class InstallCommand extends Command
         $this->line('  <fg=cyan>php artisan tackle:install remote</>  — browser/phone UI for the agent');
         $this->line('  <fg=cyan>php artisan tackle:install review</>  — GitHub Actions workflow reviewing every PR');
         $this->line('  <fg=cyan>php artisan tackle:install codex</>   — OpenAI Codex provider (ChatGPT plan or API key)');
+        $this->line('  <fg=cyan>php artisan tackle:install grok</>    — xAI Grok provider (API key or grok.com plan)');
         $this->line('  <fg=cyan>php artisan tackle:install guard</>   — exfiltration/injection guard hooks');
 
         return self::FAILURE;
