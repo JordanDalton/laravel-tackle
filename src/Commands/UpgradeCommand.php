@@ -298,6 +298,14 @@ class UpgradeCommand extends Command
             } catch (AgentInterruptedException $e) {
                 $outcome = $e->getMessage();
                 $exit = $outcome === 'budget_exceeded' ? self::EXIT_BUDGET : self::EXIT_MAX_STEPS;
+
+                // If the PR is already open, the deliverable exists — the cap
+                // only cut the wrap-up narration. Report success with an
+                // honest outcome label instead of failing a finished run.
+                if ($this->pullRequestUrl !== null) {
+                    $outcome = $outcome === 'budget_exceeded' ? 'completed_over_budget' : 'completed_at_step_ceiling';
+                    $exit = self::EXIT_OK;
+                }
             } catch (Throwable $e) {
                 $outcome = 'error';
                 $exit = self::EXIT_ERROR;

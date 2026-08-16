@@ -219,6 +219,41 @@ it('still enforces an explicit --max-steps in headless mode', function () {
         ->and($document['outcome'])->toBe('max_steps_reached');
 });
 
+it('reports success when the budget trips only after the PR is open', function () {
+    fakeUpgradeComposer([]);
+
+    // The PR opens, then the final turn's usage blows the $1 test budget.
+    // The deliverable exists, so the run must not report failure.
+    fakeUpgradeAgent([
+        new ToolResult('e', new Data\ToolResult('t', 'CreatePullRequest', [], 'Opened https://github.com/acme/app/pull/9'), true, null, 0),
+        new StreamEnd('e', 'stop', new Usage(10_000_000, 1_000_000), 0),
+    ]);
+
+    $exit = Artisan::call('ai:upgrade', ['packages' => ['pestphp/pest'], '--headless' => true, '--output' => 'json']);
+    $output = Artisan::output();
+    $document = json_decode(substr($output, strpos($output, '{')), true);
+
+    expect($exit)->toBe(0)
+        ->and($document['ok'])->toBeTrue()
+        ->and($document['outcome'])->toBe('completed_over_budget')
+        ->and($document['pr_url'])->toBe('https://github.com/acme/app/pull/9');
+});
+
+it('still fails on budget when no PR was delivered', function () {
+    fakeUpgradeComposer([]);
+
+    fakeUpgradeAgent([
+        new StreamEnd('e', 'stop', new Usage(10_000_000, 1_000_000), 0),
+    ]);
+
+    $exit = Artisan::call('ai:upgrade', ['packages' => ['pestphp/pest'], '--headless' => true, '--output' => 'json']);
+    $output = Artisan::output();
+    $document = json_decode(substr($output, strpos($output, '{')), true);
+
+    expect($exit)->toBe(2)
+        ->and($document['outcome'])->toBe('budget_exceeded');
+});
+
 it('reports a headless agent error without dying', function () {
     fakeUpgradeComposer([]);
 
