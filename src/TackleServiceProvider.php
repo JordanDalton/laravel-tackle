@@ -24,6 +24,7 @@ use Tackle\Commands\RespondCommand;
 use Tackle\Commands\ReviewCommand;
 use Tackle\Commands\RunCommand;
 use Tackle\Commands\TestCommand;
+use Tackle\Commands\UpgradeCommand;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Contracts\InteractionPolicy;
 use Tackle\Events\SessionEnded;
@@ -54,6 +55,7 @@ class TackleServiceProvider extends PackageServiceProvider
                 RespondCommand::class,
                 ExplainCommand::class,
                 TestCommand::class,
+                UpgradeCommand::class,
                 HealingLogCommand::class,
                 ReplayCommand::class,
                 PruneCommand::class,

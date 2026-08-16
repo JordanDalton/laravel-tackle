@@ -5,6 +5,7 @@ use Tackle\Agents\ExplainAgent;
 use Tackle\Agents\HealingAgent;
 use Tackle\Agents\ReviewAgent;
 use Tackle\Agents\TestWriterAgent;
+use Tackle\Agents\UpgradeAgent;
 use Tackle\Contracts\CodingAgent;
 
 /**
@@ -22,6 +23,7 @@ it('resolves every shipped agent against the installed laravel/ai contract', fun
     ReviewAgent::class,
     ExplainAgent::class,
     TestWriterAgent::class,
+    UpgradeAgent::class,
 ]);
 
 it('constructs the healing agent, which takes a runtime workspace', function () {

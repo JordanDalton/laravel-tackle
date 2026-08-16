@@ -18,6 +18,7 @@ can extend or build on top of:
 - **`ai:respond`** — acts on a `/tackle` comment left on a pull request: applies the requested change, pushes it to the PR branch, and replies in the thread. Wire it to a workflow and reviewers can type `/tackle fix this` under any finding.
 - **`ai:explain`** — explains what a file, class, or method does in plain English
 - **`ai:test`** — generates a Pest test file for any class or method
+- **`ai:upgrade`** — safe major version upgrades for Composer dependencies: audits what is upgradable, plans from the package's upgrade guide, resolves constraints, fixes the breaking changes, and verifies with your test suite — in an isolated worktree, delivered as a PR
 - **Self-healer** — an autonomous agent that listens for failed jobs and scheduled tasks, diagnoses the exception, patches the code, and opens a PR or applies the fix — without you lifting a finger
 
 Every agent runs through the same tool infrastructure and safety layer. You can
@@ -59,6 +60,7 @@ via Ollama are two env vars away. See
 - [Code review](#code-review)
 - [Explain code](#explain-code)
 - [Generate tests](#generate-tests)
+- [Upgrade a dependency](#upgrade-a-dependency)
 - [Health check](#health-check)
 - [Replay a healing attempt](#replay-a-healing-attempt)
 - [Limitations](#limitations)
@@ -429,7 +431,7 @@ your next task. If something looks wrong, say so or discard with
 ## Project instructions (TACKLE.md)
 
 Every Tackle agent — `ai:code`, `ai:fix`, `ai:review`, `ai:explain`, `ai:test`,
-and the self-healer — loads a `TACKLE.md` file from your project root at the
+`ai:upgrade`, and the self-healer — loads a `TACKLE.md` file from your project root at the
 start of each session and follows it. It's the place to record project
 conventions, boundaries, and gotchas once, instead of repeating them in every
 prompt.
@@ -785,6 +787,8 @@ These tools are available to the agent in every session.
 | `RunPint` | Runs Laravel Pint to format files. Called before finishing a task. |
 | `RunLarastan` | Runs PHPStan / Larastan static analysis and returns the findings. Accepts an optional `path` and `level` override. No-ops gracefully if `vendor/bin/phpstan` is not present. |
 | `RunShell` | General shell — governed by the `shell` config mode. |
+| `RunComposer` | Composer with the dangerous parts fenced off — a fixed set of read-only and mutating subcommands, mutations always `--no-scripts`, scripts re-enabled only by a human at the terminal. Used by `ai:upgrade`. |
+| `ReadPackageDocs` | Reads an installed package's upgrade guide, changelog, or `composer.json` from `vendor/` — a docs-only carve-out of the `vendor/*` protected path; package code stays unreadable. Used by `ai:upgrade`. |
 
 **Observability**
 
@@ -1664,6 +1668,64 @@ php artisan ai:test app/Services/BillingService.php --unit
 Test type is inferred from the path when no flag is given — controllers, jobs,
 commands, listeners, and middleware default to `Feature`; everything else defaults
 to `Unit`.
+
+---
+
+## Upgrade a dependency
+
+`php artisan ai:upgrade` performs a major version upgrade of a Composer package —
+Laravel itself included — the way a careful human would, with the safety
+boundaries enforced in PHP.
+
+```bash
+# What could be upgraded, and what blocks each one? Deterministic, no AI involved.
+php artisan ai:upgrade --audit
+
+# Upgrade one package across a major version
+php artisan ai:upgrade laravel/framework
+
+# No package? Pick one from the audit interactively.
+php artisan ai:upgrade
+```
+
+The session follows a fixed playbook:
+
+1. **Audit** — `composer outdated` establishes what is installed and what is
+   available; `composer why-not` names the packages whose constraints block the
+   jump.
+2. **Plan** — the agent reads the package's `UPGRADE.md` / `CHANGELOG.md` from
+   `vendor/` (a narrow, docs-only carve-out of the `vendor/*` protected path),
+   searches your code for actual usages, and presents a plan covering only the
+   breaking changes that affect *your* app. Nothing mutates until you confirm.
+3. **Resolve** — the constraint is bumped and `composer update
+   --with-all-dependencies` runs. Solver conflicts are diagnosed with `why-not`
+   and the blockers raised iteratively.
+4. **Fix** — the code and config changes the upgrade guide requires, as minimal
+   edits.
+5. **Verify** — your test suite, Larastan if installed, a boot smoke check, and
+   Pint.
+6. **Deliver** — an honest summary (including which upgrade-guide items did
+   *not* apply, and what your tests do *not* cover) and an offer to open a PR.
+
+What makes it safe:
+
+- **Worktree by default.** The whole upgrade — lockfile, `vendor/`, code edits —
+  happens in an isolated git worktree. A failed resolution can never leave your
+  live checkout broken. Opt out with `--no-worktree`.
+- **Lifecycle scripts stay off.** Every composer mutation runs `--no-scripts`
+  (composer scripts are arbitrary project PHP — the same path
+  `ComposerScriptGuard` blocks). Scripts run only when a human approves them in
+  the terminal, after the lockfile change is reviewable.
+- **Composer is fenced.** The agent's composer tool permits a fixed set of
+  subcommands and refuses `--working-dir` / `--global`; `run-script` and `exec`
+  are not available at all.
+- **Green ≠ proven.** The final summary is required to say what the test suite
+  did not exercise, rather than declaring the upgrade safe on a thin green run.
+
+One major per session. For a framework major that forces ecosystem packages to
+move together, the plan lists the full set before anything changes. Major
+upgrades are long sessions — consider raising `AI_CODE_BUDGET` beyond the
+default $1 before starting one.
 
 ---
 
