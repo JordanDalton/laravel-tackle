@@ -1681,6 +1681,9 @@ boundaries enforced in PHP.
 # What could be upgraded, and what blocks each one? Deterministic, no AI involved.
 php artisan ai:upgrade --audit
 
+# Same audit, mirrored to a GitHub issue — built for the scheduler
+php artisan ai:upgrade --audit --issue
+
 # Upgrade one package across a major version
 php artisan ai:upgrade laravel/framework
 
@@ -1738,6 +1741,28 @@ merging one, rebase the next and re-run `composer update` on its branch.
 Major upgrades are long sessions — consider raising `AI_CODE_BUDGET` beyond
 the default $1 before starting one; in a batch the budget applies per package,
 not to the batch as a whole.
+
+### Scheduled dependency watch
+
+The audit needs no AI, no TTY, and costs nothing, so it is safe to run on the
+scheduler. With `--issue` it maintains **exactly one** GitHub issue mirroring
+the audit (requires `GITHUB_TOKEN` + `GITHUB_REPO`):
+
+```php
+// routes/console.php
+Schedule::command('ai:upgrade --audit --issue')->daily();
+```
+
+- The first time majors appear, an issue titled *"Composer major upgrades
+  available"* is opened (labelled `tackle-upgrade-audit`), listing each
+  package with its `why-not` blockers.
+- When the audit changes, the issue body is updated in place. When it hasn't,
+  nothing is written — no daily notification spam.
+- When no major upgrades remain (you upgraded, or constraints resolved), the
+  issue is commented on and closed.
+
+The issue is the reminder; a human stays the trigger — read it and run
+`php artisan ai:upgrade <package>` to turn it into a PR.
 
 ---
 

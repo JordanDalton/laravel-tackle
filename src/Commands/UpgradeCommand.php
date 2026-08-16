@@ -13,6 +13,7 @@ use Tackle\Agents\UpgradeAgent;
 use Tackle\Prompts\TackleSuggestPrompt;
 use Tackle\Support\BudgetTracker;
 use Tackle\Support\WorktreeManager;
+use Tackle\Upgrade\AuditIssueReporter;
 use Tackle\Upgrade\Auditor;
 
 use function Laravel\Prompts\error as promptError;
@@ -29,6 +30,7 @@ class UpgradeCommand extends Command
     protected $signature = 'ai:upgrade
         {packages?*     : One or more Composer packages to upgrade (vendor/name). Each gets its own session and PR. Omit to pick from available majors.}
         {--audit        : Print available major upgrades and what blocks them, then exit (no AI involved)}
+        {--issue        : Also create/update/close a GitHub issue mirroring the audit (implies --audit; requires GITHUB_TOKEN + GITHUB_REPO)}
         {--shell=       : Override the shell mode for this session (off|allowlist|approve|yolo)}
         {--off          : Shorthand for --shell=off}
         {--allowlist    : Shorthand for --shell=allowlist}
@@ -53,8 +55,8 @@ class UpgradeCommand extends Command
 
         $auditor = new Auditor(config('tackle.workspace') ?? base_path());
 
-        if ($this->option('audit')) {
-            return $this->renderAudit($auditor);
+        if ($this->option('audit') || $this->option('issue')) {
+            return $this->renderAudit($auditor, (bool) $this->option('issue'));
         }
 
         if (! $this->isTty()) {
@@ -148,7 +150,7 @@ class UpgradeCommand extends Command
         $this->line('<fg=gray>Each upgrade touches composer.lock — after merging one PR, rebase the next and re-run composer update on its branch.</>');
     }
 
-    private function renderAudit(Auditor $auditor): int
+    private function renderAudit(Auditor $auditor, bool $syncIssue = false): int
     {
         try {
             $majors = $auditor->majors();
@@ -158,32 +160,42 @@ class UpgradeCommand extends Command
             return self::FAILURE;
         }
 
+        foreach ($majors as $i => $major) {
+            $majors[$i]['blockers'] = $auditor->whyNot($major['name'], Auditor::constraintFor($major['latest']));
+        }
+
         if ($majors === []) {
             $this->info('Every direct dependency is on its latest major version.');
             $this->line('Minor and patch updates (if any) are listed by: composer outdated --direct');
+        } else {
+            $this->line('');
+            $this->line('<options=bold>Major upgrades available:</>');
+            $this->line('');
 
-            return self::SUCCESS;
-        }
+            foreach ($majors as $major) {
+                $this->line("  <fg=cyan>{$major['name']}</>  {$major['version']} → <options=bold>{$major['latest']}</>");
 
-        $this->line('');
-        $this->line('<options=bold>Major upgrades available:</>');
-        $this->line('');
-
-        foreach ($majors as $major) {
-            $this->line("  <fg=cyan>{$major['name']}</>  {$major['version']} → <options=bold>{$major['latest']}</>");
-
-            $blockers = $auditor->whyNot($major['name'], Auditor::constraintFor($major['latest']));
-
-            if ($blockers !== '') {
-                foreach (explode("\n", $blockers) as $line) {
-                    $this->line('    <fg=gray>'.$line.'</>');
+                if ($major['blockers'] !== '') {
+                    foreach (explode("\n", $major['blockers']) as $line) {
+                        $this->line('    <fg=gray>'.$line.'</>');
+                    }
                 }
+
+                $this->line('');
             }
 
-            $this->line('');
+            $this->line('Start one with: <options=bold>php artisan ai:upgrade vendor/package</>');
         }
 
-        $this->line('Start one with: <options=bold>php artisan ai:upgrade vendor/package</>');
+        if ($syncIssue) {
+            try {
+                $this->info(app(AuditIssueReporter::class)->sync($majors));
+            } catch (\RuntimeException $e) {
+                $this->error($e->getMessage());
+
+                return self::FAILURE;
+            }
+        }
 
         return self::SUCCESS;
     }

@@ -54,6 +54,13 @@ class GitHubClient
             ->post("https://api.github.com/{$path}", $data);
     }
 
+    public function patch(string $path, array $data = []): Response
+    {
+        return Http::withToken($this->token())
+            ->withHeaders(['Accept' => 'application/vnd.github+json', 'X-GitHub-Api-Version' => '2022-11-28'])
+            ->patch("https://api.github.com/{$path}", $data);
+    }
+
     private function resolveGhToken(): ?string
     {
         try {
