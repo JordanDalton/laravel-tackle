@@ -9,6 +9,7 @@ use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Responses\StreamableAgentResponse;
 use Laravel\Ai\Streaming\Events\StreamEnd;
 use Laravel\Ai\Streaming\Events\TextDelta;
+use Laravel\Ai\Streaming\Events\ToolCall;
 use Laravel\Ai\Streaming\Events\ToolResult;
 use Tackle\Agents\UpgradeAgent;
 use Tackle\Tests\Fakes\FakeCodingAgent;
@@ -176,6 +177,46 @@ it('runs a headless upgrade to a PR and reports it as JSON', function () {
         ->toContain('HEADLESS')
         ->toContain('Refs #12')
         ->toContain('pestphp/pest: v4.7.8 installed');
+});
+
+it('defaults the headless step ceiling to the UpgradeAgent attribute, not the ai:run config', function () {
+    fakeUpgradeComposer([]);
+
+    // 45 tool calls would exceed the old config default (40) but sits inside
+    // the agent's #[MaxSteps] attribute — the session must complete.
+    $events = array_map(
+        fn (int $i) => new ToolCall('e', new Data\ToolCall('t', 'RunComposer', []), $i),
+        range(1, 45),
+    );
+    $events[] = new StreamEnd('e', 'stop', new Usage(1000, 100), 0);
+
+    fakeUpgradeAgent($events);
+
+    $exit = Artisan::call('ai:upgrade', ['packages' => ['pestphp/pest'], '--headless' => true, '--output' => 'json']);
+    $output = Artisan::output();
+    $document = json_decode(substr($output, strpos($output, '{')), true);
+
+    expect($exit)->toBe(0)
+        ->and($document['outcome'])->toBe('completed')
+        ->and($document['steps'])->toBe(45);
+});
+
+it('still enforces an explicit --max-steps in headless mode', function () {
+    fakeUpgradeComposer([]);
+
+    $events = array_map(
+        fn (int $i) => new ToolCall('e', new Data\ToolCall('t', 'RunComposer', []), $i),
+        range(1, 45),
+    );
+
+    fakeUpgradeAgent($events);
+
+    $exit = Artisan::call('ai:upgrade', ['packages' => ['pestphp/pest'], '--headless' => true, '--output' => 'json', '--max-steps' => '10']);
+    $output = Artisan::output();
+    $document = json_decode(substr($output, strpos($output, '{')), true);
+
+    expect($exit)->toBe(4)
+        ->and($document['outcome'])->toBe('max_steps_reached');
 });
 
 it('reports a headless agent error without dying', function () {

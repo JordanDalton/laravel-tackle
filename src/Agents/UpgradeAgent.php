@@ -33,7 +33,10 @@ use Tackle\Tools\RunTests;
 use Tackle\Tools\SearchCode;
 use Tackle\Tools\WriteFile;
 
-#[MaxSteps(60)]
+// Major upgrades are long sessions: reading paged changelogs, a constraint
+// resolution loop, and repeated test runs all cost steps. 80 is deliberately
+// above DefaultCodingAgent's 40 — the budget is the real ceiling.
+#[MaxSteps(80)]
 class UpgradeAgent implements CodingAgent
 {
     use Promptable {

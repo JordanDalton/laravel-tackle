@@ -242,7 +242,14 @@ class UpgradeCommand extends Command
             $majors = [];
         }
 
-        $maxSteps = (int) config('tackle.max_steps', 40);
+        // The config default (40) is sized for ai:run's general agent. An
+        // upgrade session is longer by nature — paged changelogs, a resolve
+        // loop, repeated test runs — so default to the UpgradeAgent's own
+        // #[MaxSteps] attribute. An explicit --max-steps still wins, and
+        // laravel/ai enforces the attribute as a hard upper bound regardless.
+        $maxSteps = $this->option('max-steps') !== null
+            ? (int) config('tackle.max_steps', 40)
+            : $this->agentMaxSteps();
         $worstExit = self::EXIT_OK;
 
         foreach ($packages as $package) {
@@ -330,6 +337,14 @@ class UpgradeCommand extends Command
         }
 
         return $worstExit;
+    }
+
+    private function agentMaxSteps(): int
+    {
+        $attributes = (new \ReflectionClass(UpgradeAgent::class))
+            ->getAttributes(\Laravel\Ai\Attributes\MaxSteps::class);
+
+        return $attributes !== [] ? $attributes[0]->newInstance()->value : 60;
     }
 
     private function headlessPrompt(string $package, string $context, ?int $refIssue): string
