@@ -2,6 +2,8 @@
 
 **An AI agent harness for Laravel.**
 
+> 📚 **Full documentation: [tackle.jordandalton.com](https://tackle.jordandalton.com)**
+
 Tackle is the runtime layer that lets AI agents operate inside your Laravel
 application — reading code, executing tools, running tests, and taking action,
 with safety boundaries enforced at the framework level.
