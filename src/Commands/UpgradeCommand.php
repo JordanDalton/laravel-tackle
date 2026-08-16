@@ -10,11 +10,21 @@ use Laravel\Ai\Streaming\Events\ToolCall;
 use Laravel\Ai\Streaming\Events\ToolResult;
 use Laravel\Prompts\Stream;
 use Tackle\Agents\UpgradeAgent;
+use Tackle\Commands\Concerns\ResolvesSessionOptions;
+use Tackle\Contracts\InteractionPolicy;
+use Tackle\Events\SessionEnded;
+use Tackle\Events\SessionStarted;
+use Tackle\Exceptions\AgentInterruptedException;
 use Tackle\Prompts\TackleSuggestPrompt;
+use Tackle\Support\AutoApproveInteraction;
 use Tackle\Support\BudgetTracker;
+use Tackle\Support\Reporting\JsonReporter;
+use Tackle\Support\Reporting\RunReporter;
+use Tackle\Support\Reporting\TextReporter;
 use Tackle\Support\WorktreeManager;
 use Tackle\Upgrade\AuditIssueReporter;
 use Tackle\Upgrade\Auditor;
+use Throwable;
 
 use function Laravel\Prompts\error as promptError;
 use function Laravel\Prompts\intro;
@@ -27,10 +37,31 @@ use function Laravel\Prompts\warning;
 
 class UpgradeCommand extends Command
 {
+    use ResolvesSessionOptions;
+
+    /** Completed normally. */
+    public const EXIT_OK = 0;
+
+    /** The agent, composer, or provider errored. */
+    public const EXIT_ERROR = 1;
+
+    /** Stopped because the spend limit was reached. */
+    public const EXIT_BUDGET = 2;
+
+    /** Hit the step ceiling without finishing. */
+    public const EXIT_MAX_STEPS = 4;
+
     protected $signature = 'ai:upgrade
         {packages?*     : One or more Composer packages to upgrade (vendor/name). Each gets its own session and PR. Omit to pick from available majors.}
         {--audit        : Print available major upgrades and what blocks them, then exit (no AI involved)}
         {--issue        : Also create/update/close a GitHub issue mirroring the audit (implies --audit; requires GITHUB_TOKEN + GITHUB_REPO)}
+        {--headless     : Run unattended — no prompts, plan confirmation folded into the PR body, PR opened automatically; for CI and schedulers}
+        {--output=text  : Headless result format (text|json)}
+        {--ref-issue=   : GitHub issue number the headless PR should reference (Refs #N)}
+        {--budget=      : Override the spend limit in USD (applies per package)}
+        {--max-steps=   : Stop a package session after this many tool calls (headless)}
+        {--model=       : Override the model for this session}
+        {--provider=    : Override the laravel/ai provider for this session}
         {--shell=       : Override the shell mode for this session (off|allowlist|approve|yolo)}
         {--off          : Shorthand for --shell=off}
         {--allowlist    : Shorthand for --shell=allowlist}
@@ -44,6 +75,10 @@ class UpgradeCommand extends Command
     private ?Stream $activeStream = null;
 
     private array $history = [];
+
+    private int $steps = 0;
+
+    private ?string $pullRequestUrl = null;
 
     public function handle(WorktreeManager $worktrees): int
     {
@@ -59,27 +94,40 @@ class UpgradeCommand extends Command
             return $this->renderAudit($auditor, (bool) $this->option('issue'));
         }
 
-        if (! $this->isTty()) {
-            $this->error('ai:upgrade requires an interactive TTY. Use --audit for a non-interactive report.');
-
-            return self::FAILURE;
+        if (! $this->applyShellOverride()) {
+            return self::EXIT_ERROR;
         }
 
-        $shell = match (true) {
-            (bool) $this->option('off') => 'off',
-            (bool) $this->option('allowlist') => 'allowlist',
-            (bool) $this->option('approve') => 'approve',
-            (bool) $this->option('yolo') => 'yolo',
-            default => $this->option('shell'),
-        };
+        $this->applyModelOverride();
 
-        if ($shell !== null) {
-            if (! in_array($shell, ['off', 'allowlist', 'approve', 'yolo'], strict: true)) {
-                $this->error("Invalid --shell value '{$shell}'. Must be one of: off, allowlist, approve, yolo.");
+        if (($budgetOverride = $this->option('budget')) !== null) {
+            if (! is_numeric($budgetOverride) || (float) $budgetOverride <= 0) {
+                $this->error("Invalid --budget value '{$budgetOverride}'. Must be a positive number.");
 
-                return self::FAILURE;
+                return self::EXIT_ERROR;
             }
-            config(['tackle.shell' => $shell]);
+
+            config(['tackle.budget_usd' => (float) $budgetOverride]);
+        }
+
+        if (($stepsOverride = $this->option('max-steps')) !== null) {
+            if (! ctype_digit((string) $stepsOverride) || (int) $stepsOverride < 1) {
+                $this->error("Invalid --max-steps value '{$stepsOverride}'. Must be a positive integer.");
+
+                return self::EXIT_ERROR;
+            }
+
+            config(['tackle.max_steps' => (int) $stepsOverride]);
+        }
+
+        if ($this->option('headless')) {
+            return $this->runHeadless($worktrees, $auditor);
+        }
+
+        if (! $this->isTty()) {
+            $this->error('ai:upgrade requires an interactive TTY. Use --audit for a non-interactive report, or --headless for an unattended upgrade.');
+
+            return self::FAILURE;
         }
 
         // Audit against the live workspace before any worktree exists —
@@ -148,6 +196,200 @@ class UpgradeCommand extends Command
 
         $this->line('');
         $this->line('<fg=gray>Each upgrade touches composer.lock — after merging one PR, rebase the next and re-run composer update on its branch.</>');
+    }
+
+    /**
+     * Unattended upgrades: one non-interactive session per package, no
+     * prompts, PR opened automatically. The PR is the human gate — and
+     * because the bound interaction policy is never interactive, composer
+     * lifecycle scripts cannot be enabled in this mode at all.
+     */
+    private function runHeadless(WorktreeManager $worktrees, Auditor $auditor): int
+    {
+        $format = (string) $this->option('output');
+
+        if (! in_array($format, ['text', 'json'], strict: true)) {
+            $this->error("Invalid --output value '{$format}'. Must be one of: text, json.");
+
+            return self::EXIT_ERROR;
+        }
+
+        $refIssue = $this->option('ref-issue');
+
+        if ($refIssue !== null && ! ctype_digit((string) $refIssue)) {
+            $this->error("Invalid --ref-issue value '{$refIssue}'. Must be an issue number.");
+
+            return self::EXIT_ERROR;
+        }
+
+        $packages = array_values(array_unique($this->argument('packages')));
+
+        if ($packages === []) {
+            $this->error('Headless mode requires explicit package names — it will not pick targets itself. Run ai:upgrade --audit to see what is available.');
+
+            return self::EXIT_ERROR;
+        }
+
+        // Confirmations auto-approve so the playbook proceeds to the PR with
+        // nobody watching. This never reaches composer scripts: RunComposer
+        // requires an *interactive* approval, and this policy is final-false.
+        $this->laravel->instance(InteractionPolicy::class, new AutoApproveInteraction);
+
+        try {
+            $majors = $auditor->majors();
+        } catch (\RuntimeException $e) {
+            $this->getOutput()->getErrorStyle()->writeln('<comment>'.$e->getMessage().' — continuing without audit context.</comment>');
+            $majors = [];
+        }
+
+        $maxSteps = (int) config('tackle.max_steps', 40);
+        $worstExit = self::EXIT_OK;
+
+        foreach ($packages as $package) {
+            // Fresh budget and agent per package, same isolation as the
+            // interactive batch.
+            app()->forgetInstance(BudgetTracker::class);
+            $budget = app(BudgetTracker::class);
+            $this->steps = 0;
+            $this->pullRequestUrl = null;
+
+            $reporter = $format === 'json'
+                ? new JsonReporter($this->output)
+                : new TextReporter($this->output);
+
+            $useWorktree = $this->resolveWorktreeMode();
+
+            if ($useWorktree) {
+                try {
+                    $worktrees->create();
+                } catch (\RuntimeException $e) {
+                    $reporter->note('Could not create worktree: '.$e->getMessage().' — falling back to live workspace.');
+                    $useWorktree = false;
+                }
+            }
+
+            SessionStarted::dispatch('ai:upgrade', (string) config('tackle.provider', 'anthropic'), (string) config('tackle.model'));
+
+            $reporter->starting([
+                'package' => $package,
+                'model' => config('tackle.model'),
+                'shell' => $this->resolveShellMode(),
+                'worktree' => $useWorktree ? $worktrees->path() : 'off',
+                'budget' => sprintf('$%.2f', $budget->budgetUsd()),
+                'max_steps' => $maxSteps,
+            ]);
+
+            $context = $auditor->promptContext($package, $packages, $majors);
+            $outcome = 'completed';
+            $exit = self::EXIT_OK;
+            $error = null;
+
+            try {
+                app(UpgradeAgent::class)
+                    ->stream($this->headlessPrompt($package, $context, $refIssue !== null ? (int) $refIssue : null))
+                    ->each(fn ($event) => $this->handleHeadlessEvent($event, $budget, $reporter, $maxSteps));
+            } catch (AgentInterruptedException $e) {
+                $outcome = $e->getMessage();
+                $exit = $outcome === 'budget_exceeded' ? self::EXIT_BUDGET : self::EXIT_MAX_STEPS;
+            } catch (Throwable $e) {
+                $outcome = 'error';
+                $exit = self::EXIT_ERROR;
+                $error = $e->getMessage();
+            }
+
+            $root = $worktrees->active() ? $worktrees->path() : base_path();
+
+            $reporter->finish([
+                'ok' => $exit === self::EXIT_OK,
+                'package' => $package,
+                'outcome' => $outcome,
+                'error' => $error,
+                'steps' => $this->steps,
+                'diff_stat' => trim((string) shell_exec('git -C '.escapeshellarg($root).' diff --stat 2>/dev/null')),
+                'usage' => [
+                    'input_tokens' => $budget->inputTokens(),
+                    'output_tokens' => $budget->outputTokens(),
+                    'estimated_cost_usd' => round($budget->estimatedCost(), 4),
+                ],
+                'budget_usd' => $budget->budgetUsd(),
+                'pr_url' => $this->pullRequestUrl,
+            ]);
+
+            if ($worktrees->active()) {
+                $worktrees->cleanup();
+            }
+
+            SessionEnded::dispatch(
+                'ai:upgrade',
+                $budget->inputTokens(),
+                $budget->outputTokens(),
+                round($budget->estimatedCost(), 4),
+            );
+
+            $worstExit = max($worstExit, $exit);
+        }
+
+        return $worstExit;
+    }
+
+    private function headlessPrompt(string $package, string $context, ?int $refIssue): string
+    {
+        $refLine = $refIssue !== null
+            ? " Include `Refs #{$refIssue}` on its own line in the PR body — Refs, not Closes: the audit issue closes itself once no majors remain."
+            : '';
+
+        return "Upgrade the Composer package `{$package}` to its next major version in this Laravel application.\n\n"
+            ."--- Pre-session audit (from the live workspace) ---\n{$context}---\n\n"
+            .'This session is HEADLESS: no user is present, so never ask questions or wait for input. '
+            .'Follow the upgrade playbook autonomously, with these adjustments: '
+            .'(1) Skip the plan-confirmation step — write the plan summary into the PR body instead. '
+            .'(2) Composer lifecycle scripts cannot be enabled in this session; work with --no-scripts throughout. '
+            .'(3) When verification passes, open the pull request immediately via CreatePullRequest, with the honest summary as the body.'.$refLine.' '
+            .'(4) If the upgrade cannot be completed safely, do NOT open a PR — stop and state exactly where it is stuck and why.';
+    }
+
+    private function handleHeadlessEvent(mixed $event, BudgetTracker $budget, RunReporter $reporter, int $maxSteps): void
+    {
+        if ($event instanceof TextDelta) {
+            $reporter->text($event->delta);
+
+            return;
+        }
+
+        if ($event instanceof ToolCall) {
+            $this->steps++;
+
+            $reporter->toolCall($event->toolCall->name, (array) $event->toolCall->arguments);
+
+            // Enforced here because laravel/ai resolves its own MaxSteps from a
+            // class attribute, which cannot be overridden at runtime.
+            if ($this->steps > $maxSteps) {
+                throw new AgentInterruptedException('max_steps_reached');
+            }
+
+            return;
+        }
+
+        if ($event instanceof ToolResult) {
+            $result = (string) ($event->toolResult->result ?? '');
+
+            $reporter->toolResult($event->toolResult->name, $result);
+
+            if ($event->toolResult->name === 'CreatePullRequest'
+                && preg_match('#https://github\.com/\S+/pull/\d+#', $result, $matches)) {
+                $this->pullRequestUrl = $matches[0];
+            }
+
+            return;
+        }
+
+        if ($event instanceof StreamEnd) {
+            $budget->record($event->usage->promptTokens, $event->usage->completionTokens);
+
+            if ($budget->overBudget()) {
+                throw new AgentInterruptedException('budget_exceeded');
+            }
+        }
     }
 
     private function renderAudit(Auditor $auditor, bool $syncIssue = false): int
@@ -268,7 +510,7 @@ class UpgradeCommand extends Command
 
         try {
             $this->runAgentTurn($agent, $budget, $firstPrompt);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->closeStream();
             promptError('Agent error: '.$e->getMessage());
             note('The session is still active — continue with a new task.');
@@ -318,7 +560,7 @@ class UpgradeCommand extends Command
 
             try {
                 $this->runAgentTurn($agent, $budget, $task);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $this->closeStream();
                 promptError('Agent error: '.$e->getMessage());
                 note('The session is still active — continue with a new task.');

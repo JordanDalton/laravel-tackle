@@ -1,17 +1,58 @@
 <?php
 
 use Illuminate\Process\PendingProcess;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Laravel\Ai\Responses\Data;
+use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\StreamableAgentResponse;
+use Laravel\Ai\Streaming\Events\StreamEnd;
+use Laravel\Ai\Streaming\Events\TextDelta;
+use Laravel\Ai\Streaming\Events\ToolResult;
+use Tackle\Agents\UpgradeAgent;
+use Tackle\Tests\Fakes\FakeCodingAgent;
+
+class CapturingFakeUpgradeAgent extends FakeCodingAgent
+{
+    public ?string $prompt = null;
+
+    public function stream(mixed $prompt, array $attachments = [], mixed $provider = null, ?string $model = null, ?int $timeout = null): StreamableAgentResponse
+    {
+        $this->prompt = is_string($prompt) ? $prompt : null;
+
+        return parent::stream($prompt, $attachments, $provider, $model, $timeout);
+    }
+}
+
+function fakeUpgradeAgent(array $events): CapturingFakeUpgradeAgent
+{
+    $agent = new CapturingFakeUpgradeAgent($events);
+    app()->instance(UpgradeAgent::class, $agent);
+
+    return $agent;
+}
+
+function upgradePrEvents(): array
+{
+    return [
+        new TextDelta('e', 'm', 'Upgraded cleanly.', 0),
+        new ToolResult('e', new Data\ToolResult('t', 'CreatePullRequest', [], 'Opened https://github.com/acme/app/pull/9'), true, null, 0),
+        new StreamEnd('e', 'stop', new Usage(1000, 100), 0),
+    ];
+}
 
 function fakeUpgradeComposer(array $majors): void
 {
     Process::fake(function (PendingProcess $process) use ($majors) {
-        if (in_array('outdated', $process->command, strict: true)) {
+        // Composer runs as an array command; git (worktrees) runs as a string.
+        $command = is_array($process->command) ? $process->command : explode(' ', (string) $process->command);
+
+        if (in_array('outdated', $command, strict: true)) {
             return Process::result(json_encode(['installed' => $majors]));
         }
 
-        if (in_array('why-not', $process->command, strict: true)) {
+        if (in_array('why-not', $command, strict: true)) {
             return Process::result('laravel/framework is locked to version v11.44.0');
         }
 
@@ -89,6 +130,67 @@ it('requires a TTY for an interactive session', function () {
     $this->artisan('ai:upgrade', ['packages' => ['laravel/framework']])
         ->expectsOutputToContain('requires an interactive TTY')
         ->assertExitCode(1);
+});
+
+it('refuses headless mode without explicit packages', function () {
+    fakeUpgradeComposer([]);
+
+    $this->artisan('ai:upgrade', ['--headless' => true])
+        ->expectsOutputToContain('requires explicit package names')
+        ->assertExitCode(1);
+});
+
+it('rejects an invalid headless output format', function () {
+    fakeUpgradeComposer([]);
+
+    $this->artisan('ai:upgrade', ['packages' => ['pestphp/pest'], '--headless' => true, '--output' => 'xml'])
+        ->expectsOutputToContain("Invalid --output value 'xml'")
+        ->assertExitCode(1);
+});
+
+it('rejects a non-numeric ref-issue', function () {
+    fakeUpgradeComposer([]);
+
+    $this->artisan('ai:upgrade', ['packages' => ['pestphp/pest'], '--headless' => true, '--ref-issue' => 'abc'])
+        ->expectsOutputToContain("Invalid --ref-issue value 'abc'")
+        ->assertExitCode(1);
+});
+
+it('runs a headless upgrade to a PR and reports it as JSON', function () {
+    fakeUpgradeComposer([
+        ['name' => 'pestphp/pest', 'version' => 'v4.7.8', 'latest' => 'v5.1.1', 'description' => ''],
+    ]);
+
+    $agent = fakeUpgradeAgent(upgradePrEvents());
+
+    $exit = Artisan::call('ai:upgrade', ['packages' => ['pestphp/pest'], '--headless' => true, '--output' => 'json', '--ref-issue' => '12']);
+    $output = Artisan::output();
+    $document = json_decode(substr($output, strpos($output, '{')), true);
+
+    expect($exit)->toBe(0)
+        ->and($document['ok'])->toBeTrue()
+        ->and($document['package'])->toBe('pestphp/pest')
+        ->and($document['outcome'])->toBe('completed')
+        ->and($document['pr_url'])->toBe('https://github.com/acme/app/pull/9')
+        ->and($agent->prompt)
+        ->toContain('HEADLESS')
+        ->toContain('Refs #12')
+        ->toContain('pestphp/pest: v4.7.8 installed');
+});
+
+it('reports a headless agent error without dying', function () {
+    fakeUpgradeComposer([]);
+
+    app()->instance(UpgradeAgent::class, new FakeCodingAgent([], new RuntimeException('provider unreachable')));
+
+    $exit = Artisan::call('ai:upgrade', ['packages' => ['pestphp/pest'], '--headless' => true, '--output' => 'json']);
+    $output = Artisan::output();
+    $document = json_decode(substr($output, strpos($output, '{')), true);
+
+    expect($exit)->toBe(1)
+        ->and($document['ok'])->toBeFalse()
+        ->and($document['outcome'])->toBe('error')
+        ->and($document['error'])->toBe('provider unreachable');
 });
 
 it('accepts multiple packages for a batch', function () {

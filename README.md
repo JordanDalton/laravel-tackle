@@ -1762,7 +1762,72 @@ Schedule::command('ai:upgrade --audit --issue')->daily();
   issue is commented on and closed.
 
 The issue is the reminder; a human stays the trigger — read it and run
-`php artisan ai:upgrade <package>` to turn it into a PR.
+`php artisan ai:upgrade <package>` to turn it into a PR, or wire up the
+unattended mode below.
+
+### Unattended upgrades (`--headless`)
+
+```bash
+php artisan ai:upgrade pestphp/pest --headless --output=json --ref-issue=42
+```
+
+Headless mode runs the same playbook with no terminal: the plan-confirmation
+step is folded into the PR body, verification still gates delivery, and the PR
+opens automatically — **the pull request is the human gate**, the same trust
+model as the self-healer's `mode=pr`. `--ref-issue=N` makes the PR body carry
+`Refs #N` (not `Closes` — the audit issue closes itself once no majors remain).
+
+Safety properties specific to headless:
+
+- **Composer lifecycle scripts can never run.** Enabling them requires an
+  *interactive* approval, and the headless interaction policy is permanently
+  non-interactive — there is no flag that overrides this.
+- Explicit targets only: headless refuses to pick packages itself.
+- Budget (`--budget`, per package) and step ceiling (`--max-steps`) abort the
+  run with distinct exit codes: `0` ok, `1` error, `2` budget, `4` max steps.
+- `--output=json` emits one JSON document per package on stdout (progress goes
+  to stderr): outcome, steps, diff stat, token usage, and `pr_url`.
+
+A label-triggered GitHub Actions workflow closes the loop — the scheduler
+maintains the issue, a maintainer applies the `tackle-upgrade` label, CI opens
+the PR. The ephemeral runner with a scoped `GITHUB_TOKEN` is stronger
+containment than any in-process guard:
+
+```yaml
+name: tackle-upgrade
+on:
+  issues:
+    types: [labeled]
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+concurrency: tackle-upgrade
+jobs:
+  upgrade:
+    if: github.event.label.name == 'tackle-upgrade'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: '8.4' }
+      - run: composer install --no-interaction --no-scripts
+      - run: |
+          php artisan ai:upgrade pestphp/pest \
+            --headless --output=json --no-worktree \
+            --ref-issue=${{ github.event.issue.number }} \
+            --budget=3
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          AI_CODE_GUARD_INJECTION: true
+```
+
+(`--no-worktree` because the checkout is already disposable. The label gate
+matters: issue bodies are untrusted input, so only maintainer action — a label
+they applied — may hand an agent write access. Enabling the injection
+classifier fences what the issue reader returns.)
 
 ---
 
