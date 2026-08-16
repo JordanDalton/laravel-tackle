@@ -4,15 +4,16 @@ namespace Tackle\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Composer;
+use TackleCodex\TackleCodexServiceProvider;
 use TackleRemote\TackleRemoteServiceProvider;
 
 class InstallCommand extends Command
 {
     protected $signature = 'tackle:install
-        {component? : Optional add-on: "remote" (phone/browser UI), "review" (PR review workflow), or "guard" (exfiltration guard hooks)}
+        {component? : Optional add-on: "remote" (phone/browser UI), "review" (PR review workflow), "codex" (OpenAI Codex provider), or "guard" (exfiltration guard hooks)}
         {--stubs : Also publish customisable stubs to stubs/tackle/}
         {--migrate : Run migrations automatically after publishing}
-        {--no-dev : For "remote": add to require instead of require-dev}';
+        {--no-dev : For "remote" / "codex": add to require instead of require-dev}';
 
     protected $description = 'Install Laravel Tackle — publish config, migrations, and optionally stubs — or an ecosystem add-on.';
 
@@ -24,6 +25,7 @@ class InstallCommand extends Command
             return match ($component) {
                 'remote' => $this->installRemote(),
                 'review' => $this->installReview(),
+                'codex' => $this->installCodex(),
                 'guard' => $this->installGuard(),
                 default => $this->unknownComponent($component),
             };
@@ -85,6 +87,47 @@ class InstallCommand extends Command
         $this->line('  <fg=cyan>php artisan tackle:remote --host=0.0.0.0</>');
         $this->line('');
         $this->line('  Scan the QR code it prints. Pairing links are single-use; sessions die with the process.');
+        $this->line('');
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * composer-require the tackle-codex companion package — an OpenAI Codex
+     * provider that runs the agents on a ChatGPT subscription or an API key.
+     */
+    private function installCodex(): int
+    {
+        if (class_exists(TackleCodexServiceProvider::class)) {
+            $this->components->info('Tackle Codex is already installed.');
+            $this->line('  Set <fg=cyan>AI_CODE_PROVIDER=codex</> and check <fg=cyan>php artisan codex:status</>.');
+
+            return self::SUCCESS;
+        }
+
+        $dev = ! $this->option('no-dev');
+
+        $this->line('');
+        $this->line('<fg=green;options=bold>Installing Tackle Codex'.($dev ? ' (require-dev)' : '').'...</>');
+        $this->line('');
+
+        $composer = $this->laravel->make(Composer::class)->setWorkingPath(base_path());
+
+        if (! $composer->requirePackages(['jordandalton/tackle-codex'], $dev, $this->output)) {
+            $this->components->error('composer require failed — see the output above. Nothing was installed.');
+
+            return self::FAILURE;
+        }
+
+        $this->line('');
+        $this->line('<fg=green;options=bold>Done!</> Run the agents on OpenAI Codex:');
+        $this->line('');
+        $this->line('  1. Sign in with your ChatGPT plan (<fg=cyan>codex login</> via the Codex CLI) —');
+        $this->line('     or set <fg=cyan>OPENAI_API_KEY</> for metered api-key mode.');
+        $this->line('  2. Set <fg=cyan>AI_CODE_PROVIDER=codex</> in .env.');
+        $this->line('  3. Verify with <fg=cyan>php artisan codex:status</>, then <fg=cyan>php artisan ai:code</>.');
+        $this->line('');
+        $this->line('  On a ChatGPT plan, usage records as $0 against the session budget.');
         $this->line('');
 
         return self::SUCCESS;
@@ -170,6 +213,7 @@ class InstallCommand extends Command
         $this->components->error("Unknown component '{$component}'. Available:");
         $this->line('  <fg=cyan>php artisan tackle:install remote</>  — browser/phone UI for the agent');
         $this->line('  <fg=cyan>php artisan tackle:install review</>  — GitHub Actions workflow reviewing every PR');
+        $this->line('  <fg=cyan>php artisan tackle:install codex</>   — OpenAI Codex provider (ChatGPT plan or API key)');
         $this->line('  <fg=cyan>php artisan tackle:install guard</>   — exfiltration/injection guard hooks');
 
         return self::FAILURE;

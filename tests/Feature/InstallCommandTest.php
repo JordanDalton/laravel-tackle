@@ -85,6 +85,41 @@ it('fails loudly when composer require fails', function () {
     $this->artisan('tackle:install', ['component' => 'remote'])->assertFailed();
 });
 
+it('installs tackle-codex via composer as a dev dependency', function () {
+    $this->mock(Composer::class, function ($mock) {
+        $mock->shouldReceive('setWorkingPath')->once()->with(base_path())->andReturnSelf();
+        $mock->shouldReceive('requirePackages')
+            ->once()
+            ->withArgs(fn ($packages, $dev) => $packages === ['jordandalton/tackle-codex'] && $dev === true)
+            ->andReturnTrue();
+    });
+
+    $this->artisan('tackle:install', ['component' => 'codex'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('AI_CODE_PROVIDER=codex');
+});
+
+it('installs tackle-codex into require with --no-dev', function () {
+    $this->mock(Composer::class, function ($mock) {
+        $mock->shouldReceive('setWorkingPath')->andReturnSelf();
+        $mock->shouldReceive('requirePackages')
+            ->once()
+            ->withArgs(fn ($packages, $dev) => $dev === false)
+            ->andReturnTrue();
+    });
+
+    $this->artisan('tackle:install', ['component' => 'codex', '--no-dev' => true])->assertSuccessful();
+});
+
+it('fails loudly when the tackle-codex require fails', function () {
+    $this->mock(Composer::class, function ($mock) {
+        $mock->shouldReceive('setWorkingPath')->andReturnSelf();
+        $mock->shouldReceive('requirePackages')->once()->andReturnFalse();
+    });
+
+    $this->artisan('tackle:install', ['component' => 'codex'])->assertFailed();
+});
+
 it('scaffolds the tackle-review workflow without overwriting', function () {
     $path = base_path('.github/workflows/tackle-review.yml');
     @unlink($path);
