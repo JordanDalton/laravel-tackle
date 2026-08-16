@@ -49,7 +49,17 @@ it('fails --audit cleanly when composer cannot run', function () {
 it('requires a TTY for an interactive session', function () {
     fakeUpgradeComposer([]);
 
-    $this->artisan('ai:upgrade', ['package' => 'laravel/framework'])
+    $this->artisan('ai:upgrade', ['packages' => ['laravel/framework']])
+        ->expectsOutputToContain('requires an interactive TTY')
+        ->assertExitCode(1);
+});
+
+it('accepts multiple packages for a batch', function () {
+    fakeUpgradeComposer([]);
+
+    // The TTY gate fires before any session starts — this asserts the
+    // variadic signature parses, not the interactive flow itself.
+    $this->artisan('ai:upgrade', ['packages' => ['pestphp/pest', 'spatie/laravel-permission']])
         ->expectsOutputToContain('requires an interactive TTY')
         ->assertExitCode(1);
 });

@@ -1684,7 +1684,10 @@ php artisan ai:upgrade --audit
 # Upgrade one package across a major version
 php artisan ai:upgrade laravel/framework
 
-# No package? Pick one from the audit interactively.
+# Upgrade several — sequential isolated sessions, one PR each
+php artisan ai:upgrade pestphp/pest spatie/laravel-permission
+
+# No package? Multi-select from the audit interactively.
 php artisan ai:upgrade
 ```
 
@@ -1723,9 +1726,18 @@ What makes it safe:
   did not exercise, rather than declaring the upgrade safe on a thin green run.
 
 One major per session. For a framework major that forces ecosystem packages to
-move together, the plan lists the full set before anything changes. Major
-upgrades are long sessions — consider raising `AI_CODE_BUDGET` beyond the
-default $1 before starting one.
+move together, the plan lists the full set before anything changes — that is
+one atomic change and one PR. **Independent majors are a different case**: pass
+several packages (or multi-select from the audit) and each runs as its own
+sequential session with a fresh agent context, fresh worktree, and fresh
+budget, delivering one PR per package — so a bad upgrade stays individually
+reviewable, bisectable, and revertable. Each session's prompt fences the scope
+to its own package, and every upgrade PR touches `composer.lock`, so after
+merging one, rebase the next and re-run `composer update` on its branch.
+
+Major upgrades are long sessions — consider raising `AI_CODE_BUDGET` beyond
+the default $1 before starting one; in a batch the budget applies per package,
+not to the batch as a whole.
 
 ---
 

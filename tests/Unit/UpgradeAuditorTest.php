@@ -46,6 +46,37 @@ it('derives a why-not constraint from a target version', function () {
         ->and(Auditor::constraintFor('dev-main'))->toBe('dev-main');
 });
 
+it('builds a prompt context with the audit overview and blockers', function () {
+    Process::fake(fn () => Process::result('blocked by pest-plugin-laravel'));
+
+    $majors = [
+        ['name' => 'pestphp/pest', 'version' => 'v4.7.8', 'latest' => 'v5.1.1', 'description' => ''],
+    ];
+
+    $context = (new Auditor(sys_get_temp_dir()))->promptContext('pestphp/pest', ['pestphp/pest'], $majors);
+
+    expect($context)
+        ->toContain('pestphp/pest: v4.7.8 installed, v5.1.1 available')
+        ->toContain('composer why-not pestphp/pest ^5.0')
+        ->toContain('blocked by pest-plugin-laravel')
+        ->not->toContain('Scope: this session');
+});
+
+it('fences the scope when other packages are queued in the batch', function () {
+    Process::fake(fn () => Process::result(''));
+
+    $context = (new Auditor(sys_get_temp_dir()))->promptContext(
+        'pestphp/pest',
+        ['pestphp/pest', 'spatie/laravel-permission', 'league/flysystem'],
+        [],
+    );
+
+    expect($context)
+        ->toContain('this session upgrades ONLY pestphp/pest')
+        ->toContain('spatie/laravel-permission, league/flysystem')
+        ->toContain('did not appear in the major-upgrade audit');
+});
+
 it('passes package and constraint through to composer why-not', function () {
     Process::fake(fn () => Process::result('laravel/framework 11.44.0 requires php (^8.2)'));
 

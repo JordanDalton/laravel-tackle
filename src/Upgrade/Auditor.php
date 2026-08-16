@@ -72,6 +72,50 @@ class Auditor
     }
 
     /**
+     * The pre-session audit context that seeds one package's first prompt:
+     * the majors overview, the package's known blockers, and — in a batch —
+     * a scope fence so the agent leaves the queued packages to their own
+     * sessions.
+     *
+     * @param  list<string>  $batch
+     * @param  list<array{name: string, version: string, latest: string, description: string}>  $majors
+     */
+    public function promptContext(string $package, array $batch, array $majors): string
+    {
+        $target = null;
+        $context = "Audit of direct dependencies with a new major available:\n";
+
+        foreach ($majors as $major) {
+            $context .= "- {$major['name']}: {$major['version']} installed, {$major['latest']} available\n";
+
+            if ($major['name'] === $package) {
+                $target = $major;
+            }
+        }
+
+        if ($target !== null) {
+            $constraint = self::constraintFor($target['latest']);
+            $blockers = $this->whyNot($package, $constraint);
+
+            if ($blockers !== '') {
+                $context .= "\n`composer why-not {$package} {$constraint}` reports:\n{$blockers}\n";
+            }
+        } else {
+            $context .= "\nNote: {$package} did not appear in the major-upgrade audit — verify its installed and latest versions yourself before planning.\n";
+        }
+
+        $others = array_values(array_diff($batch, [$package]));
+
+        if ($others !== []) {
+            $context .= "\nScope: this session upgrades ONLY {$package}. These packages are queued for their own separate "
+                .'sessions afterwards — do not upgrade them here unless the dependency solver forces them to move as part '
+                ."of {$package}'s chain: ".implode(', ', $others)."\n";
+        }
+
+        return $context;
+    }
+
+    /**
      * A why-not constraint for a target version: "v12.4.2" → "^12.0".
      */
     public static function constraintFor(string $version): string

@@ -17,9 +17,9 @@ use Tackle\Upgrade\Auditor;
 
 use function Laravel\Prompts\error as promptError;
 use function Laravel\Prompts\intro;
+use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\outro;
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\stream;
 use function Laravel\Prompts\title;
 use function Laravel\Prompts\warning;
@@ -27,7 +27,7 @@ use function Laravel\Prompts\warning;
 class UpgradeCommand extends Command
 {
     protected $signature = 'ai:upgrade
-        {package?       : The Composer package to upgrade (vendor/name). Omit to pick from available majors.}
+        {packages?*     : One or more Composer packages to upgrade (vendor/name). Each gets its own session and PR. Omit to pick from available majors.}
         {--audit        : Print available major upgrades and what blocks them, then exit (no AI involved)}
         {--shell=       : Override the shell mode for this session (off|allowlist|approve|yolo)}
         {--off          : Shorthand for --shell=off}
@@ -43,7 +43,7 @@ class UpgradeCommand extends Command
 
     private array $history = [];
 
-    public function handle(BudgetTracker $budget, WorktreeManager $worktrees): int
+    public function handle(WorktreeManager $worktrees): int
     {
         if (! App::runningInConsole()) {
             $this->error('ai:upgrade must be run from the terminal.');
@@ -82,30 +82,70 @@ class UpgradeCommand extends Command
 
         // Audit against the live workspace before any worktree exists —
         // the worktree checkout has no vendor/ to inspect yet.
-        [$package, $context] = $this->resolveTarget($auditor);
+        $targets = $this->resolveTargets($auditor);
 
-        if ($package === null) {
+        if ($targets === []) {
             return self::SUCCESS;
         }
 
-        $useWorktree = $this->resolveWorktreeMode();
+        $total = count($targets);
+        $results = [];
 
-        if ($useWorktree) {
+        foreach (array_values($targets) as $i => [$package, $context]) {
+            // Each package gets a fresh session: its own worktree, its own
+            // agent context, and its own budget — package three must not
+            // start with package one's spend or its conversation.
+            app()->forgetInstance(BudgetTracker::class);
+            $budget = app(BudgetTracker::class);
+            $this->history = [];
+
+            $useWorktree = $this->resolveWorktreeMode();
+
+            if ($useWorktree) {
+                try {
+                    $worktrees->create();
+                } catch (\RuntimeException $e) {
+                    $this->warn('Could not create worktree: '.$e->getMessage().' — falling back to live workspace.');
+                    $useWorktree = false;
+                }
+            }
+
             try {
-                $worktrees->create();
-            } catch (\RuntimeException $e) {
-                $this->warn('Could not create worktree: '.$e->getMessage().' — falling back to live workspace.');
-                $useWorktree = false;
+                $code = $this->runSession(app(UpgradeAgent::class), $budget, $useWorktree, $package, $context, $i + 1, $total);
+            } finally {
+                if ($worktrees->active()) {
+                    $worktrees->cleanup();
+                }
             }
+
+            $results[$package] = ['code' => $code, 'spend' => $budget->summary()];
         }
 
-        try {
-            return $this->runSession(app(UpgradeAgent::class), $budget, $useWorktree, $package, $context);
-        } finally {
-            if ($worktrees->active()) {
-                $worktrees->cleanup();
-            }
+        if ($total > 1) {
+            $this->renderBatchSummary($results);
         }
+
+        return collect($results)->contains(fn ($result) => $result['code'] !== self::SUCCESS)
+            ? self::FAILURE
+            : self::SUCCESS;
+    }
+
+    /** @param  array<string, array{code: int, spend: string}>  $results */
+    private function renderBatchSummary(array $results): void
+    {
+        $this->line('');
+        $this->line('<options=bold>Batch summary:</>');
+
+        foreach ($results as $package => $result) {
+            $status = $result['code'] === self::SUCCESS
+                ? '<fg=green>✓ session completed</>'
+                : '<fg=red>✗ session failed</>';
+
+            $this->line("  {$status}  <fg=cyan>{$package}</>  <fg=gray>({$result['spend']})</>");
+        }
+
+        $this->line('');
+        $this->line('<fg=gray>Each upgrade touches composer.lock — after merging one PR, rebase the next and re-run composer update on its branch.</>');
     }
 
     private function renderAudit(Auditor $auditor): int
@@ -149,12 +189,12 @@ class UpgradeCommand extends Command
     }
 
     /**
-     * Determine which package to upgrade and build the audit context that
-     * seeds the agent's first prompt.
+     * Determine which packages to upgrade and build the audit context that
+     * seeds each session's first prompt.
      *
-     * @return array{string|null, string}
+     * @return list<array{string, string}>
      */
-    private function resolveTarget(Auditor $auditor): array
+    private function resolveTargets(Auditor $auditor): array
     {
         try {
             $majors = $auditor->majors();
@@ -163,51 +203,40 @@ class UpgradeCommand extends Command
             $majors = [];
         }
 
-        $package = $this->argument('package');
+        $packages = array_values(array_unique($this->argument('packages')));
 
-        if ($package === null) {
+        if ($packages === []) {
             if ($majors === []) {
                 $this->info('Every direct dependency is on its latest major version — nothing to upgrade.');
 
-                return [null, ''];
+                return [];
             }
 
-            $package = select(
-                label: 'Which package do you want to upgrade?',
+            $packages = multiselect(
+                label: 'Which packages do you want to upgrade? Each gets its own session and PR.',
                 options: collect($majors)->mapWithKeys(fn ($m) => [
                     $m['name'] => "{$m['name']}  ({$m['version']} → {$m['latest']})",
                 ])->all(),
+                required: true,
                 scroll: 10,
             );
         }
 
-        $target = collect($majors)->firstWhere('name', $package);
-
-        $context = "Audit of direct dependencies with a new major available:\n";
-        foreach ($majors as $major) {
-            $context .= "- {$major['name']}: {$major['version']} installed, {$major['latest']} available\n";
-        }
-
-        if ($target !== null) {
-            $blockers = $auditor->whyNot($package, Auditor::constraintFor($target['latest']));
-            if ($blockers !== '') {
-                $context .= "\n`composer why-not {$package} ".Auditor::constraintFor($target['latest'])."` reports:\n{$blockers}\n";
-            }
-        } else {
-            $context .= "\nNote: {$package} did not appear in the major-upgrade audit — verify its installed and latest versions yourself before planning.\n";
-        }
-
-        return [$package, $context];
+        return array_map(
+            fn (string $package) => [$package, $auditor->promptContext($package, $packages, $majors)],
+            $packages,
+        );
     }
 
-    private function runSession(UpgradeAgent $agent, BudgetTracker $budget, bool $worktree, string $package, string $context): int
+    private function runSession(UpgradeAgent $agent, BudgetTracker $budget, bool $worktree, string $package, string $context, int $position, int $total): int
     {
         $model = config('tackle.model', 'claude-sonnet-4-6');
         $budgetUsd = config('tackle.budget_usd', 1.00);
         $wtLabel = $worktree ? ' · worktree: on' : '';
+        $batchLabel = $total > 1 ? " · package {$position}/{$total}" : '';
 
         title('Tackle Upgrade — Ready');
-        intro("Laravel Tackle Upgrade  ·  {$model}  ·  \${$budgetUsd} budget{$wtLabel}");
+        intro("Laravel Tackle Upgrade  ·  {$model}  ·  \${$budgetUsd} budget{$wtLabel}{$batchLabel}");
 
         if ($worktree) {
             note('Worktree mode — the upgrade happens in an isolated copy of the repo. Live files (and live vendor/) are untouched until you open a PR.');
@@ -241,8 +270,10 @@ class UpgradeCommand extends Command
             $this->line('');
             $this->line('<fg=gray>─────────────────────────────────────────────────────────</>');
 
+            $exitLabel = $position < $total ? '"exit" to move to the next package' : '"exit" to quit';
+
             $task = (new TackleSuggestPrompt(
-                label: 'Follow up or type "exit" to quit',
+                label: 'Follow up or type '.$exitLabel,
                 options: fn (string $value) => array_reverse($this->history),
                 placeholder: 'e.g. "continue", "run the tests again", "open the PR", or type "exit"',
                 required: true,
@@ -252,7 +283,7 @@ class UpgradeCommand extends Command
 
             if (in_array(strtolower(trim($task)), ['exit', 'quit', 'q'], strict: true)) {
                 title('');
-                outro($budget->summary().' · Goodbye!');
+                outro($budget->summary().($position < $total ? " · {$package} session closed — next package coming up." : ' · Goodbye!'));
 
                 return self::SUCCESS;
             }

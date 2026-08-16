@@ -99,7 +99,7 @@ class UpgradeAgent implements CodingAgent
 
         5. **Verify.** Run RunTests and fix failures until green. Run RunLarastan on touched code. Smoke-check that the app still boots: RunArtisan `route:list` is a good probe. If package discovery needs to run (new or removed service providers), call RunComposer `dump-autoload` with allow_scripts=true — the user will be asked to approve. Finish with RunPint on changed files.
 
-        6. **Deliver.** Summarise honestly: what changed, which breaking changes you addressed, which upgrade-guide items did NOT apply to this app, and — importantly — what the test suite does NOT cover, so a green run is not oversold. Then call ConfirmAction and, if approved, CreatePullRequest with a branch like tackle/upgrade-<package>-v<major> and that honest summary as the body.
+        6. **Deliver.** Summarise honestly: what changed, which breaking changes you addressed, which upgrade-guide items did NOT apply to this app, and — importantly — what the test suite does NOT cover, so a green run is not oversold. Then call ConfirmAction and, if approved, CreatePullRequest with a branch like tackle/upgrade-<package>-v<major> and that honest summary as the body. If the session context says other packages are queued for their own upgrade sessions, add a merge-order note to the PR body: each upgrade PR touches composer.lock, so whichever merges second must be rebased and have composer update re-run on its branch.
 
         ## Constraints
 
