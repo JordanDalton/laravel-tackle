@@ -5,6 +5,7 @@ namespace Tackle;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Route;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Tackle\Agents\DefaultCodingAgent;
@@ -31,6 +32,8 @@ use Tackle\Events\SessionEnded;
 use Tackle\Events\SessionStarted;
 use Tackle\Healing\JobFailureListener;
 use Tackle\Healing\ScheduledTaskFailureListener;
+use Tackle\Http\Controllers\NightwatchWebhookController;
+use Tackle\Http\Middleware\VerifyNightwatchSignature;
 use Tackle\Support\BudgetTracker;
 use Tackle\Support\HookRunner;
 use Tackle\Support\TerminalInteraction;
@@ -92,6 +95,8 @@ class TackleServiceProvider extends PackageServiceProvider
             Event::listen(ScheduledTaskFailed::class, ScheduledTaskFailureListener::class);
         }
 
+        $this->registerNightwatchWebhook();
+
         Event::listen(SessionStarted::class, function (SessionStarted $event) {
             $this->app->make(HookRunner::class)->sessionEvent('session_start', [
                 'command' => $event->command,
@@ -108,5 +113,28 @@ class TackleServiceProvider extends PackageServiceProvider
                 'estimated_cost_usd' => $event->estimatedCostUsd,
             ]);
         });
+    }
+
+    /**
+     * Register the Laravel Nightwatch webhook endpoint.
+     *
+     * The route only exists when the integration is switched on, and the
+     * signature check is appended after any user middleware so it cannot be
+     * configured away.
+     */
+    private function registerNightwatchWebhook(): void
+    {
+        if (! config('tackle.nightwatch.enabled', false)) {
+            return;
+        }
+
+        $middleware = array_merge(
+            (array) config('tackle.nightwatch.middleware', []),
+            [VerifyNightwatchSignature::class],
+        );
+
+        Route::post(config('tackle.nightwatch.path', 'tackle/nightwatch/webhook'), NightwatchWebhookController::class)
+            ->middleware($middleware)
+            ->name('tackle.nightwatch.webhook');
     }
 }

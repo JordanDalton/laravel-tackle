@@ -21,7 +21,7 @@ can extend or build on top of:
 - **`ai:explain`** — explains what a file, class, or method does in plain English
 - **`ai:test`** — generates a Pest test file for any class or method
 - **`ai:upgrade`** — safe major version upgrades for Composer dependencies: audits what is upgradable, plans from the package's upgrade guide, resolves constraints, fixes the breaking changes, and verifies with your test suite — in an isolated worktree, delivered as a PR
-- **Self-healer** — an autonomous agent that listens for failed jobs and scheduled tasks, diagnoses the exception, patches the code, and opens a PR or applies the fix — without you lifting a finger
+- **Self-healer** — an autonomous agent that listens for failed jobs and scheduled tasks — or for production issues pushed by [Laravel Nightwatch](#production-issues-from-laravel-nightwatch), exceptions and slow endpoints alike — diagnoses the problem, patches the code, and opens a PR or applies the fix, without you lifting a finger
 
 Every agent runs through the same tool infrastructure and safety layer. You can
 add your own tools, write new agents, and swap the default agent entirely —
@@ -56,6 +56,7 @@ via Ollama are two env vars away. See
 - [MCP server](#mcp-server)
 - [Self-healing queue workers](#self-healing-queue-workers)
   - [Scheduled command healing](#scheduled-command-healing)
+  - [Production issues from Laravel Nightwatch](#production-issues-from-laravel-nightwatch)
   - [Per-class opt-out](#per-class-opt-out)
   - [Audit log](#audit-log)
 - [Fix an issue](#fix-an-issue)
@@ -213,6 +214,8 @@ All config options can be set via `.env`. Nothing requires editing a PHP file.
 | `AI_CODE_HEALING_THRESHOLD` | `1` | Failures before healing is triggered |
 | `AI_CODE_HEALING_BASE_BRANCH` | `main` | Base branch for fix pull requests |
 | `GITHUB_TOKEN` | — | GitHub token for opening pull requests (pr mode) |
+| `TACKLE_NIGHTWATCH_ENABLED` | `false` | Register the Laravel Nightwatch webhook endpoint |
+| `TACKLE_NIGHTWATCH_SECRET` | — | Nightwatch webhook signing secret (required when enabled) |
 
 ---
 
@@ -1126,6 +1129,11 @@ dispatches an AI agent to diagnose the exception, patch the code, verify the fix
 with your test suite, and either open a pull request or apply the fix directly —
 all without you lifting a finger.
 
+The same runtime also accepts production issues pushed in by
+[Laravel Nightwatch](#production-issues-from-laravel-nightwatch), which extends it
+beyond failures in this process — and beyond exceptions, to slow routes, jobs, and
+scheduled tasks.
+
 ### How it works
 
 1. A job fails → Laravel fires the `JobFailed` event.
@@ -1268,6 +1276,108 @@ not re-dispatched after a patch (they run on their own schedule). The fix simply
 takes effect the next time the task runs.
 
 No extra configuration is needed beyond `AI_CODE_HEALING_ENABLED=true`.
+
+### Production issues from Laravel Nightwatch
+
+The two healers above only see failures that happen inside this process. [Laravel
+Nightwatch](https://nightwatch.laravel.com) sees production: it groups exceptions
+and performance problems into issues and fires a signed webhook when one opens.
+Point that webhook at Tackle and the healer runs on production signal.
+
+Nightwatch does the part the healer cannot do for itself — it dedupes thousands
+of occurrences into one issue, so you get one pull request per problem rather
+than one per exception.
+
+**Enable it:**
+
+```env
+TACKLE_NIGHTWATCH_ENABLED=true
+TACKLE_NIGHTWATCH_SECRET=whsec_...   # from Nightwatch: Issues settings → Webhooks → Edit
+```
+
+This registers `POST /tackle/nightwatch/webhook`. Add that URL in the Nightwatch
+dashboard under your application's **Issues settings → Webhooks**. Then make sure
+a worker is consuming the healer queue:
+
+```bash
+php artisan queue:work --queue=healer
+```
+
+`php artisan tackle:health` verifies the route, the secret, and reminds you about
+the worker.
+
+**Two things Nightwatch does differently to Sentry**, both of which matter here:
+
+*It reports performance problems as issues.* A slow route, job, command, or
+scheduled task arrives with a measured duration and the threshold it broke — so
+the healer gets work an exception-only integration never sees:
+
+```
+slow-route  GET|POST checkout/{order}  →  2400ms against a 500ms threshold
+```
+
+The agent is pointed at the usual suspects in order — N+1 queries, missing
+indexes, work inside a loop, uncached external calls — and told explicitly not to
+change observable behaviour. If it cannot find a cause it is confident in, it is
+told to say so rather than guess.
+
+*It sends `file:line`, not a stack trace.* That is enough, because unlike a hosted
+fixer the agent is already inside the codebase the issue points at — it reads the
+rest itself. The prompt tells it as much, and asks it to reproduce the condition
+in a failing test before changing anything.
+
+**Which issues get healed** is configurable in `config/tackle.php`:
+
+| Option | Env | Default | Description |
+|---|---|---|---|
+| `enabled` | `TACKLE_NIGHTWATCH_ENABLED` | `false` | Register the webhook route |
+| `secret` | `TACKLE_NIGHTWATCH_SECRET` | — | Signing secret. Without it, every delivery is refused |
+| `path` | `TACKLE_NIGHTWATCH_PATH` | `tackle/nightwatch/webhook` | Route URI |
+| `middleware` | — | `[]` | Extra middleware. Do **not** add the `web` group — CSRF will reject every delivery |
+| `events` | — | `issue.opened`, `issue.reopened` | `issue.resolved` and `issue.ignored` are ignored — nothing to fix |
+| `issue_types` | — | `exception`, `performance` | Narrow to one if you only want exceptions healed |
+| `environments` | — | `[]` (all) | e.g. `['production']` to ignore staging noise |
+| `min_priority` | `TACKLE_NIGHTWATCH_MIN_PRIORITY` | `none` | Floor: `none` \| `low` \| `medium` \| `high` |
+| `handled_exceptions` | `TACKLE_NIGHTWATCH_HANDLED_EXCEPTIONS` | `false` | Heal exceptions the app caught. Off — a handled exception is often deliberate |
+| `cooldown` | `TACKLE_NIGHTWATCH_COOLDOWN` | `86400` | Seconds before the same issue can be healed again |
+
+**Security.** Every request must carry a valid `Nightwatch-Signature` — HMAC-SHA256
+over the raw body, compared with `hash_equals()`. Unsigned or mis-signed requests
+get a 403 and are logged. If no secret is configured, the endpoint refuses
+everything rather than dispatching an agent on unauthenticated input. Everything
+else — worktree isolation, budget caps, `PathGuard`, tests before the PR — is the
+same as any other heal.
+
+**Testing it without waiting for production to break.** Sign a payload yourself
+and post it at the endpoint:
+
+```bash
+SECRET="whsec_..."   # the same value as TACKLE_NIGHTWATCH_SECRET
+
+BODY='{"event":"issue.opened","payload":{"issue":{"id":"local-test-1","ref":1,"type":"performance","title":"Slow route: /checkout","status":"open","priority":"high","url":"https://nightwatch.laravel.com/issues/1","details":{"type":"slow-route","methods":["GET"],"path":"checkout","action":"App\\Http\\Controllers\\CheckoutController@show","duration":2400,"threshold":500}},"environment":{"name":"production"}}}'
+
+SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -r | cut -d' ' -f1)
+
+curl -sS -X POST http://localhost:8000/tackle/nightwatch/webhook \
+  -H "Content-Type: application/json" \
+  -H "Nightwatch-Signature: $SIG" \
+  --data-binary "$BODY"
+```
+
+A `{"status":"queued"}` response means the healer picked it up — watch your
+`healer` worker from there. Change the `id` between runs, or the cooldown will
+skip the second one.
+
+**One caveat worth knowing up front:** Nightwatch allows one webhook per
+application. If yours already points at Slack, you will need an endpoint that
+fans out to both.
+
+**Closing the loop.** Tackle opens the PR; Nightwatch confirms the fix. Once the
+PR deploys and the issue stops recurring, Nightwatch marks it resolved on its own
+— and for a performance issue, the duration graph is what tells you the change
+actually worked. Nightwatch also ships an [MCP server](https://nightwatch.laravel.com/docs/mcp-server)
+if you want to browse issues and update their status from an interactive session;
+this integration covers the unattended direction.
 
 ### Per-class opt-out
 

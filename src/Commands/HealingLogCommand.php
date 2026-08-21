@@ -9,7 +9,7 @@ class HealingLogCommand extends Command
 {
     protected $signature = 'tackle:healing-log
         {--limit=25        : Maximum number of entries to display}
-        {--type=           : Filter by subject type: job or scheduled_task}
+        {--type=           : Filter by subject type: job, scheduled_task, or nightwatch}
         {--outcome=        : Filter by outcome: pr_opened, patched, or failed}';
 
     protected $description = 'Display the self-healing audit log.';

@@ -500,4 +500,57 @@ return [
         'telescope' => env('AI_CODE_HEALING_TELESCOPE', true),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Laravel Nightwatch
+    |--------------------------------------------------------------------------
+    |
+    | Nightwatch groups production exceptions and performance problems into
+    | issues and fires a signed webhook when one opens. Point that webhook at
+    | the route below and the self-healer acts on production signal instead of
+    | only on failures that happen inside this process.
+    |
+    | Configure the webhook at: Nightwatch dashboard -> your application ->
+    | Issues settings -> Webhooks. Nightwatch allows one webhook per
+    | application, so if you already send issues to Slack you will need an
+    | endpoint that fans out to both.
+    |
+    | enabled             - Registers the webhook route. Off by default.
+    | secret              - The signing secret from Webhooks > Edit. Required:
+    |                       requests without a valid Nightwatch-Signature are
+    |                       refused, and a missing secret refuses everything.
+    | path                - The URI to register. Keep it unguessable if you like,
+    |                       but the signature is what actually protects it.
+    | middleware          - Extra middleware for the route. The signature check is
+    |                       always applied on top. Do not add the 'web' group —
+    |                       its CSRF middleware will reject every delivery.
+    | events              - Which webhook events dispatch a healer. Nightwatch also
+    |                       sends issue.resolved and issue.ignored; there is
+    |                       nothing to fix in those, so they are ignored.
+    | issue_types         - 'exception', 'performance', or both.
+    | environments        - Only heal issues from these environments, by name.
+    |                       Empty means every environment.
+    | min_priority        - Floor for Nightwatch's issue priority: none, low,
+    |                       medium, or high.
+    | handled_exceptions  - Whether to heal exceptions the application caught.
+    |                       Off by default: a handled exception is often
+    |                       deliberate.
+    | cooldown            - Seconds to ignore repeat deliveries for the same
+    |                       issue id, so a flapping issue.reopened costs one
+    |                       agent run rather than one per flap. 0 disables.
+    |
+    */
+    'nightwatch' => [
+        'enabled' => env('TACKLE_NIGHTWATCH_ENABLED', false),
+        'secret' => env('TACKLE_NIGHTWATCH_SECRET'),
+        'path' => env('TACKLE_NIGHTWATCH_PATH', 'tackle/nightwatch/webhook'),
+        'middleware' => [],
+        'events' => ['issue.opened', 'issue.reopened'],
+        'issue_types' => ['exception', 'performance'],
+        'environments' => [],
+        'min_priority' => env('TACKLE_NIGHTWATCH_MIN_PRIORITY', 'none'),
+        'handled_exceptions' => env('TACKLE_NIGHTWATCH_HANDLED_EXCEPTIONS', false),
+        'cooldown' => (int) env('TACKLE_NIGHTWATCH_COOLDOWN', 86400),
+    ],
+
 ];

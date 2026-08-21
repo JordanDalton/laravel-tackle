@@ -36,6 +36,7 @@ class HealthCommand extends Command
 
         $this->checkGitHub();
         $this->checkSentry();
+        $this->checkNightwatch();
         $this->checkWorktrees();
 
         $this->printSummary();
@@ -174,6 +175,38 @@ class HealthCommand extends Command
                 'Set SENTRY_AUTH_TOKEN and SENTRY_ORG in .env to enable it'
             );
         }
+    }
+
+    private function checkNightwatch(): void
+    {
+        if (! config('tackle.nightwatch.enabled', false)) {
+            $this->notice(
+                'Nightwatch webhook disabled — production issues will not trigger the healer',
+                'Set TACKLE_NIGHTWATCH_ENABLED=true and TACKLE_NIGHTWATCH_SECRET in .env to enable it'
+            );
+
+            return;
+        }
+
+        $secret = config('tackle.nightwatch.secret');
+
+        if (! is_string($secret) || $secret === '') {
+            $this->check(
+                'Nightwatch webhook is enabled but no signing secret is set — every delivery will be refused',
+                'Copy the secret from Nightwatch (Issues settings > Webhooks > Edit) into TACKLE_NIGHTWATCH_SECRET'
+            );
+        } else {
+            $path = config('tackle.nightwatch.path', 'tackle/nightwatch/webhook');
+            $this->pass("Nightwatch webhook configured and signed — POST /{$path}");
+        }
+
+        // The webhook queues onto the healer queue whether or not the local
+        // event listeners are on, so a worker is needed either way.
+        $queue = config('tackle.healing.queue', 'healer');
+        $this->notice(
+            "Nightwatch heals are queued onto '{$queue}' — make sure a worker is consuming it",
+            "Run: php artisan queue:work --queue={$queue}"
+        );
     }
 
     private function checkWorktrees(): void
