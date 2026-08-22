@@ -110,7 +110,7 @@ class EvalReport
                 number_format($r->inputTokens + $r->outputTokens),
                 $r->costUsd,
                 (int) round($r->durationMs / 1000),
-                $r->grade->note !== '' ? '  — '.$r->grade->note : '',
+                $r->error !== null ? '  — '.$r->error : ($r->grade->note !== '' ? '  — '.$r->grade->note : ''),
             );
         }
 

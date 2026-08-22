@@ -95,7 +95,17 @@ class EvalCommand extends Command
                         }
                     });
                 } catch (\Throwable $e) {
-                    // Record spend so far; the grade reflects the partial state.
+                    // If the turn produced no tokens at all, it never reached the
+                    // model (bad model id, auth, network) — that's an error to
+                    // surface, not a silent "not-fixed". If it ran and then threw
+                    // (budget/step ceiling), keep the partial state to grade.
+                    if ($budget->inputTokens() === 0) {
+                        if (! $json) {
+                            $this->line('<fg=red>error</>');
+                        }
+
+                        throw new \RuntimeException($e->getMessage(), 0, $e);
+                    }
                 }
 
                 if (! $json) {

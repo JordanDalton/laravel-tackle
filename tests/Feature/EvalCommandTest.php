@@ -112,3 +112,24 @@ it('caches by default on the standard agent and respects tackle.prompt_cache', f
     config()->set('tackle.prompt_cache', false);
     expect(app(CodingAgent::class)->providerOptions(Lab::Anthropic))->toBe([]);
 });
+
+it('surfaces a model/stream failure as an error, not a silent not-fixed', function () {
+    // An agent whose stream throws before any tokens are recorded (bad model,
+    // auth, network) must show as an error — the failure that produced 0-token
+    // "not-fixed" rows.
+    app()->bind(CodingAgent::class, fn () => new class extends FakeCodingAgent
+    {
+        public function __construct()
+        {
+            parent::__construct([], new RuntimeException('model: unknown model "claude-nope"'));
+        }
+    });
+
+    $exit = Artisan::call('ai:eval', ['--case' => ['div-by-zero'], '--json' => true]);
+    $doc = json_decode(substr(Artisan::output(), strpos(Artisan::output(), '{')), true);
+
+    expect($exit)->toBe(1) // errors → non-zero
+        ->and($doc['errors'])->toBe(1)
+        ->and($doc['cases'][0]['status'])->toBe('error')
+        ->and($doc['cases'][0]['error'])->toContain('unknown model');
+});
