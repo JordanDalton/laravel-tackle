@@ -1095,7 +1095,14 @@ php artisan ai:eval                       # run the built-in suite
 php artisan ai:eval --case=div-by-zero    # one case (repeatable)
 php artisan ai:eval --model=... --budget=0.50
 php artisan ai:eval --json                # machine-readable, for CI
+php artisan ai:eval --agent="App\\Ai\\LeanAgent"   # benchmark a different toolset
 ```
+
+By default `ai:eval` benchmarks the same agent `ai:code`/`ai:run` use, so the
+numbers reflect production. Point `--agent` at another `CodingAgent` (e.g. a
+leaner one scaffolded with `tackle:agent`) to measure how much the toolset
+costs — the agent carries ~24 tool schemas, re-sent every step, so a focused
+agent is markedly cheaper per task.
 
 Each case seeds one buggy class into an isolated directory, hands the agent a
 prompt, and grades the result in a subprocess — so a fix that leaves the file
