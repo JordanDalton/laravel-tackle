@@ -1104,6 +1104,12 @@ leaner one scaffolded with `tackle:agent`) to measure how much the toolset
 costs — the agent carries ~24 tool schemas, re-sent every step, so a focused
 agent is markedly cheaper per task.
 
+A ready-made `Tackle\Agents\LeanCodingAgent` (6 fix-task tools) ships for this — `ai:eval --agent=lean` benchmarks it, and on a fix case it ran ~37% cheaper than the full agent with the same result. Bind it in place of the default agent for narrow, unattended work if your own `ai:eval` run confirms the fix-rate holds:
+
+```php
+$this->app->bind(CodingAgent::class, LeanCodingAgent::class);
+```
+
 Each case seeds one buggy class into an isolated directory, hands the agent a
 prompt, and grades the result in a subprocess — so a fix that leaves the file
 unparseable, or throws, scores as a failure rather than taking the run down. The

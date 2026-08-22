@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Artisan;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Streaming\Events\StreamEnd;
+use Tackle\Agents\LeanCodingAgent;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Tests\Fakes\FakeCodingAgent;
 
@@ -65,3 +66,21 @@ class EvalFakeAgent extends FakeCodingAgent
         ]);
     }
 }
+
+it('exposes only the fix-task tools on the lean agent', function () {
+    config()->set('tackle.workspace', sys_get_temp_dir());
+    $names = collect(app(LeanCodingAgent::class)->tools())
+        ->map(fn ($t) => is_callable([$t, 'name']) ? $t->name() : class_basename($t));
+
+    expect($names->all())->toEqualCanonicalizing(LeanCodingAgent::KEEP)
+        ->and($names)->not->toContain('ReadSentryIssue', 'CreatePullRequest', 'ListRoutes');
+});
+
+it('resolves the --agent=lean shorthand', function () {
+    app()->bind(LeanCodingAgent::class, fn () => new EvalFakeAgent);
+
+    $exit = Artisan::call('ai:eval', ['--case' => ['div-by-zero'], '--agent' => 'lean', '--json' => true]);
+
+    expect($exit)->toBe(0)
+        ->and(Artisan::output())->toContain('"total": 1');
+});

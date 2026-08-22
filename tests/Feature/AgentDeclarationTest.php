@@ -3,6 +3,7 @@
 use Tackle\Agents\DefaultCodingAgent;
 use Tackle\Agents\ExplainAgent;
 use Tackle\Agents\HealingAgent;
+use Tackle\Agents\LeanCodingAgent;
 use Tackle\Agents\OnboardingAgent;
 use Tackle\Agents\ReviewAgent;
 use Tackle\Agents\TestWriterAgent;
@@ -21,6 +22,7 @@ it('resolves every shipped agent against the installed laravel/ai contract', fun
     expect(app($agent))->toBeInstanceOf($agent);
 })->with([
     DefaultCodingAgent::class,
+    LeanCodingAgent::class,
     ReviewAgent::class,
     ExplainAgent::class,
     OnboardingAgent::class,

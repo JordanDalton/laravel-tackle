@@ -5,6 +5,7 @@ namespace Tackle\Commands;
 use Illuminate\Console\Command;
 use Laravel\Ai\Streaming\Events\StreamEnd;
 use Laravel\Ai\Streaming\Events\ToolCall;
+use Tackle\Agents\LeanCodingAgent;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Contracts\InteractionPolicy;
 use Tackle\Evals\CaseRepository;
@@ -20,7 +21,7 @@ class EvalCommand extends Command
         {--budget=   : Per-case USD budget (default 0.50).}
         {--model=    : Model to run the cases on.}
         {--provider= : Provider to run the cases on.}
-        {--agent=    : CodingAgent class to benchmark (default: the configured agent). Point it at a leaner agent to measure toolset overhead.}
+        {--agent=    : Agent to benchmark: "lean", "default", or a CodingAgent class. Default: the configured agent.}
         {--json      : Emit the report as JSON.}';
 
     protected $description = 'Benchmark the coding agent against seeded bugs — reports fix rate, false-fix rate, tokens, and cost.';
@@ -128,6 +129,13 @@ class EvalCommand extends Command
         if ($given === null || $given === '') {
             return CodingAgent::class;
         }
+
+        // Shorthands for the built-in agents.
+        $given = match ($given) {
+            'default', 'full' => CodingAgent::class,
+            'lean' => LeanCodingAgent::class,
+            default => $given,
+        };
 
         if (! class_exists($given)) {
             $this->error("Unknown --agent class: {$given}");
