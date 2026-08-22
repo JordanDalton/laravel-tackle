@@ -276,3 +276,24 @@ it('marks the heal unverified when the post-fix suite cannot run', function () {
     expect($sandbox->applied)->toBeFalse()
         ->and($sandbox->prBody)->toContain('Tests could not be run');
 });
+
+it('does not auto-apply a test-only heal; flags it [incomplete]', function () {
+    config()->set('tackle.healing.mode', 'patch');
+
+    $sandbox = new FakeSandbox;
+    $sandbox->testRuns = [
+        ['ran' => true, 'ok' => true, 'failures' => []],
+        ['ran' => true, 'ok' => true, 'failures' => []],
+    ];
+    // The agent added a passing test and changed no application code.
+    $sandbox->diffResult = [
+        'files' => ['tests/Feature/SlowOrdersControllerTest.php' => 'A'],
+        'insertions' => 51, 'deletions' => 0,
+    ];
+
+    runHeal($sandbox);
+
+    expect($sandbox->applied)->toBeFalse()
+        ->and($sandbox->prTitle)->toStartWith('[incomplete] ')
+        ->and($sandbox->prBody)->toContain('No application code changed');
+});

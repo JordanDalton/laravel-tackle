@@ -1249,6 +1249,7 @@ runs itself — the agent cannot declare itself done:
   requires that the fix introduce no new failures — not that the whole suite is
   green (real apps carry pre-existing failures). Set `baseline=false` to fall
   back to "suite green" on very slow suites.
+- **A fix must change code.** A heal that touches only test files (or nothing) is treated as incomplete — never auto-applied, and opened as a PR tagged `[incomplete]`. This stops an agent from "passing" a performance heal by adding a green test and changing no code.
 - **Blast-radius limits.** A heal that touches too many files, changes too many
   lines, or *modifies* a migration / `config/*` / `composer.json` is never
   auto-applied — it opens a PR flagged `[needs review]`. (Adding a new migration

@@ -97,3 +97,23 @@ it('lists blast-radius violations in the rendered block', function () {
         ->toContain('Blast-radius limits exceeded')
         ->toContain('touches 40 files (limit 20)');
 });
+
+it('fails the gate for a test-only heal (no application code changed)', function () {
+    $e = evidence([
+        'filesTouched' => ['tests/Feature/SlowOrdersControllerTest.php'],
+        'regressionTestAdded' => true,
+    ]);
+
+    expect($e->codeChanged())->toBeFalse()
+        ->and($e->testsClean())->toBeTrue()
+        ->and($e->gatePassed())->toBeFalse()
+        ->and($e->titleTag())->toBe('[incomplete] ')
+        ->and($e->render())->toContain('No application code changed');
+});
+
+it('counts a non-test file as a real code change', function () {
+    $e = evidence(['filesTouched' => ['app/Http/Controllers/SlowOrdersController.php', 'tests/Feature/X.php']]);
+
+    expect($e->codeChanged())->toBeTrue()
+        ->and($e->gatePassed())->toBeTrue();
+});

@@ -54,6 +54,31 @@ class HealEvidence
         return array_values(array_diff($this->baselineFailures, $this->afterFailures));
     }
 
+    /**
+     * True if the heal changed at least one non-test file. A heal that touches
+     * only tests (or nothing) is not a fix — for a performance issue, where no
+     * test was failing to begin with, an agent can satisfy "no new failures" by
+     * adding a passing test and changing no code. That must never auto-apply.
+     */
+    public function codeChanged(): bool
+    {
+        foreach ($this->filesTouched as $path) {
+            if (! self::isTestPath($path)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function isTestPath(string $path): bool
+    {
+        return str_contains($path, 'tests/')
+            || str_contains($path, 'Tests/')
+            || str_ends_with($path, 'Test.php')
+            || str_ends_with($path, 'Test.phpt');
+    }
+
     public function changedLines(): int
     {
         return $this->insertions + $this->deletions;
@@ -75,7 +100,9 @@ class HealEvidence
      */
     public function gatePassed(): bool
     {
-        return $this->testsClean() && $this->blastRadiusViolations === [];
+        return $this->testsClean()
+            && $this->codeChanged()
+            && $this->blastRadiusViolations === [];
     }
 
     /**
@@ -83,6 +110,10 @@ class HealEvidence
      */
     public function titleTag(): string
     {
+        if (! $this->codeChanged()) {
+            return '[incomplete] ';
+        }
+
         if (! $this->testsClean()) {
             return '[tests failing] ';
         }
@@ -107,6 +138,10 @@ class HealEvidence
                 ? '- ✅ **No new test failures** introduced by this fix.'
                 : '- ❌ **New failures introduced:** '.$this->list($this->newFailures()))
             : '- ⚠️ **Tests could not be run** in the sandbox — treat this fix as unverified.';
+
+        if (! $this->codeChanged()) {
+            $lines[] = '- ⛔ **No application code changed** — this heal added tests only and does not contain a fix. Not auto-applied.';
+        }
 
         if ($this->baselineRan && $this->baselineFailures !== []) {
             $lines[] = sprintf(

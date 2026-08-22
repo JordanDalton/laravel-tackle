@@ -136,6 +136,7 @@ abstract class AbstractHealJob implements ShouldQueue
                 Log::info("Tackle Healer: patch applied for {$this->subjectClass()} (no new failures, within blast-radius limits).");
             } else {
                 $reason = match (true) {
+                    ! $evidence->codeChanged() => 'no application code changed (tests only)',
                     ! $evidence->testsClean() => 'new test failures',
                     $evidence->blastRadiusViolations !== [] => 'blast-radius limits exceeded',
                     default => "mode={$mode}",
