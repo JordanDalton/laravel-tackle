@@ -1110,6 +1110,8 @@ report gives:
 The command exits non-zero if any case regressed or errored, so it can gate a
 CI job.
 
+**Scaffold a case** with `php artisan tackle:eval "refund rounding"` — it writes a starter `evals/refund-rounding.php` you fill in. (`tackle:eval` generates a case; `ai:eval` runs them.)
+
 **Add your own cases** as `*.php` files in your project's `evals/` directory
 (configurable via `tackle.evals.path`). Each returns an `EvalCase` — or an array
 of them — using `Tackle\Evals\Probe` for the grader; a case whose `id` matches a

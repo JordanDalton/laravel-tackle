@@ -18,6 +18,7 @@ use Tackle\Commands\HealthCommand;
 use Tackle\Commands\InitCommand;
 use Tackle\Commands\InstallCommand;
 use Tackle\Commands\MakeAgentCommand;
+use Tackle\Commands\MakeEvalCommand;
 use Tackle\Commands\MakeToolCommand;
 use Tackle\Commands\McpCommand;
 use Tackle\Commands\OnboardCommand;
@@ -67,6 +68,7 @@ class TackleServiceProvider extends PackageServiceProvider
                 ReplayCommand::class,
                 PruneCommand::class,
                 MakeToolCommand::class,
+                MakeEvalCommand::class,
                 MakeAgentCommand::class,
                 McpCommand::class,
             ]);

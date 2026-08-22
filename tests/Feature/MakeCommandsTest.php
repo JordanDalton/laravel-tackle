@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\File;
+use Tackle\Evals\CaseRepository;
+use Tackle\Evals\EvalRunner;
 
 beforeEach(function () {
     File::deleteDirectory(app_path('Ai'));
@@ -94,4 +96,59 @@ it('--full stub implements CodingAgent directly', function () {
         ->toContain('public function instructions()')
         ->toContain('public function messages()')
         ->toContain('public function tools()');
+});
+
+// ---------------------------------------------------------------------------
+// tackle:eval (case generator)
+// ---------------------------------------------------------------------------
+
+it('scaffolds an eval case into the evals path', function () {
+    $dir = sys_get_temp_dir().'/tackle-gen-evals-'.uniqid();
+    config()->set('tackle.evals.path', $dir);
+
+    $this->artisan('tackle:eval', ['name' => 'refund rounding'])
+        ->expectsOutputToContain('Eval case created')
+        ->assertSuccessful();
+
+    $path = $dir.'/refund-rounding.php';
+    expect(file_exists($path))->toBeTrue();
+
+    $contents = file_get_contents($path);
+    expect($contents)
+        ->toContain("id: 'refund-rounding'")
+        ->toContain('class EvalRefundRounding')
+        ->toContain('Probe::subprocess');
+
+    File::deleteDirectory($dir);
+});
+
+it('the generated case loads and is broken as seeded', function () {
+    $dir = sys_get_temp_dir().'/tackle-gen-evals-'.uniqid();
+    config()->set('tackle.evals.path', $dir);
+    config()->set('tackle.evals.include_builtin', false);
+
+    $this->artisan('tackle:eval', ['name' => 'sample bug'])->assertSuccessful();
+
+    $cases = (new CaseRepository)->all();
+    expect($cases)->toHaveCount(1)
+        ->and($cases[0]->id)->toBe('sample-bug');
+
+    // As generated, the seeded code fails the target (broken) but the happy
+    // path holds — the correct starting state for a case.
+    $grade = (new EvalRunner)->run($cases[0], fn () => [])->grade;
+    expect($grade->fixed)->toBeFalse()
+        ->and($grade->isFalseFix())->toBeFalse();
+
+    File::deleteDirectory($dir);
+});
+
+it('refuses to overwrite an existing eval case without --force', function () {
+    $dir = sys_get_temp_dir().'/tackle-gen-evals-'.uniqid();
+    config()->set('tackle.evals.path', $dir);
+
+    $this->artisan('tackle:eval', ['name' => 'dup'])->assertSuccessful();
+    $this->artisan('tackle:eval', ['name' => 'dup'])->assertFailed();
+    $this->artisan('tackle:eval', ['name' => 'dup', '--force' => true])->assertSuccessful();
+
+    File::deleteDirectory($dir);
 });

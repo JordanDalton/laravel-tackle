@@ -1,0 +1,45 @@
+<?php
+
+use Tackle\Evals\EvalCase;
+use Tackle\Evals\Probe;
+
+/*
+ * ai:eval case — benchmark the coding agent against a seeded bug.
+ *
+ * Return an EvalCase (or an array of them). ai:eval seeds `files` into an
+ * isolated directory, hands the agent `prompt`, then runs `grader` against the
+ * result. Keep it small, pure, and unambiguous so grading stays deterministic.
+ * Run it with: php artisan ai:eval --case={{ id }}
+ */
+
+return new EvalCase(
+    id: '{{ id }}',
+    title: '{{ title }}',
+    category: 'bug',
+    files: [
+        // The buggy code the agent must fix. Give the class a distinctive name
+        // so it never collides with another case.
+        '{{ class }}.php' => <<<'PHP'
+        <?php
+
+        class {{ class }}
+        {
+            // BUG: describe what's wrong here.
+            public function compute(int $value): int
+            {
+                return $value; // ...and make it actually wrong.
+            }
+        }
+        PHP,
+    ],
+    prompt: 'Describe the bug in {{ class }}.php and what "fixed" means, concretely.',
+
+    // The grader runs in a subprocess that requires the (possibly fixed) file.
+    // Set $target (the bug is fixed) and $happy (a previously-correct behaviour
+    // still holds — this catches a "fix" that regresses something else).
+    grader: Probe::subprocess('{{ class }}.php', '
+        $subject = new {{ class }}();
+        $target = $subject->compute(2) === 4;   // TODO: the behaviour being fixed
+        $happy  = $subject->compute(0) === 0;   // TODO: a happy path that must still hold
+    '),
+);
