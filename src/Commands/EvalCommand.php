@@ -5,6 +5,7 @@ namespace Tackle\Commands;
 use Illuminate\Console\Command;
 use Laravel\Ai\Streaming\Events\StreamEnd;
 use Laravel\Ai\Streaming\Events\ToolCall;
+use Tackle\Agents\CachingCodingAgent;
 use Tackle\Agents\LeanCodingAgent;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Contracts\InteractionPolicy;
@@ -134,6 +135,7 @@ class EvalCommand extends Command
         $given = match ($given) {
             'default', 'full' => CodingAgent::class,
             'lean' => LeanCodingAgent::class,
+            'cached' => CachingCodingAgent::class,
             default => $given,
         };
 

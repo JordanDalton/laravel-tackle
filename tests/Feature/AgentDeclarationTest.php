@@ -1,5 +1,6 @@
 <?php
 
+use Tackle\Agents\CachingCodingAgent;
 use Tackle\Agents\DefaultCodingAgent;
 use Tackle\Agents\ExplainAgent;
 use Tackle\Agents\HealingAgent;
@@ -23,6 +24,7 @@ it('resolves every shipped agent against the installed laravel/ai contract', fun
 })->with([
     DefaultCodingAgent::class,
     LeanCodingAgent::class,
+    CachingCodingAgent::class,
     ReviewAgent::class,
     ExplainAgent::class,
     OnboardingAgent::class,

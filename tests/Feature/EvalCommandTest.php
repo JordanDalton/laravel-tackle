@@ -1,8 +1,10 @@
 <?php
 
 use Illuminate\Support\Facades\Artisan;
+use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Streaming\Events\StreamEnd;
+use Tackle\Agents\CachingCodingAgent;
 use Tackle\Agents\LeanCodingAgent;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Tests\Fakes\FakeCodingAgent;
@@ -83,4 +85,17 @@ it('resolves the --agent=lean shorthand', function () {
 
     expect($exit)->toBe(0)
         ->and(Artisan::output())->toContain('"total": 1');
+});
+
+it('emits an anthropic system cache breakpoint from the caching agent', function () {
+    config()->set('tackle.workspace', sys_get_temp_dir());
+    $agent = app(CachingCodingAgent::class);
+
+    $opts = $agent->providerOptions(Lab::Anthropic);
+    expect($opts)->toHaveKey('system')
+        ->and($opts['system'][0]['cache_control'])->toBe(['type' => 'ephemeral'])
+        ->and($opts['system'][0]['text'])->toContain('Laravel');
+
+    // No caching directives for other providers.
+    expect($agent->providerOptions('openai'))->toBe([]);
 });
