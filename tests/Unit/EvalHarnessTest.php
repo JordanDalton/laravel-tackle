@@ -151,6 +151,10 @@ function applyCanonicalFix(string $dir, string $id): array
             "<?php\nclass EvalPaginator { public function lastPage(int \$t, int \$p): int { return (int) ceil(\$t / \$p); } }\n"),
         'discount-math' => file_put_contents($dir.'/EvalDiscount.php',
             "<?php\nclass EvalDiscount { public function apply(float \$price, float \$percent): float { return \$price - (\$price * \$percent / 100); } }\n"),
+        'nullable-relation' => file_put_contents($dir.'/EvalReceipt.php',
+            "<?php\nclass EvalReceipt { public function customerName(\$order): string { return \$order->customer?->name ?? 'Guest'; } }\n"),
+        'cross-file-total' => file_put_contents($dir.'/EvalLineItem.php',
+            "<?php\nclass EvalLineItem { public function __construct(public int \$quantity, public int \$unitPriceCents) {} public function subtotalCents(): int { return \$this->quantity * \$this->unitPriceCents; } }\n"),
         default => null,
     };
 
@@ -240,4 +244,37 @@ it('returns no user cases when the evals path does not exist', function () {
     config()->set('tackle.evals.path', sys_get_temp_dir().'/definitely-not-here-'.uniqid());
 
     expect((new CaseRepository)->userCases())->toBe([]);
+});
+
+// ---------------------------------------------------------------------------
+// The harder cases discriminate: a lazy "fix" that regresses the happy path
+// is caught as a false-fix, not counted as fixed.
+// ---------------------------------------------------------------------------
+
+it('flags a nullable-relation fix that always returns Guest as a false fix', function () {
+    $case = (new CaseRepository)->only(['nullable-relation'])[0];
+
+    // Passes the null case by hardcoding 'Guest' — breaks the real-name path.
+    $result = (new EvalRunner)->run($case, function (string $dir) {
+        file_put_contents($dir.'/EvalReceipt.php',
+            "<?php\nclass EvalReceipt { public function customerName(\$order): string { return 'Guest'; } }\n");
+
+        return [];
+    });
+
+    expect($result->status())->toBe('false-fix');
+});
+
+it('does not credit a cross-file fix that hardcodes the expected total', function () {
+    $case = (new CaseRepository)->only(['cross-file-total'])[0];
+
+    // "Fixes" the target total by hardcoding 1300 — breaks the single-item case.
+    $result = (new EvalRunner)->run($case, function (string $dir) {
+        file_put_contents($dir.'/EvalCart.php',
+            "<?php\nclass EvalCart { public function totalCents(array \$items): int { return 1300; } }\n");
+
+        return [];
+    });
+
+    expect($result->status())->toBe('false-fix');
 });

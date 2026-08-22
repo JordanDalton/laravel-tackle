@@ -26,14 +26,26 @@ use Illuminate\Support\Facades\Process;
  */
 class Probe
 {
-    public static function subprocess(string $file, string $probe): Closure
+    /**
+     * @param  string|list<string>  $files  the source file(s) to require before
+     *                                      the probe runs, in order — for multi-file cases where a bug lives
+     *                                      in a collaborator, not the obvious file.
+     */
+    public static function subprocess(string|array $files, string $probe): Closure
     {
-        return function (string $dir) use ($file, $probe): EvalGrade {
-            $script = '<?php require '.var_export($dir.'/'.ltrim($file, '/'), true).";\n"
+        $files = is_array($files) ? $files : [$files];
+
+        return function (string $dir) use ($files, $probe): EvalGrade {
+            $requires = '';
+            foreach ($files as $file) {
+                $requires .= 'require '.var_export($dir.'/'.ltrim($file, '/'), true).";\n";
+            }
+
+            $script = '<?php '.$requires
                 .$probe."\n"
                 .'echo "TARGET:".(($target ?? false) ? 1 : 0)." HAPPY:".(($happy ?? false) ? 1 : 0);';
 
-            $scriptPath = $dir.'/__probe_'.substr(md5($file.$probe), 0, 8).'.php';
+            $scriptPath = $dir.'/__probe_'.substr(md5(implode(',', $files).$probe), 0, 8).'.php';
             file_put_contents($scriptPath, $script);
 
             $result = Process::timeout(30)->run('php '.escapeshellarg($scriptPath));

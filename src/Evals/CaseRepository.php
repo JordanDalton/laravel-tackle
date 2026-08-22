@@ -45,6 +45,8 @@ class CaseRepository
             $this->divByZero(),
             $this->offByOne(),
             $this->discountMath(),
+            $this->nullableRelation(),
+            $this->crossFileTotal(),
         ];
     }
 
@@ -170,6 +172,97 @@ class CaseRepository
                 $d = new EvalDiscount();
                 $target = abs($d->apply(200.0, 10.0) - 180.0) < 0.001;
                 $happy = abs($d->apply(100.0, 0.0) - 100.0) < 0.001;
+            PROBE),
+        );
+    }
+
+    private function nullableRelation(): EvalCase
+    {
+        $file = 'EvalReceipt.php';
+        $buggy = <<<'PHP'
+        <?php
+
+        class EvalReceipt
+        {
+            // BUG: crashes when an order has no customer (a null relation).
+            public function customerName($order): string
+            {
+                return $order->customer->name;
+            }
+        }
+        PHP;
+
+        return new EvalCase(
+            id: 'nullable-relation',
+            title: 'Receipt crashes on an order with no customer',
+            category: 'bug',
+            files: [$file => $buggy],
+            prompt: "EvalReceipt::customerName() in {$file} reads \$order->customer->name, which throws when an order has no customer (the relation is null). Return the string 'Guest' when there is no customer, and the customer's name when there is one.",
+            grader: Probe::subprocess($file, <<<'PROBE'
+                $r = new EvalReceipt();
+                $withCustomer = (object) ['customer' => (object) ['name' => 'Sam']];
+                $noCustomer = (object) ['customer' => null];
+
+                $safe = true;
+                try { $got = $r->customerName($noCustomer); } catch (\Throwable $e) { $safe = false; $got = null; }
+
+                $target = $safe && $got === 'Guest';
+                $happy = $r->customerName($withCustomer) === 'Sam';
+            PROBE),
+        );
+    }
+
+    private function crossFileTotal(): EvalCase
+    {
+        $cart = <<<'PHP'
+        <?php
+
+        class EvalCart
+        {
+            /** @param EvalLineItem[] $items */
+            public function totalCents(array $items): int
+            {
+                $total = 0;
+                foreach ($items as $item) {
+                    $total += $item->subtotalCents();
+                }
+
+                return $total;
+            }
+        }
+        PHP;
+
+        $lineItem = <<<'PHP'
+        <?php
+
+        class EvalLineItem
+        {
+            public function __construct(
+                public int $quantity,
+                public int $unitPriceCents,
+            ) {}
+
+            // BUG: ignores quantity — a subtotal should be qty x unit price.
+            public function subtotalCents(): int
+            {
+                return $this->unitPriceCents;
+            }
+        }
+        PHP;
+
+        return new EvalCase(
+            id: 'cross-file-total',
+            title: 'Cart total ignores line-item quantity',
+            category: 'bug',
+            files: ['EvalCart.php' => $cart, 'EvalLineItem.php' => $lineItem],
+            prompt: 'EvalCart::totalCents() returns the wrong total — a cart of 2 items at 500 plus 1 at 300 should be 1300 but comes out lower. Find and fix the root cause (it is not necessarily in EvalCart.php).',
+            grader: Probe::subprocess(['EvalLineItem.php', 'EvalCart.php'], <<<'PROBE'
+                $cart = new EvalCart();
+                $target = $cart->totalCents([
+                    new EvalLineItem(2, 500),
+                    new EvalLineItem(1, 300),
+                ]) === 1300;
+                $happy = $cart->totalCents([new EvalLineItem(1, 100)]) === 100;
             PROBE),
         );
     }
