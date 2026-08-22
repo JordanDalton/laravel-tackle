@@ -10,6 +10,7 @@ use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Tackle\Agents\DefaultCodingAgent;
 use Tackle\Commands\CodeCommand;
+use Tackle\Commands\EvalCommand;
 use Tackle\Commands\ExplainCommand;
 use Tackle\Commands\FixCommand;
 use Tackle\Commands\HealingLogCommand;
@@ -52,6 +53,7 @@ class TackleServiceProvider extends PackageServiceProvider
                 InstallCommand::class,
                 InitCommand::class,
                 HealthCommand::class,
+                EvalCommand::class,
                 CodeCommand::class,
                 RunCommand::class,
                 FixCommand::class,

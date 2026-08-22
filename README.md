@@ -66,6 +66,7 @@ via Ollama are two env vars away. See
 - [Generate tests](#generate-tests)
 - [Onboard a new developer](#onboard-a-new-developer)
 - [Upgrade a dependency](#upgrade-a-dependency)
+- [Benchmark the agent](#benchmark-the-agent)
 - [Health check](#health-check)
 - [Replay a healing attempt](#replay-a-healing-attempt)
 - [Limitations](#limitations)
@@ -1083,7 +1084,36 @@ Ask the agent naturally:
 
 When given an issue number, the tool fetches the issue body plus all comments and returns them as a single block of context. When no number is given, it returns a summary list of recent open issues (pull requests are filtered out automatically).
 
-### Health check
+### Benchmark the agent
+
+`php artisan ai:eval` runs the coding agent against a set of seeded bugs and
+reports how it did — so a change to prompts, tools, or the safety layer can be
+measured instead of guessed at.
+
+```bash
+php artisan ai:eval                       # run the built-in suite
+php artisan ai:eval --case=div-by-zero    # one case (repeatable)
+php artisan ai:eval --model=... --budget=0.50
+php artisan ai:eval --json                # machine-readable, for CI
+```
+
+Each case seeds one buggy class into an isolated directory, hands the agent a
+prompt, and grades the result in a subprocess — so a fix that leaves the file
+unparseable, or throws, scores as a failure rather than taking the run down. The
+report gives:
+
+- **fix rate** — cases where the target behaviour is now correct;
+- **false-fix rate** — cases the agent "fixed" while regressing a
+  previously-correct behaviour (the most dangerous outcome, measured separately);
+- **not-fixed / errors**, and **tokens + cost** per case and in total.
+
+The command exits non-zero if any case regressed or errored, so it can gate a
+CI job. Add your own cases in `Tackle\Evals\CaseRepository` — keep each one
+small, pure, and unambiguous so grading stays deterministic.
+
+---
+
+## Health check
 
 ```bash
 php artisan tackle:health
