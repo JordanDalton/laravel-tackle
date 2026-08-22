@@ -110,10 +110,21 @@ abstract class AbstractHealJob implements ShouldQueue
                 }
             });
 
+            // Format the heal's changes so the PR diff is clean, then commit.
+            $runner->format($worktreePath);
             $runner->commit($worktreePath, $this->commitMessage());
 
             $diff = $runner->diff($worktreePath);
             $after = $runner->testFailures($worktreePath);
+
+            // Static-analyse only the changed non-test code files.
+            $codeFiles = array_values(array_filter(
+                array_keys($diff['files']),
+                fn (string $f) => ! HealEvidence::isTestPath($f),
+            ));
+            $analysis = (bool) config('tackle.healing.static_analysis', true)
+                ? $runner->analyzeChanged($worktreePath, $codeFiles)
+                : ['ran' => false, 'ok' => true, 'summary' => ''];
 
             $evidence = new HealEvidence(
                 baselineFailures: $baseline['failures'],
@@ -125,6 +136,9 @@ abstract class AbstractHealJob implements ShouldQueue
                 deletions: $diff['deletions'],
                 regressionTestAdded: $this->regressionTestAdded($diff['files']),
                 blastRadiusViolations: BlastRadius::violations($diff['files'], $diff['insertions'] + $diff['deletions']),
+                analysisRan: $analysis['ran'],
+                analysisOk: $analysis['ok'],
+                analysisSummary: $analysis['summary'],
             );
 
             $testsPassed = $evidence->testsClean();
@@ -138,6 +152,7 @@ abstract class AbstractHealJob implements ShouldQueue
                 $reason = match (true) {
                     ! $evidence->codeChanged() => 'no application code changed (tests only)',
                     ! $evidence->testsClean() => 'new test failures',
+                    ! $evidence->analysisClean() => 'static analysis errors',
                     $evidence->blastRadiusViolations !== [] => 'blast-radius limits exceeded',
                     default => "mode={$mode}",
                 };

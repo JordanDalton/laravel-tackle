@@ -546,6 +546,7 @@ return [
         // for review. protected_from_healing blocks MODIFYING these paths (adding
         // a new migration is still fine).
         'baseline' => env('AI_CODE_HEALING_BASELINE', true),
+        'static_analysis' => env('AI_CODE_HEALING_STATIC_ANALYSIS', true),
         'max_files' => (int) env('AI_CODE_HEALING_MAX_FILES', 20),
         'max_diff_lines' => (int) env('AI_CODE_HEALING_MAX_DIFF_LINES', 400),
         'protected_from_healing' => [

@@ -147,6 +147,61 @@ class SandboxRunner
     }
 
     /**
+     * Auto-format the heal's changes with Pint before committing, so the PR
+     * diff is clean rather than carrying the model's whitespace quirks.
+     * Best-effort — silently skipped if Pint is absent.
+     */
+    public function format(string $worktreePath): void
+    {
+        if (! file_exists($worktreePath.'/vendor/bin/pint')) {
+            return;
+        }
+
+        Process::path($worktreePath)->timeout(60)->run('./vendor/bin/pint --dirty');
+    }
+
+    /**
+     * Run Larastan/PHPStan over the given files (the heal's changed code) and
+     * report whether it is clean. Scoped to the changed files so pre-existing
+     * errors elsewhere do not gate the heal. Skipped (ran=false) when PHPStan
+     * is not installed — never a failure by absence.
+     *
+     * @param  list<string>  $paths
+     * @return array{ran: bool, ok: bool, summary: string}
+     */
+    public function analyzeChanged(string $worktreePath, array $paths): array
+    {
+        $paths = array_values(array_filter($paths, fn ($p) => str_ends_with($p, '.php')));
+
+        if ($paths === [] || ! file_exists($worktreePath.'/vendor/bin/phpstan')) {
+            return ['ran' => false, 'ok' => true, 'summary' => ''];
+        }
+
+        $args = ['php', './vendor/bin/phpstan', 'analyse', '--no-progress', '--no-interaction', '--no-ansi'];
+        foreach ($paths as $path) {
+            $args[] = escapeshellarg($path);
+        }
+
+        $result = Process::path($worktreePath)->timeout(300)->run(implode(' ', $args));
+        $output = trim($result->output().$result->errorOutput());
+
+        // A missing/empty phpstan config makes analysis of ad-hoc paths error
+        // out ("No files found to analyse" / config errors); treat an inability
+        // to analyse as "not run" rather than a failed gate.
+        if (str_contains($output, 'No files found') || str_contains($output, 'not find a configuration')) {
+            return ['ran' => false, 'ok' => true, 'summary' => ''];
+        }
+
+        $ok = $result->successful();
+        $summary = '';
+        if (! $ok && preg_match('/\[ERROR\][^\n]*|Found \d+ error/i', $output, $m)) {
+            $summary = trim($m[0]);
+        }
+
+        return ['ran' => true, 'ok' => $ok, 'summary' => $summary];
+    }
+
+    /**
      * Push the healing branch to the remote origin.
      */
     public function push(string $branchName, string $worktreePath): void

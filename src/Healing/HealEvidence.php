@@ -31,6 +31,9 @@ class HealEvidence
         public readonly int $deletions,
         public readonly bool $regressionTestAdded,
         public readonly array $blastRadiusViolations,
+        public readonly bool $analysisRan = false,
+        public readonly bool $analysisOk = true,
+        public readonly string $analysisSummary = '',
     ) {}
 
     /**
@@ -94,6 +97,15 @@ class HealEvidence
     }
 
     /**
+     * Static analysis is "clean" if it did not run (not installed / not
+     * applicable) or ran without errors on the changed files.
+     */
+    public function analysisClean(): bool
+    {
+        return ! $this->analysisRan || $this->analysisOk;
+    }
+
+    /**
      * The patch gate: clean tests AND within blast-radius limits. Only when
      * this holds may a heal be auto-applied to main; otherwise it goes to a PR
      * for human review.
@@ -102,6 +114,7 @@ class HealEvidence
     {
         return $this->testsClean()
             && $this->codeChanged()
+            && $this->analysisClean()
             && $this->blastRadiusViolations === [];
     }
 
@@ -118,7 +131,7 @@ class HealEvidence
             return '[tests failing] ';
         }
 
-        if ($this->blastRadiusViolations !== []) {
+        if (! $this->analysisClean() || $this->blastRadiusViolations !== []) {
             return '[needs review] ';
         }
 
@@ -157,6 +170,12 @@ class HealEvidence
         $lines[] = $this->regressionTestAdded
             ? '- ✅ **Regression test added** — a test reproducing the issue is included.'
             : '- ⚠️ **No regression test added** — the fix is not guarded against recurrence.';
+
+        if ($this->analysisRan) {
+            $lines[] = $this->analysisOk
+                ? '- ✅ **Static analysis clean** on the changed files.'
+                : '- ❌ **Static analysis errors** on the changed files'.($this->analysisSummary !== '' ? ': '.$this->analysisSummary : '').'.';
+        }
 
         $lines[] = sprintf(
             '- 📊 Diff: %d file(s), +%d/-%d lines.',

@@ -69,6 +69,20 @@ class FakeSandbox extends SandboxRunner
         return 'https://github.com/acme/app/pull/1';
     }
 
+    public array $analysisResult = ['ran' => false, 'ok' => true, 'summary' => ''];
+
+    public bool $formatted = false;
+
+    public function format(string $worktreePath): void
+    {
+        $this->formatted = true;
+    }
+
+    public function analyzeChanged(string $worktreePath, array $paths): array
+    {
+        return $this->analysisResult;
+    }
+
     public function cleanup(string $worktreePath, string $branchName): void {}
 }
 
@@ -296,4 +310,44 @@ it('does not auto-apply a test-only heal; flags it [incomplete]', function () {
     expect($sandbox->applied)->toBeFalse()
         ->and($sandbox->prTitle)->toStartWith('[incomplete] ')
         ->and($sandbox->prBody)->toContain('No application code changed');
+});
+
+it('holds back a heal with static-analysis errors and flags it for review', function () {
+    config()->set('tackle.healing.mode', 'patch');
+    config()->set('tackle.healing.static_analysis', true);
+
+    $sandbox = new FakeSandbox;
+    $sandbox->testRuns = [
+        ['ran' => true, 'ok' => true, 'failures' => []],
+        ['ran' => true, 'ok' => true, 'failures' => []],
+    ];
+    $sandbox->diffResult = ['files' => ['app/Support/OrderStats.php' => 'M'], 'insertions' => 6, 'deletions' => 1];
+    $sandbox->analysisResult = ['ran' => true, 'ok' => false, 'summary' => 'Found 1 error'];
+
+    runHeal($sandbox);
+
+    expect($sandbox->applied)->toBeFalse()
+        ->and($sandbox->prTitle)->toStartWith('[needs review] ')
+        ->and($sandbox->prBody)->toContain('Static analysis errors');
+});
+
+it('auto-applies a heal that passes static analysis and formats the change', function () {
+    config()->set('tackle.healing.mode', 'patch');
+
+    $sandbox = new FakeSandbox;
+    $sandbox->testRuns = [
+        ['ran' => true, 'ok' => true, 'failures' => []],
+        ['ran' => true, 'ok' => true, 'failures' => []],
+    ];
+    $sandbox->diffResult = [
+        'files' => ['app/Support/OrderStats.php' => 'M', 'tests/Unit/OrderStatsTest.php' => 'A'],
+        'insertions' => 12, 'deletions' => 0,
+    ];
+    $sandbox->analysisResult = ['ran' => true, 'ok' => true, 'summary' => ''];
+
+    runHeal($sandbox);
+
+    expect($sandbox->applied)->toBeTrue()
+        ->and($sandbox->formatted)->toBeTrue()
+        ->and($sandbox->prBody)->toBeNull();
 });

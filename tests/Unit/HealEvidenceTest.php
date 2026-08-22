@@ -117,3 +117,25 @@ it('counts a non-test file as a real code change', function () {
     expect($e->codeChanged())->toBeTrue()
         ->and($e->gatePassed())->toBeTrue();
 });
+
+it('fails the gate on static-analysis errors even with clean tests', function () {
+    $e = evidence(['analysisRan' => true, 'analysisOk' => false, 'analysisSummary' => 'Found 2 errors']);
+
+    expect($e->analysisClean())->toBeFalse()
+        ->and($e->gatePassed())->toBeFalse()
+        ->and($e->titleTag())->toBe('[needs review] ')
+        ->and($e->render())->toContain('Static analysis errors')->toContain('Found 2 errors');
+});
+
+it('treats absent static analysis as clean', function () {
+    $e = evidence(['analysisRan' => false]);
+
+    expect($e->analysisClean())->toBeTrue()
+        ->and($e->gatePassed())->toBeTrue()
+        ->and($e->render())->not->toContain('Static analysis');
+});
+
+it('notes clean static analysis when it ran', function () {
+    expect(evidence(['analysisRan' => true, 'analysisOk' => true])->render())
+        ->toContain('Static analysis clean');
+});
