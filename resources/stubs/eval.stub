@@ -8,7 +8,9 @@ use Tackle\Evals\Probe;
  *
  * Return an EvalCase (or an array of them). ai:eval seeds `files` into an
  * isolated directory, hands the agent `prompt`, then runs `grader` against the
- * result. Keep it small, pure, and unambiguous so grading stays deterministic.
+ * result. As generated this case is a working example (the agent should fix
+ * it) — replace the bug, prompt, and grader with your own. Keep it small,
+ * pure, and unambiguous so grading stays deterministic.
  * Run it with: php artisan ai:eval --case={{ id }}
  */
 
@@ -24,22 +26,24 @@ return new EvalCase(
 
         class {{ class }}
         {
-            // BUG: describe what's wrong here.
+            // BUG: should return double the value, but returns it unchanged.
             public function compute(int $value): int
             {
-                return $value; // ...and make it actually wrong.
+                return $value;
             }
         }
         PHP,
     ],
-    prompt: 'Describe the bug in {{ class }}.php and what "fixed" means, concretely.',
+    // A concrete, fix-oriented instruction — say what's wrong and what "fixed"
+    // looks like. (Vague prompts get vague results.)
+    prompt: '{{ class }}::compute() in {{ class }}.php should return double its input, but it returns the input unchanged. Fix compute() so it doubles the value.',
 
     // The grader runs in a subprocess that requires the (possibly fixed) file.
     // Set $target (the bug is fixed) and $happy (a previously-correct behaviour
     // still holds — this catches a "fix" that regresses something else).
     grader: Probe::subprocess('{{ class }}.php', '
         $subject = new {{ class }}();
-        $target = $subject->compute(2) === 4;   // TODO: the behaviour being fixed
-        $happy  = $subject->compute(0) === 0;   // TODO: a happy path that must still hold
+        $target = $subject->compute(2) === 4;   // the behaviour being fixed
+        $happy  = $subject->compute(0) === 0;   // a happy path that must still hold
     '),
 );

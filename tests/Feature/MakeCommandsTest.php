@@ -135,9 +135,20 @@ it('the generated case loads and is broken as seeded', function () {
 
     // As generated, the seeded code fails the target (broken) but the happy
     // path holds — the correct starting state for a case.
-    $grade = (new EvalRunner)->run($cases[0], fn () => [])->grade;
+    $runner = new EvalRunner;
+    $grade = $runner->run($cases[0], fn () => [])->grade;
     expect($grade->fixed)->toBeFalse()
         ->and($grade->isFalseFix())->toBeFalse();
+
+    // The intended fix (double the input) makes it pass cleanly — the stub is
+    // self-consistent, so an unedited generated case demonstrates a real fix.
+    $fixed = $runner->run($cases[0], function (string $d) {
+        $file = glob($d.'/*.php')[0];
+        file_put_contents($file, str_replace('return $value;', 'return $value * 2;', file_get_contents($file)));
+
+        return [];
+    });
+    expect($fixed->grade->isClean())->toBeTrue();
 
     File::deleteDirectory($dir);
 });
