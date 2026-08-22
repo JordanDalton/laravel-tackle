@@ -83,6 +83,20 @@ class TestOutputParser
     }
 
     /**
+     * Just the failing test titles — used by the healer to diff a baseline run
+     * against the post-fix run and detect NEW failures the fix introduced.
+     *
+     * @return list<string>
+     */
+    public static function failureTitles(string $raw): array
+    {
+        return array_map(
+            fn (array $f) => $f['title'],
+            self::failures(Utf8::clean($raw)),
+        );
+    }
+
+    /**
      * @return list<array{title: string, location: ?string, message: ?string}>
      */
     private static function failures(string $clean): array

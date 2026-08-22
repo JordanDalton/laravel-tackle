@@ -537,6 +537,24 @@ return [
         'base_branch' => env('AI_CODE_HEALING_BASE_BRANCH', 'main'),
         'github_token' => env('GITHUB_TOKEN', null),
         'telescope' => env('AI_CODE_HEALING_TELESCOPE', true),
+
+        // Verification + blast-radius. The healer baselines the suite before the
+        // fix so the gate can require "no NEW failures" rather than a fully green
+        // suite (real apps have pre-existing failures). Set baseline=false for
+        // very slow suites — the gate then falls back to "suite green". A heal
+        // that exceeds these limits is never auto-applied; it opens a PR flagged
+        // for review. protected_from_healing blocks MODIFYING these paths (adding
+        // a new migration is still fine).
+        'baseline' => env('AI_CODE_HEALING_BASELINE', true),
+        'max_files' => (int) env('AI_CODE_HEALING_MAX_FILES', 20),
+        'max_diff_lines' => (int) env('AI_CODE_HEALING_MAX_DIFF_LINES', 400),
+        'protected_from_healing' => [
+            'database/migrations/*',
+            'config/*',
+            'composer.json',
+            'composer.lock',
+            '.env*',
+        ],
     ],
 
     /*

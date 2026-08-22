@@ -5,6 +5,7 @@ namespace Tackle\Healing;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use RuntimeException;
+use Tackle\Support\TestOutputParser;
 use Throwable;
 
 class SandboxRunner
@@ -69,6 +70,18 @@ class SandboxRunner
      */
     public function runTests(string $worktreePath): bool
     {
+        return $this->testFailures($worktreePath)['ok'];
+    }
+
+    /**
+     * Run the test suite and return structured results: whether it ran at all,
+     * whether it passed, and the titles of the failing tests. The healer runs
+     * this before and after the fix to detect NEW failures the fix introduced.
+     *
+     * @return array{ran: bool, ok: bool, failures: list<string>}
+     */
+    public function testFailures(string $worktreePath): array
+    {
         $binary = file_exists($worktreePath.'/vendor/bin/pest')
             ? './vendor/bin/pest'
             : 'php artisan test';
@@ -77,7 +90,60 @@ class SandboxRunner
             ->timeout(120)
             ->run($binary);
 
-        return $result->successful();
+        $output = $result->output().$result->errorOutput();
+        $ran = trim($output) !== '';
+
+        return [
+            'ran' => $ran,
+            'ok' => $result->successful(),
+            'failures' => TestOutputParser::failureTitles($output),
+        ];
+    }
+
+    /**
+     * The diff of the healing commit (HEAD vs its parent) as a status map plus
+     * line counts. Uses the committed diff so newly-added files (a regression
+     * test) are included, which a working-tree diff against HEAD would miss.
+     *
+     * @return array{files: array<string, string>, insertions: int, deletions: int}
+     */
+    public function diff(string $worktreePath): array
+    {
+        $files = [];
+        $insertions = 0;
+        $deletions = 0;
+
+        $nameStatus = Process::path($worktreePath)->timeout(30)
+            ->run(['git', 'diff', '--name-status', 'HEAD~1', 'HEAD']);
+
+        if ($nameStatus->successful()) {
+            foreach (preg_split('/\r?\n/', trim($nameStatus->output())) ?: [] as $line) {
+                if ($line === '') {
+                    continue;
+                }
+                $parts = preg_split('/\t+/', $line);
+                if (count($parts) >= 2) {
+                    // Rename lines are "R100	old	new" — take the status letter
+                    // and the final path.
+                    $files[end($parts)] = substr($parts[0], 0, 1);
+                }
+            }
+        }
+
+        $numstat = Process::path($worktreePath)->timeout(30)
+            ->run(['git', 'diff', '--numstat', 'HEAD~1', 'HEAD']);
+
+        if ($numstat->successful()) {
+            foreach (preg_split('/\r?\n/', trim($numstat->output())) ?: [] as $line) {
+                $parts = preg_split('/\t+/', $line);
+                if (count($parts) >= 3) {
+                    $insertions += is_numeric($parts[0]) ? (int) $parts[0] : 0;
+                    $deletions += is_numeric($parts[1]) ? (int) $parts[1] : 0;
+                }
+            }
+        }
+
+        return ['files' => $files, 'insertions' => $insertions, 'deletions' => $deletions];
     }
 
     /**

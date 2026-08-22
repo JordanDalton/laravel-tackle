@@ -1236,6 +1236,30 @@ GITHUB_TOKEN=ghp_...
 
 ### Configuration
 
+
+### Verification gate
+
+A heal is only auto-applied (in `patch` mode) when it passes a gate the harness
+runs itself — the agent cannot declare itself done:
+
+- **Regression-test-first.** The healer is instructed to add a test that
+  reproduces the failure *before* fixing, then show it green. New test files are
+  detected and reported.
+- **No *new* failures.** The suite is baselined before the fix, so the gate
+  requires that the fix introduce no new failures — not that the whole suite is
+  green (real apps carry pre-existing failures). Set `baseline=false` to fall
+  back to "suite green" on very slow suites.
+- **Blast-radius limits.** A heal that touches too many files, changes too many
+  lines, or *modifies* a migration / `config/*` / `composer.json` is never
+  auto-applied — it opens a PR flagged `[needs review]`. (Adding a new migration
+  is fine.)
+
+Every heal PR carries a **Heal evidence** block — new failures (if any),
+pre-existing failures, whether a regression test was added, files touched, and
+diff size — so review is quick and the "fixed" claim is backed rather than
+asserted. A PR that failed the gate is titled `[tests failing]` or
+`[needs review]`.
+
 All healer options live under the `healing` key in `config/tackle.php`:
 
 | Option | Env var | Default | Description |
@@ -1248,6 +1272,10 @@ All healer options live under the `healing` key in `config/tackle.php`:
 | `threshold` | `AI_CODE_HEALING_THRESHOLD` | `1` | Number of failures before healing triggers |
 | `base_branch` | `AI_CODE_HEALING_BASE_BRANCH` | `main` | Branch PRs are opened against |
 | `branch_prefix` | `AI_CODE_HEALING_BRANCH_PREFIX` | `tackle/heal-` | Prefix for fix branches |
+| `baseline` | `AI_CODE_HEALING_BASELINE` | `true` | Run the suite before the fix so the gate keys on *new* failures, not a fully green suite. Set `false` for very slow suites |
+| `max_files` | `AI_CODE_HEALING_MAX_FILES` | `20` | A heal touching more files is held back from auto-apply and flagged for review |
+| `max_diff_lines` | `AI_CODE_HEALING_MAX_DIFF_LINES` | `400` | A heal changing more lines is held back from auto-apply |
+| `protected_from_healing` | *(config only)* | migrations, `config/*`, `composer.json/.lock`, `.env*` | Modifying (not adding) these forces human review |
 | `github_token` | `GITHUB_TOKEN` | — | GitHub token for opening PRs |
 | `telescope` | `AI_CODE_HEALING_TELESCOPE` | `true` | Use Telescope context if available |
 

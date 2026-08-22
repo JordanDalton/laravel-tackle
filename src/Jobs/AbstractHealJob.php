@@ -9,10 +9,13 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Tackle\Agents\HealingAgent;
+use Tackle\Contracts\CodingAgent;
 use Tackle\Contracts\InteractionPolicy;
 use Tackle\Healing\GitHubTokenReader;
+use Tackle\Healing\HealEvidence;
 use Tackle\Healing\SandboxRunner;
 use Tackle\Models\HealingLog;
+use Tackle\Support\BlastRadius;
 use Tackle\Support\DenyInteraction;
 use Throwable;
 
@@ -61,6 +64,19 @@ abstract class AbstractHealJob implements ShouldQueue
     // Shared healing engine
     // -----------------------------------------------------------------------
 
+    /**
+     * Build the healing agent for a worktree. Overridable so tests can inject
+     * a scripted agent instead of one that calls a provider.
+     */
+    protected function makeAgent(string $worktreePath): CodingAgent
+    {
+        return new HealingAgent(
+            $worktreePath,
+            HealingAgent::configuredProvider(),
+            HealingAgent::configuredModel(),
+        );
+    }
+
     public function handle(SandboxRunner $runner, GitHubTokenReader $tokenReader): void
     {
         // A queue worker has no terminal. Without this, any prompting tool added
@@ -77,11 +93,15 @@ abstract class AbstractHealJob implements ShouldQueue
         try {
             $worktreePath = $runner->prepare($branchName);
 
-            $agent = new HealingAgent(
-                $worktreePath,
-                HealingAgent::configuredProvider(),
-                HealingAgent::configuredModel(),
-            );
+            // Baseline the suite BEFORE the fix so we can tell a failure the fix
+            // introduced from one that was already there. Skippable for very
+            // slow suites, where the gate falls back to "suite green".
+            $baselineEnabled = (bool) config('tackle.healing.baseline', true);
+            $baseline = $baselineEnabled
+                ? $runner->testFailures($worktreePath)
+                : ['ran' => false, 'ok' => true, 'failures' => []];
+
+            $agent = $this->makeAgent($worktreePath);
             $summary = '';
 
             $agent->stream($this->agentPrompt())->each(function ($event) use (&$summary) {
@@ -91,23 +111,43 @@ abstract class AbstractHealJob implements ShouldQueue
             });
 
             $runner->commit($worktreePath, $this->commitMessage());
-            $testsPassed = $runner->runTests($worktreePath);
 
-            if ($testsPassed && $mode === 'patch') {
+            $diff = $runner->diff($worktreePath);
+            $after = $runner->testFailures($worktreePath);
+
+            $evidence = new HealEvidence(
+                baselineFailures: $baseline['failures'],
+                afterFailures: $after['failures'],
+                baselineRan: $baseline['ran'],
+                afterRan: $after['ran'],
+                filesTouched: array_keys($diff['files']),
+                insertions: $diff['insertions'],
+                deletions: $diff['deletions'],
+                regressionTestAdded: $this->regressionTestAdded($diff['files']),
+                blastRadiusViolations: BlastRadius::violations($diff['files'], $diff['insertions'] + $diff['deletions']),
+            );
+
+            $testsPassed = $evidence->testsClean();
+
+            if ($evidence->gatePassed() && $mode === 'patch') {
                 $runner->applyToMain($branchName);
                 $this->onPatched();
                 $outcome = 'patched';
-                Log::info("Tackle Healer: patch applied for {$this->subjectClass()}.");
+                Log::info("Tackle Healer: patch applied for {$this->subjectClass()} (no new failures, within blast-radius limits).");
             } else {
-                $reason = ! $testsPassed ? 'tests failed in sandbox' : "mode={$mode}";
+                $reason = match (true) {
+                    ! $evidence->testsClean() => 'new test failures',
+                    $evidence->blastRadiusViolations !== [] => 'blast-radius limits exceeded',
+                    default => "mode={$mode}",
+                };
                 Log::info("Tackle Healer: opening PR ({$reason}) for {$this->subjectClass()}.");
 
                 $runner->push($branchName, $worktreePath);
 
                 $prUrl = $runner->createPullRequest(
                     branchName: $branchName,
-                    title: $this->prTitle($testsPassed),
-                    body: $this->prBody($summary, $testsPassed),
+                    title: $evidence->titleTag().$this->prTitle($testsPassed),
+                    body: $this->prBody($summary, $testsPassed)."\n\n".$evidence->render(),
                     token: $tokenReader->token(),
                 );
                 $outcome = 'pr_opened';
@@ -126,6 +166,27 @@ abstract class AbstractHealJob implements ShouldQueue
                 $runner->cleanup($worktreePath, $branchName);
             }
         }
+    }
+
+    /**
+     * True if the heal added a new test file — the regression-test-first
+     * signal. Keyed on ADDED status so an edit to an existing test does not
+     * count as a fresh guard against recurrence.
+     *
+     * @param  array<string, string>  $files  path => git status letter
+     */
+    protected function regressionTestAdded(array $files): bool
+    {
+        foreach ($files as $path => $status) {
+            if (strtoupper((string) $status) !== 'A') {
+                continue;
+            }
+            if (str_contains($path, 'tests/') || str_ends_with($path, 'Test.php') || preg_match('/(^|\/)[A-Za-z].*Test\.php$/', $path)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function writeAuditLog(

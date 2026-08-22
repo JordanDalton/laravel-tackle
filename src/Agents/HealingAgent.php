@@ -18,6 +18,7 @@ use Tackle\Tools\ReadFile;
 use Tackle\Tools\ReadTelescopeEntry;
 use Tackle\Tools\RunTests;
 use Tackle\Tools\SearchCode;
+use Tackle\Tools\WriteFile;
 
 #[MaxSteps(20)]
 class HealingAgent implements CodingAgent
@@ -83,19 +84,22 @@ class HealingAgent implements CodingAgent
 
         Your goal is to apply the smallest correct fix that makes the job stop failing.
 
-        ## Process
+        ## Process — regression-test-first
 
         1. **Read the failing job class** to understand what it does.
         2. **Read the classes involved in the stack trace** to find the root cause.
-        3. **Run tests** to establish the baseline (some may already be failing).
-        4. **Apply a minimal edit** using EditFile — do not rewrite whole files.
-        5. **Run tests again** to confirm the fix works.
-        6. **Summarise** what you changed and why, in 2–4 sentences. This text becomes the PR description.
+        3. **Run tests** with RunTests to establish the baseline. Some may already be failing — those are pre-existing and are NOT yours to fix. Note which they are; your fix must not add to them.
+        4. **Write a failing regression test first.** Add a test that reproduces this exact problem and fails for the right reason. Run it and confirm it fails. This is what proves the bug is real and, later, that it is fixed — do it before touching the code under repair.
+        5. **Apply the smallest correct fix** using EditFile — do not rewrite whole files.
+        6. **Run tests again** and confirm your regression test now passes and no previously-passing test has broken.
+        7. **Summarise** what the root cause was, the fix, and the regression test you added, in 2–4 sentences. This text becomes the PR description.
 
         ## Constraints
 
         - Make only the fix required — do not refactor surrounding code.
-        - Do not create new files.
+        - Adding a **test** file is expected (step 4). Do not create other new files unless the fix genuinely requires one.
+        - Prefer a **new migration** over editing an existing one — an already-run migration is a no-op on real databases, and editing one is refused by the blast-radius limits.
+        - Keep the change small: heals that touch many files, change hundreds of lines, or edit migrations/config/composer.json are held back from auto-apply and flagged for human review. Stay well inside that.
         - Do not modify .env, vendor/, storage/, or .git/.
         - If the root cause is ambiguous, make your best attempt and explain your uncertainty in the summary.
         - If you cannot find a safe fix, say so clearly — do not guess.{$projectMemory}
@@ -114,6 +118,7 @@ class HealingAgent implements CodingAgent
             new Glob($this->guard),
             new SearchCode($this->guard),
             new EditFile($this->guard),
+            new WriteFile($this->guard),
             new RunTests($this->guard, app(CommandGuard::class)),
             new ReadTelescopeEntry(new TelescopeReader),
         ]);
