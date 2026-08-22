@@ -33,3 +33,35 @@ it('runs a case with a no-op agent and reports it not-fixed as JSON', function (
         ->and($doc['cases'][0]['status'])->toBe('not-fixed')
         ->and($doc['input_tokens'])->toBe(1000);
 });
+
+it('rejects an --agent that is not a CodingAgent', function () {
+    $this->artisan('ai:eval', ['--case' => ['div-by-zero'], '--agent' => 'stdClass', '--json' => true])
+        ->assertExitCode(1);
+});
+
+it('rejects an unknown --agent class', function () {
+    $this->artisan('ai:eval', ['--case' => ['div-by-zero'], '--agent' => 'App\\Nope\\Missing', '--json' => true])
+        ->assertExitCode(1);
+});
+
+it('benchmarks the agent class given to --agent', function () {
+    // A no-op CodingAgent class the runner will instantiate via the container.
+    app()->bind(EvalFakeAgent::class, fn () => new EvalFakeAgent);
+
+    $exit = Artisan::call('ai:eval', ['--case' => ['div-by-zero'], '--agent' => EvalFakeAgent::class, '--json' => true]);
+    $doc = json_decode(substr(Artisan::output(), strpos(Artisan::output(), '{')), true);
+
+    expect($exit)->toBe(0)
+        ->and($doc['total'])->toBe(1)
+        ->and($doc['cases'][0]['status'])->toBe('not-fixed'); // no-op agent makes no edit
+});
+
+class EvalFakeAgent extends FakeCodingAgent
+{
+    public function __construct()
+    {
+        parent::__construct([
+            new StreamEnd('e', 'stop', new Usage(500, 25), 0),
+        ]);
+    }
+}

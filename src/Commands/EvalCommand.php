@@ -20,6 +20,7 @@ class EvalCommand extends Command
         {--budget=   : Per-case USD budget (default 0.50).}
         {--model=    : Model to run the cases on.}
         {--provider= : Provider to run the cases on.}
+        {--agent=    : CodingAgent class to benchmark (default: the configured agent). Point it at a leaner agent to measure toolset overhead.}
         {--json      : Emit the report as JSON.}';
 
     protected $description = 'Benchmark the coding agent against seeded bugs — reports fix rate, false-fix rate, tokens, and cost.';
@@ -42,6 +43,11 @@ class EvalCommand extends Command
             config(['tackle.model' => $model]);
         }
 
+        $agentClass = $this->resolveAgentClass();
+        if ($agentClass === null) {
+            return self::FAILURE;
+        }
+
         $budgetUsd = (float) ($this->option('budget') ?: 0.50);
         // Evals grade a self-contained fix — no shell, no worktree, no prompts.
         config(['tackle.shell' => 'off']);
@@ -52,13 +58,13 @@ class EvalCommand extends Command
 
         if (! $json) {
             $this->line('');
-            $this->line('<fg=green;options=bold>Tackle Eval</> — '.count($suite).' case(s) · $'.number_format($budgetUsd, 2).'/case · '.config('tackle.model'));
+            $this->line('<fg=green;options=bold>Tackle Eval</> — '.count($suite).' case(s) · $'.number_format($budgetUsd, 2).'/case · '.config('tackle.model').' · '.class_basename($agentClass));
             $this->line('');
         }
 
         $report = (new EvalRunner)->runAll(
             $suite,
-            function (string $dir, EvalCase $case) use ($budgetUsd, $maxSteps, $json): array {
+            function (string $dir, EvalCase $case) use ($budgetUsd, $maxSteps, $json, $agentClass): array {
                 if (! $json) {
                     $this->output->write(sprintf('  running %-28s ', $case->id));
                 }
@@ -66,7 +72,7 @@ class EvalCommand extends Command
                 config(['tackle.workspace' => $dir, 'tackle.budget_usd' => $budgetUsd]);
                 app()->forgetInstance(BudgetTracker::class);
                 $budget = app(BudgetTracker::class);
-                $agent = app(CodingAgent::class);
+                $agent = app($agentClass);
 
                 $steps = 0;
 
@@ -108,5 +114,33 @@ class EvalCommand extends Command
 
         // Non-zero exit if anything regressed or errored — useful in CI.
         return $report->falseFixes() > 0 || $report->errors() > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * The CodingAgent class to benchmark. Defaults to the bound agent (what
+     * ai:code / ai:run use) so the numbers reflect production; an explicit
+     * --agent lets you measure a leaner toolset against the same cases.
+     */
+    private function resolveAgentClass(): ?string
+    {
+        $given = $this->option('agent');
+
+        if ($given === null || $given === '') {
+            return CodingAgent::class;
+        }
+
+        if (! class_exists($given)) {
+            $this->error("Unknown --agent class: {$given}");
+
+            return null;
+        }
+
+        if (! is_subclass_of($given, CodingAgent::class) && ! in_array(CodingAgent::class, class_implements($given) ?: [], true)) {
+            $this->error('--agent must implement '.CodingAgent::class.": {$given}");
+
+            return null;
+        }
+
+        return $given;
     }
 }
