@@ -86,6 +86,13 @@ class Delegate extends AbstractTool
 
         $agent = app($registry[$name]['agent']);
 
+        // The child gets a clean per-turn context counter and the parent's is
+        // restored afterwards — the child's stream end would otherwise reset it.
+        $parentContext = $this->budget->contextChars();
+        $parentInFlight = $this->budget->inFlightCost();
+        $this->budget->resetContextChars(0);
+        $this->budget->resetInFlightCost(0.0);
+
         self::$delegating = true;
 
         try {
@@ -98,6 +105,8 @@ class Delegate extends AbstractTool
             return "Subagent '{$name}' failed: {$e->getMessage()}";
         } finally {
             self::$delegating = false;
+            $this->budget->resetContextChars($parentContext);
+            $this->budget->resetInFlightCost($parentInFlight);
         }
     }
 

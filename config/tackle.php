@@ -214,6 +214,40 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Context Guards
+    |--------------------------------------------------------------------------
+    |
+    | A tool result is re-sent on every later step of the turn, so one
+    | oversized result (a listing that walks node_modules, a search whose
+    | snippet is a minified line, a binary read) is paid for again and again
+    | until the turn ends — far past what the budget check, which only runs
+    | when a stream finishes, can catch. These bound the damage:
+    |
+    | - ignored_directories: what Glob and SearchCode skip when walking the
+    |   tree. Not a security boundary (that is protected_paths) — the agent
+    |   can still target a file inside them explicitly.
+    | - max_tool_result_chars: hard cap on any single tool result, applied to
+    |   every tool that runs through the harness (built-in or yours).
+    | - max_context_chars: how much tool output one turn may pull into context
+    |   before further tool calls are refused and the agent is told to finish
+    |   with what it has. Resets when the turn's stream ends.
+    |
+    */
+    'ignored_directories' => [
+        'node_modules',
+        '.git',
+        'vendor',
+        'storage',
+        'bootstrap/cache',
+        'public/build',
+    ],
+
+    'max_tool_result_chars' => env('AI_CODE_MAX_TOOL_RESULT_CHARS', 48000),
+
+    'max_context_chars' => env('AI_CODE_MAX_CONTEXT_CHARS', 600000),
+
+    /*
+    |--------------------------------------------------------------------------
     | Worktree Isolation
     |--------------------------------------------------------------------------
     |

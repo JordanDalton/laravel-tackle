@@ -4,6 +4,7 @@ namespace Tackle\Tools;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Tools\Request;
+use Tackle\Support\IgnoredDirectories;
 use Tackle\Support\PathGuard;
 use Tackle\Support\Utf8;
 
@@ -13,11 +14,17 @@ class SearchCode extends AbstractTool
 
     private const CONTEXT_LINES = 2;
 
+    /** Longer lines (minified bundles, lockfiles) are clipped in snippets. */
+    private const MAX_LINE_CHARS = 300;
+
+    /** Files above this are skipped — generated bundles, dumps, binaries. */
+    private const MAX_FILE_BYTES = 1_000_000;
+
     public function __construct(private PathGuard $guard) {}
 
     public function description(): string
     {
-        return 'Search for a string or pattern within files in the workspace. Returns file path, line number, and a short snippet. Results capped at '.self::MAX_RESULTS.'. Prefer this over reading whole files when locating a symbol or string.';
+        return 'Search for a string or pattern within files in the workspace. Returns file path, line number, and a short snippet. Results capped at '.self::MAX_RESULTS.'; dependency and build directories (node_modules, vendor, storage, …) are skipped unless "path" points inside one. Prefer this over reading whole files when locating a symbol or string.';
     }
 
     public function schema(JsonSchema $schema): array
@@ -67,6 +74,10 @@ class SearchCode extends AbstractTool
                 continue;
             }
 
+            if (@filesize($file) > self::MAX_FILE_BYTES) {
+                continue;
+            }
+
             $lines = @file($file, FILE_IGNORE_NEW_LINES);
             if ($lines === false) {
                 continue;
@@ -82,7 +93,10 @@ class SearchCode extends AbstractTool
                     : str_contains($line, $query);
 
                 if ($matched) {
-                    $snippet = array_slice($lines, max(0, $lineNo - self::CONTEXT_LINES), self::CONTEXT_LINES * 2 + 1);
+                    $snippet = array_map(
+                        fn (string $l) => strlen($l) > self::MAX_LINE_CHARS ? substr($l, 0, self::MAX_LINE_CHARS).'…' : $l,
+                        array_slice($lines, max(0, $lineNo - self::CONTEXT_LINES), self::CONTEXT_LINES * 2 + 1),
+                    );
                     $results[] = sprintf("%s:%d\n%s", $relative, $lineNo + 1, implode("\n", $snippet));
                     $count++;
                 }
@@ -106,7 +120,7 @@ class SearchCode extends AbstractTool
     {
         $files = [];
         $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)
+            IgnoredDirectories::filter($this->guard->workspace(), $dir)
         );
         foreach ($iterator as $file) {
             if ($file->isFile()) {

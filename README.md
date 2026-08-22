@@ -20,6 +20,7 @@ can extend or build on top of:
 - **`ai:respond`** — acts on a `/tackle` comment left on a pull request: applies the requested change, pushes it to the PR branch, and replies in the thread. Wire it to a workflow and reviewers can type `/tackle fix this` under any finding.
 - **`ai:explain`** — explains what a file, class, or method does in plain English
 - **`ai:test`** — generates a Pest test file for any class or method
+- **`ai:onboard`** — onboards a new developer: a guided, read-only tour of the codebase (what it is, how it's put together, how to run it, where to be careful), then answers their questions. `--write` saves it as `docs/ONBOARDING.md`
 - **`ai:upgrade`** — safe major version upgrades for Composer dependencies: audits what is upgradable, plans from the package's upgrade guide, resolves constraints, fixes the breaking changes, and verifies with your test suite — in an isolated worktree, delivered as a PR
 - **Self-healer** — an autonomous agent that listens for failed jobs and scheduled tasks — or for production issues pushed by [Laravel Nightwatch](#production-issues-from-laravel-nightwatch), exceptions and slow endpoints alike — diagnoses the problem, patches the code, and opens a PR or applies the fix, without you lifting a finger
 
@@ -63,6 +64,7 @@ via Ollama are two env vars away. See
 - [Code review](#code-review)
 - [Explain code](#explain-code)
 - [Generate tests](#generate-tests)
+- [Onboard a new developer](#onboard-a-new-developer)
 - [Upgrade a dependency](#upgrade-a-dependency)
 - [Health check](#health-check)
 - [Replay a healing attempt](#replay-a-healing-attempt)
@@ -453,7 +455,7 @@ your next task. If something looks wrong, say so or discard with
 ## Project instructions (TACKLE.md)
 
 Every Tackle agent — `ai:code`, `ai:fix`, `ai:review`, `ai:explain`, `ai:test`,
-`ai:upgrade`, and the self-healer — loads a `TACKLE.md` file from your project root at the
+`ai:onboard`, `ai:upgrade`, and the self-healer — loads a `TACKLE.md` file from your project root at the
 start of each session and follows it. It's the place to record project
 conventions, boundaries, and gotchas once, instead of repeating them in every
 prompt.
@@ -746,6 +748,14 @@ return [
 
     // Glob patterns (relative to workspace) the agent can never read or write
     'protected_paths' => ['.env', '.env.*', 'storage/*', 'vendor/*', '.git/*'],
+
+    // Context guards — bound what one tool call, and one turn, can pull into context.
+    // Glob/SearchCode skip these on a recursive walk (not a security boundary):
+    'ignored_directories' => ['node_modules', '.git', 'vendor', 'storage', 'bootstrap/cache', 'public/build'],
+    // Hard cap on any single tool result, for every tool that runs through the harness
+    'max_tool_result_chars' => env('AI_CODE_MAX_TOOL_RESULT_CHARS', 48000),
+    // Tool output one turn may accumulate before further calls are refused and the agent is told to finish
+    'max_context_chars' => env('AI_CODE_MAX_CONTEXT_CHARS', 600000),
 
     // Root directory for the agent — null defaults to base_path()
     'workspace' => null,
@@ -1816,6 +1826,56 @@ Test type is inferred from the path when no flag is given — controllers, jobs,
 commands, listeners, and middleware default to `Feature`; everything else defaults
 to `Unit`.
 
+## Onboard a new developer
+
+`php artisan ai:onboard` gives a new developer the first-day tour a senior
+teammate would — read-only, built from what is actually in the repository, with
+file paths throughout so they can open what it describes. The tour covers, in
+order: what the app is, how it is put together, its entrypoints (routes, jobs,
+commands, scheduled tasks, events), the data model, how to run it locally, the
+conventions in use, where to be careful, and a few good first tasks. Then it
+stays open to answer questions about the codebase.
+
+```bash
+# The full tour, then a Q&A prompt
+php artisan ai:onboard
+
+# Tour one area in depth — a directory, module, or domain concept
+php artisan ai:onboard --focus=app/Billing
+php artisan ai:onboard --focus="checkout"
+
+# Skip the tour and go straight to questions
+php artisan ai:onboard --ask
+
+# Save the tour as docs/ONBOARDING.md (or a path of your choice)
+php artisan ai:onboard --write
+php artisan ai:onboard --write=docs/architecture/TOUR.md
+```
+
+`--write` works without a terminal, so the onboarding doc can be kept fresh by
+the scheduler or CI instead of rotting the way hand-written ones do:
+
+```php
+// routes/console.php
+Schedule::command('ai:onboard --write')->weekly();
+```
+
+If the provider cuts the stream short (a mid-stream error, or the output
+length limit), nothing is written and the command exits non-zero — a scheduled
+run never replaces a complete document with a partial one.
+
+The agent reads your `TACKLE.md` (or `AGENTS.md` / `CLAUDE.md`) and quotes the
+team's own conventions and warnings rather than restating them. It never edits
+files or runs commands, and it does not suggest changes — anything risky is
+described as a place to be careful, not a task. The `--focus` tour stays inside
+the area you name and mentions the rest of the app only where that area touches
+it.
+
+If the [`explorer` subagent](#subagents) is registered (it is by default), broad
+sweeps are delegated to it so the main conversation stays clean for your
+questions. `ai:explain` is the one-file version of this; `ai:onboard` is the
+whole-app version with a narrative.
+
 ---
 
 ## Upgrade a dependency
@@ -2469,6 +2529,27 @@ classifier error passes the content through unshielded rather than breaking the
 read. Same honest caveat, doubly so here: the classifier is itself an LLM and
 can be injected. It lowers the odds a crafted payload steers the main agent; it
 does not eliminate them. Defense-in-depth, still below OS isolation.
+
+---
+
+### Context guards (runaway cost)
+
+A tool result is re-sent on every later step of a turn, so one oversized
+result — a listing that walks `node_modules`, a search whose "snippet" is a
+minified line, a binary read — is paid for again and again until the turn
+ends, far past what the budget check (which runs when a stream finishes) can
+catch. Three guards bound it, all enforced in PHP:
+
+- every tool result is capped at `max_tool_result_chars` (48k by default) with
+  a note telling the model how to ask for less;
+- `Glob` and `SearchCode` skip `ignored_directories` on recursive walks (and
+  `ReadFile` refuses binaries), so "`**/*`" from the root stays small;
+- once a turn has pulled `max_context_chars` of tool output into context,
+  further tool calls are refused and the agent is told to finish with what it
+  has. Subagents get their own counter.
+
+These came out of a real incident: a subagent put ~3.5 MB into its context and
+re-sent ~945k tokens on each of nine steps before the budget check ever ran.
 
 ---
 

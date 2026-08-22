@@ -3,6 +3,7 @@
 use Tackle\Agents\DefaultCodingAgent;
 use Tackle\Agents\ExplainAgent;
 use Tackle\Agents\HealingAgent;
+use Tackle\Agents\OnboardingAgent;
 use Tackle\Agents\ReviewAgent;
 use Tackle\Agents\TestWriterAgent;
 use Tackle\Agents\UpgradeAgent;
@@ -22,6 +23,7 @@ it('resolves every shipped agent against the installed laravel/ai contract', fun
     DefaultCodingAgent::class,
     ReviewAgent::class,
     ExplainAgent::class,
+    OnboardingAgent::class,
     TestWriterAgent::class,
     UpgradeAgent::class,
 ]);

@@ -4,15 +4,18 @@ namespace Tackle\Tools;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Tools\Request;
+use Tackle\Support\IgnoredDirectories;
 use Tackle\Support\PathGuard;
 
 class Glob extends AbstractTool
 {
+    private const MAX_RESULTS = 1000;
+
     public function __construct(private PathGuard $guard) {}
 
     public function description(): string
     {
-        return 'List files matching a glob pattern within the workspace. Protected paths are excluded from results.';
+        return 'List files matching a glob pattern within the workspace. Protected paths are excluded, dependency and build directories (node_modules, vendor, storage, …) are skipped unless the pattern starts inside one, and results are capped at '.self::MAX_RESULTS.' — use a specific directory prefix rather than "**/*" from the root.';
     }
 
     public function schema(JsonSchema $schema): array
@@ -50,6 +53,14 @@ class Glob extends AbstractTool
             return "No files matched the pattern '{$pattern}'.";
         }
 
+        $total = count($results);
+
+        if ($total > self::MAX_RESULTS) {
+            $results = array_slice($results, 0, self::MAX_RESULTS);
+            $results[] = '';
+            $results[] = '[Listing capped at '.self::MAX_RESULTS." of {$total} files. Use a narrower pattern.]";
+        }
+
         return implode("\n", $results);
     }
 
@@ -66,7 +77,7 @@ class Glob extends AbstractTool
         $files = [];
 
         $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($baseDir, \FilesystemIterator::SKIP_DOTS)
+            IgnoredDirectories::filter($workspace, $baseDir)
         );
 
         foreach ($iterator as $file) {

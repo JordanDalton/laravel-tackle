@@ -19,6 +19,7 @@ use Tackle\Commands\InstallCommand;
 use Tackle\Commands\MakeAgentCommand;
 use Tackle\Commands\MakeToolCommand;
 use Tackle\Commands\McpCommand;
+use Tackle\Commands\OnboardCommand;
 use Tackle\Commands\PruneCommand;
 use Tackle\Commands\ReplayCommand;
 use Tackle\Commands\RespondCommand;
@@ -57,6 +58,7 @@ class TackleServiceProvider extends PackageServiceProvider
                 ReviewCommand::class,
                 RespondCommand::class,
                 ExplainCommand::class,
+                OnboardCommand::class,
                 TestCommand::class,
                 UpgradeCommand::class,
                 HealingLogCommand::class,

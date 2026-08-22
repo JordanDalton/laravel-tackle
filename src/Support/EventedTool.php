@@ -19,6 +19,11 @@ use Tackle\Events\ToolCalling;
  * names via name() when present, so this decorator forwards the inner tool's
  * resolved name.
  *
+ * It is also where the context guards live: every result is capped at
+ * tackle.max_tool_result_chars, and once a turn has pulled
+ * tackle.max_context_chars of tool output into context further calls are
+ * refused with an instruction to finish — see ToolOutput and BudgetTracker.
+ *
  * On laravel/ai versions without ToolNameResolver, wrapping would rename every
  * tool to "EventedTool" and break dispatch — wrap() detects that and returns
  * the tools untouched (events simply don't fire there).
@@ -96,14 +101,37 @@ class EventedTool implements Tool
             return $veto;
         }
 
+        $budget = app(BudgetTracker::class);
+
+        if ($budget->projectedOverBudget()) {
+            return sprintf(
+                'Refused: this turn is projected to have spent $%.2f of the $%.2f budget (re-sending %s characters of accumulated context each step). '
+                .'Stop calling tools now and finish with what you already have — answer, summarise, or state what is still unknown. Reading more will only overshoot the budget further.',
+                $budget->projectedCost(),
+                $budget->budgetUsd(),
+                number_format($budget->contextChars()),
+            );
+        }
+
+        if ($budget->contextCeilingReached()) {
+            return sprintf(
+                'Refused: this turn has already pulled %s characters of tool output into context (ceiling %s). '
+                .'Do not read or search further — finish now with what you already have: answer, summarise, or tell the user what is still unknown.',
+                number_format($budget->contextChars()),
+                number_format($budget->contextCeilingChars()),
+            );
+        }
+
         $start = microtime(true);
 
-        $result = $this->inner->handle($request);
+        $result = ToolOutput::cap((string) $this->inner->handle($request), $this->name());
         $durationMs = round((microtime(true) - $start) * 1000, 2);
 
-        ToolCalled::dispatch($this->name(), $arguments, (string) $result, $durationMs);
+        $budget->recordToolOutput(strlen($result));
 
-        $hooks->postTool($this->name(), $arguments, (string) $result, $durationMs);
+        ToolCalled::dispatch($this->name(), $arguments, $result, $durationMs);
+
+        $hooks->postTool($this->name(), $arguments, $result, $durationMs);
 
         return $result;
     }
