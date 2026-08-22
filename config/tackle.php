@@ -41,6 +41,11 @@ return [
     */
     'model' => env('AI_CODE_MODEL', 'claude-sonnet-4-6'),
 
+    // Cache the system prompt + tool schemas on Anthropic (cache_control) so
+    // the fixed per-step prefix is billed at ~10% on repeat steps. Transparent —
+    // same behaviour, lower cost. Set false to disable everywhere.
+    'prompt_cache' => env('AI_CODE_PROMPT_CACHE', true),
+
     /*
     |--------------------------------------------------------------------------
     | Max Steps

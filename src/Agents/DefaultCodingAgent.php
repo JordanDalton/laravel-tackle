@@ -3,10 +3,12 @@
 namespace Tackle\Agents;
 
 use Laravel\Ai\Attributes\MaxSteps;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Promptable;
 use Laravel\Ai\Responses\StreamableAgentResponse;
+use Tackle\Agents\Concerns\CachesInstructions;
 use Tackle\Agents\Concerns\SwitchesModel;
 use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
@@ -43,8 +45,9 @@ use Tackle\Tools\SearchCode;
 use Tackle\Tools\WriteFile;
 
 #[MaxSteps(40)]
-class DefaultCodingAgent implements CodingAgent
+class DefaultCodingAgent implements CodingAgent, HasProviderOptions
 {
+    use CachesInstructions;
     use Promptable {
         stream as traitStream;
     }

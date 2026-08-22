@@ -2,16 +2,10 @@
 
 namespace Tackle\Agents;
 
-use Laravel\Ai\Contracts\HasProviderOptions;
-use Tackle\Agents\Concerns\CachesInstructions;
-
 /**
- * The full coding agent with Anthropic prompt caching on the system prompt +
- * tool schemas. Behaviour is identical to DefaultCodingAgent; only the cost of
- * re-sending the fixed prefix each step changes. Benchmark it with
- * `ai:eval --agent=cached` against `--agent=default`.
+ * @deprecated Caching is on by default now (DefaultCodingAgent implements it,
+ * gated by config `tackle.prompt_cache`). This remains as a back-compat alias
+ * and for the `ai:eval --agent=cached` shorthand; it behaves identically to
+ * DefaultCodingAgent.
  */
-class CachingCodingAgent extends DefaultCodingAgent implements HasProviderOptions
-{
-    use CachesInstructions;
-}
+class CachingCodingAgent extends DefaultCodingAgent {}

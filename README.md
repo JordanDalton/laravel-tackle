@@ -1110,12 +1110,12 @@ A ready-made `Tackle\Agents\LeanCodingAgent` (6 fix-task tools) ships for this �
 $this->app->bind(CodingAgent::class, LeanCodingAgent::class);
 ```
 
-**Prompt caching** is available too: `Tackle\Agents\CachingCodingAgent` marks
-the system + tool prefix with an Anthropic `cache_control` breakpoint, so the
-fixed per-step floor is billed at ~10% on repeat steps. `ai:eval --agent=cached`
-measured ~79% lower fresh input on a fix case, same result. It's transparent
-(identical behaviour), so binding it over the default agent is close to free
-savings on Anthropic — `$this->app->bind(CodingAgent::class, CachingCodingAgent::class);`
+**Prompt caching is on by default** (Anthropic): every agent marks the system +
+tool prefix with a `cache_control` breakpoint, so the fixed per-step floor is
+billed at ~10% on repeat steps. It's transparent — identical behaviour, lower
+cost — and measured ~75% lower fresh input on a fix case. Disable it with
+`AI_CODE_PROMPT_CACHE=false` (config `tackle.prompt_cache`), or per eval run with
+`ai:eval --no-cache` to see the difference.
 
 Each case seeds one buggy class into an isolated directory, hands the agent a
 prompt, and grades the result in a subprocess — so a fix that leaves the file

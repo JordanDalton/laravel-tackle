@@ -3,7 +3,9 @@
 namespace Tackle\Agents;
 
 use Laravel\Ai\Attributes\MaxSteps;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Promptable;
+use Tackle\Agents\Concerns\CachesInstructions;
 use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
@@ -15,8 +17,9 @@ use Tackle\Tools\ReadFile;
 use Tackle\Tools\SearchCode;
 
 #[MaxSteps(15)]
-class ReviewAgent implements CodingAgent
+class ReviewAgent implements CodingAgent, HasProviderOptions
 {
+    use CachesInstructions;
     use Promptable;
 
     public function __construct(

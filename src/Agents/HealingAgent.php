@@ -3,7 +3,9 @@
 namespace Tackle\Agents;
 
 use Laravel\Ai\Attributes\MaxSteps;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Promptable;
+use Tackle\Agents\Concerns\CachesInstructions;
 use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Contracts\CodingAgent;
@@ -21,8 +23,9 @@ use Tackle\Tools\SearchCode;
 use Tackle\Tools\WriteFile;
 
 #[MaxSteps(20)]
-class HealingAgent implements CodingAgent
+class HealingAgent implements CodingAgent, HasProviderOptions
 {
+    use CachesInstructions;
     use Promptable;
 
     private PathGuard $guard;

@@ -3,10 +3,12 @@
 namespace Tackle\Agents;
 
 use Laravel\Ai\Attributes\MaxSteps;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Promptable;
 use Laravel\Ai\Responses\StreamableAgentResponse;
+use Tackle\Agents\Concerns\CachesInstructions;
 use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
@@ -31,8 +33,9 @@ use Tackle\Tools\SearchCode;
  * subagent keeps the main context from filling with raw file contents.
  */
 #[MaxSteps(40)]
-class OnboardingAgent implements CodingAgent
+class OnboardingAgent implements CodingAgent, HasProviderOptions
 {
+    use CachesInstructions;
     use Promptable {
         stream as traitStream;
     }

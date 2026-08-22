@@ -3,7 +3,9 @@
 namespace Tackle\Agents;
 
 use Laravel\Ai\Attributes\MaxSteps;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Promptable;
+use Tackle\Agents\Concerns\CachesInstructions;
 use Tackle\Agents\Concerns\SwitchesModel;
 use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
@@ -22,8 +24,9 @@ use Tackle\Tools\SearchCode;
  * implementation plan for the user to approve before any edits happen.
  */
 #[MaxSteps(15)]
-class PlanningAgent implements CodingAgent
+class PlanningAgent implements CodingAgent, HasProviderOptions
 {
+    use CachesInstructions;
     use Promptable;
     use SwitchesModel;
 

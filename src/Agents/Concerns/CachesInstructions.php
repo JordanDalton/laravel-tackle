@@ -18,6 +18,10 @@ trait CachesInstructions
 {
     public function providerOptions(Lab|string $provider): array
     {
+        if (! (bool) config('tackle.prompt_cache', true)) {
+            return [];
+        }
+
         $name = $provider instanceof Lab ? $provider->value : (string) $provider;
 
         if ($name !== 'anthropic') {

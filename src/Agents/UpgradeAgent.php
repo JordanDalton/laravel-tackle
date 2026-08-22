@@ -3,10 +3,12 @@
 namespace Tackle\Agents;
 
 use Laravel\Ai\Attributes\MaxSteps;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Promptable;
 use Laravel\Ai\Responses\StreamableAgentResponse;
+use Tackle\Agents\Concerns\CachesInstructions;
 use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
@@ -37,8 +39,9 @@ use Tackle\Tools\WriteFile;
 // resolution loop, and repeated test runs all cost steps. 80 is deliberately
 // above DefaultCodingAgent's 40 — the budget is the real ceiling.
 #[MaxSteps(80)]
-class UpgradeAgent implements CodingAgent
+class UpgradeAgent implements CodingAgent, HasProviderOptions
 {
+    use CachesInstructions;
     use Promptable {
         stream as traitStream;
     }

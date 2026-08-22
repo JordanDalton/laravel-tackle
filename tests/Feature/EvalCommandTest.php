@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Artisan;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Streaming\Events\StreamEnd;
@@ -98,4 +99,16 @@ it('emits an anthropic system cache breakpoint from the caching agent', function
 
     // No caching directives for other providers.
     expect($agent->providerOptions('openai'))->toBe([]);
+});
+
+it('caches by default on the standard agent and respects tackle.prompt_cache', function () {
+    config()->set('tackle.workspace', sys_get_temp_dir());
+
+    config()->set('tackle.prompt_cache', true);
+    $on = app(CodingAgent::class);
+    expect($on)->toBeInstanceOf(HasProviderOptions::class)
+        ->and($on->providerOptions(Lab::Anthropic))->toHaveKey('system');
+
+    config()->set('tackle.prompt_cache', false);
+    expect(app(CodingAgent::class)->providerOptions(Lab::Anthropic))->toBe([]);
 });

@@ -23,6 +23,7 @@ class EvalCommand extends Command
         {--model=    : Model to run the cases on.}
         {--provider= : Provider to run the cases on.}
         {--agent=    : Agent to benchmark: "lean", "default", or a CodingAgent class. Default: the configured agent.}
+        {--no-cache  : Disable prompt caching for the run (to measure its effect).}
         {--json      : Emit the report as JSON.}';
 
     protected $description = 'Benchmark the coding agent against seeded bugs — reports fix rate, false-fix rate, tokens, and cost.';
@@ -53,6 +54,9 @@ class EvalCommand extends Command
         $budgetUsd = (float) ($this->option('budget') ?: 0.50);
         // Evals grade a self-contained fix — no shell, no worktree, no prompts.
         config(['tackle.shell' => 'off']);
+        if ($this->option('no-cache')) {
+            config(['tackle.prompt_cache' => false]);
+        }
         app()->instance(InteractionPolicy::class, new DenyInteraction);
 
         $json = (bool) $this->option('json');
