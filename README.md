@@ -1108,8 +1108,34 @@ report gives:
 - **not-fixed / errors**, and **tokens + cost** per case and in total.
 
 The command exits non-zero if any case regressed or errored, so it can gate a
-CI job. Add your own cases in `Tackle\Evals\CaseRepository` — keep each one
-small, pure, and unambiguous so grading stays deterministic.
+CI job.
+
+**Add your own cases** as `*.php` files in your project's `evals/` directory
+(configurable via `tackle.evals.path`). Each returns an `EvalCase` — or an array
+of them — using `Tackle\Evals\Probe` for the grader; a case whose `id` matches a
+built-in overrides it, and `tackle.evals.include_builtin=false` runs only yours.
+
+```php
+// evals/refund-rounding.php
+use Tackle\Evals\EvalCase;
+use Tackle\Evals\Probe;
+
+return new EvalCase(
+    id: 'refund-rounding',
+    title: 'Refund amount truncates instead of rounding',
+    category: 'bug',
+    files: ['Refund.php' => "<?php\nclass Refund { public function cents(float \$d): int { return (int) (\$d * 100); } }\n"],
+    prompt: 'Refund::cents() truncates — 19.99 becomes 1998. Round to the nearest cent.',
+    grader: Probe::subprocess('Refund.php', '
+        $r = new Refund();
+        $target = $r->cents(19.99) === 1999;   // bug fixed
+        $happy  = $r->cents(10.00) === 1000;    // happy path intact
+    '),
+);
+```
+
+Keep each case small, pure, and unambiguous so grading stays deterministic; the
+built-in cases in `Tackle\Evals\CaseRepository` are examples to copy.
 
 ---
 

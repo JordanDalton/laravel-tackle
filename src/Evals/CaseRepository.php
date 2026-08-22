@@ -2,8 +2,6 @@
 
 namespace Tackle\Evals;
 
-use Illuminate\Support\Facades\Process;
-
 /**
  * The built-in benchmark cases. Each seeds a single buggy PHP class and grades
  * the result in a subprocess — so a fix that leaves the file unparseable, or
@@ -16,15 +14,68 @@ use Illuminate\Support\Facades\Process;
 class CaseRepository
 {
     /**
+     * All cases: the built-in suite plus any the project defines in its evals
+     * directory. A user case with the same id overrides a built-in.
+     *
      * @return list<EvalCase>
      */
     public function all(): array
+    {
+        $cases = [];
+
+        if ((bool) config('tackle.evals.include_builtin', true)) {
+            foreach ($this->builtin() as $c) {
+                $cases[$c->id] = $c;
+            }
+        }
+
+        foreach ($this->userCases() as $c) {
+            $cases[$c->id] = $c;
+        }
+
+        return array_values($cases);
+    }
+
+    /**
+     * @return list<EvalCase>
+     */
+    public function builtin(): array
     {
         return [
             $this->divByZero(),
             $this->offByOne(),
             $this->discountMath(),
         ];
+    }
+
+    /**
+     * Load cases the project defines. Each *.php file under the evals directory
+     * (config tackle.evals.path, default base_path('evals')) returns either an
+     * EvalCase or an iterable of them. Files that return anything else are
+     * ignored, so a stray file cannot break the suite.
+     *
+     * @return list<EvalCase>
+     */
+    public function userCases(): array
+    {
+        $path = config('tackle.evals.path') ?: (function_exists('base_path') ? base_path('evals') : null);
+
+        if (! is_string($path) || ! is_dir($path)) {
+            return [];
+        }
+
+        $cases = [];
+        foreach (glob(rtrim($path, '/').'/*.php') ?: [] as $file) {
+            $returned = require $file;
+
+            foreach ($returned instanceof EvalCase ? [$returned] : (is_iterable($returned) ? $returned : []) as $c) {
+                if ($c instanceof EvalCase) {
+                    $cases[] = $c;
+                }
+            }
+        }
+
+        return $cases;
     }
 
     /**
@@ -57,7 +108,7 @@ class CaseRepository
             category: 'bug',
             files: [$file => $buggy],
             prompt: "The class in {$file} throws DivisionByZeroError when averageCents() is called with an order count of 0. Fix it so a zero order count returns 0, without changing the result for non-zero counts.",
-            grader: $this->probe($file, 'EvalOrderStats', <<<'PROBE'
+            grader: Probe::subprocess($file, <<<'PROBE'
                 $o = new EvalOrderStats();
                 $target = false; try { $target = $o->averageCents(1000, 0) === 0; } catch (\Throwable $e) { $target = false; }
                 $happy = false; try { $happy = $o->averageCents(1000, 4) === 250; } catch (\Throwable $e) { $happy = false; }
@@ -86,7 +137,7 @@ class CaseRepository
             category: 'bug',
             files: [$file => $buggy],
             prompt: "lastPage() in {$file} returns the wrong number of pages when the items don't divide evenly — it drops the final partial page. Fix it so 10 items at 3 per page gives 4 pages.",
-            grader: $this->probe($file, 'EvalPaginator', <<<'PROBE'
+            grader: Probe::subprocess($file, <<<'PROBE'
                 $p = new EvalPaginator();
                 $target = $p->lastPage(10, 3) === 4;
                 $happy = $p->lastPage(9, 3) === 3;
@@ -115,47 +166,11 @@ class CaseRepository
             category: 'bug',
             files: [$file => $buggy],
             prompt: "apply() in {$file} is supposed to reduce a price by a percentage, but it subtracts the percent as a flat amount. Fix the math so a 10% discount on 200 gives 180, and 0% leaves the price unchanged.",
-            grader: $this->probe($file, 'EvalDiscount', <<<'PROBE'
+            grader: Probe::subprocess($file, <<<'PROBE'
                 $d = new EvalDiscount();
                 $target = abs($d->apply(200.0, 10.0) - 180.0) < 0.001;
                 $happy = abs($d->apply(100.0, 0.0) - 100.0) < 0.001;
             PROBE),
         );
-    }
-
-    /**
-     * Build a grader that runs a probe in a subprocess. The probe must set
-     * $target (the bug is fixed) and $happy (previously-correct behaviour still
-     * holds). Output line "TARGET:0|1 HAPPY:0|1" is parsed into a grade.
-     */
-    private function probe(string $file, string $class, string $probe): \Closure
-    {
-        return function (string $dir) use ($file, $probe): EvalGrade {
-            $script = '<?php require '.var_export($dir.'/'.$file, true).";\n"
-                .$probe."\n"
-                .'echo "TARGET:".(($target ?? false) ? 1 : 0)." HAPPY:".(($happy ?? false) ? 1 : 0);';
-
-            $scriptPath = $dir.'/__probe.php';
-            file_put_contents($scriptPath, $script);
-
-            $result = Process::timeout(30)->run('php '.escapeshellarg($scriptPath));
-            @unlink($scriptPath);
-
-            $out = trim($result->output().$result->errorOutput());
-
-            if (! preg_match('/TARGET:([01])\s+HAPPY:([01])/', $out, $m)) {
-                // No parseable verdict — the fix likely broke the file.
-                return new EvalGrade(fixed: false, brokeHappyPath: true, note: 'unparseable / fatal after fix');
-            }
-
-            $target = $m[1] === '1';
-            $happy = $m[2] === '1';
-
-            return new EvalGrade(
-                fixed: $target,
-                brokeHappyPath: ! $happy,
-                note: $target ? ($happy ? '' : 'fixed but broke happy path') : 'not fixed',
-            );
-        };
     }
 }

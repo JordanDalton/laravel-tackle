@@ -311,6 +311,23 @@ return [
     | empty array to remove the Delegate tool entirely.
     |
     */
+    /*
+    |--------------------------------------------------------------------------
+    | Evals
+    |--------------------------------------------------------------------------
+    |
+    | ai:eval benchmarks the coding agent against seeded bugs. Drop your own
+    | cases as *.php files in this directory — each returns an EvalCase (or an
+    | iterable of them); see Tackle\Evals\Probe for the grader helper. A user
+    | case with the same id overrides a built-in. Set include_builtin to false
+    | to run only your own suite.
+    |
+    */
+    'evals' => [
+        'path' => env('AI_CODE_EVALS_PATH', base_path('evals')),
+        'include_builtin' => env('AI_CODE_EVALS_INCLUDE_BUILTIN', true),
+    ],
+
     'subagents' => [
         'explorer' => [
             'agent' => ExplorerAgent::class,

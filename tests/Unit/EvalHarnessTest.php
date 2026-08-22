@@ -156,3 +156,88 @@ function applyCanonicalFix(string $dir, string $id): array
 
     return [];
 }
+
+// ---------------------------------------------------------------------------
+// User-defined cases loaded from the project evals directory
+// ---------------------------------------------------------------------------
+
+it('loads user cases from the evals path and can run them without built-ins', function () {
+    $dir = sys_get_temp_dir().'/tackle-user-evals-'.uniqid();
+    mkdir($dir, 0755, true);
+    file_put_contents($dir.'/my-case.php', <<<'PHP'
+    <?php
+    use Tackle\Evals\EvalCase;
+    use Tackle\Evals\Probe;
+
+    return new EvalCase(
+        id: 'user-square',
+        title: 'square() should square its input',
+        category: 'bug',
+        files: ['EvalSquare.php' => "<?php\nclass EvalSquare { public function square(int \$n): int { return \$n + \$n; } }\n"],
+        prompt: 'square() doubles instead of squaring; fix it.',
+        grader: Probe::subprocess('EvalSquare.php', '
+            $s = new EvalSquare();
+            $target = $s->square(3) === 9;
+            $happy = $s->square(0) === 0;
+        '),
+    );
+    PHP);
+
+    config()->set('tackle.evals.path', $dir);
+    config()->set('tackle.evals.include_builtin', false);
+
+    $repo = new CaseRepository;
+    $cases = $repo->all();
+
+    expect($cases)->toHaveCount(1)
+        ->and($cases[0]->id)->toBe('user-square');
+
+    $runner = new EvalRunner;
+    // Broken as seeded.
+    expect($runner->run($cases[0], fn () => [])->grade->fixed)->toBeFalse();
+    // Correct fix passes.
+    $fixed = $runner->run($cases[0], function (string $d) {
+        file_put_contents($d.'/EvalSquare.php', "<?php\nclass EvalSquare { public function square(int \$n): int { return \$n * \$n; } }\n");
+
+        return [];
+    });
+    expect($fixed->grade->isClean())->toBeTrue();
+
+    @unlink($dir.'/my-case.php');
+    @rmdir($dir);
+});
+
+it('merges user cases with built-ins, user id overriding', function () {
+    $dir = sys_get_temp_dir().'/tackle-user-evals-'.uniqid();
+    mkdir($dir, 0755, true);
+    // Override the built-in 'div-by-zero' id + add a new one.
+    file_put_contents($dir.'/cases.php', <<<'PHP'
+    <?php
+    use Tackle\Evals\EvalCase;
+
+    $g = fn () => new Tackle\Evals\EvalGrade(fixed: true);
+
+    return [
+        new EvalCase('div-by-zero', 'overridden', 'bug', [], 'x', $g),
+        new EvalCase('extra', 'extra', 'bug', [], 'x', $g),
+    ];
+    PHP);
+
+    config()->set('tackle.evals.path', $dir);
+    config()->set('tackle.evals.include_builtin', true);
+
+    $ids = array_map(fn ($c) => $c->id, (new CaseRepository)->all());
+
+    expect($ids)->toContain('off-by-one', 'discount-math', 'div-by-zero', 'extra');
+    // div-by-zero appears once (overridden, not duplicated).
+    expect(array_count_values($ids)['div-by-zero'])->toBe(1);
+
+    @unlink($dir.'/cases.php');
+    @rmdir($dir);
+});
+
+it('returns no user cases when the evals path does not exist', function () {
+    config()->set('tackle.evals.path', sys_get_temp_dir().'/definitely-not-here-'.uniqid());
+
+    expect((new CaseRepository)->userCases())->toBe([]);
+});
