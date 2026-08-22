@@ -212,6 +212,8 @@ All config options can be set via `.env`. Nothing requires editing a PHP file.
 | `AI_CODE_MEMORY` | `file` | Session persistence: `file` (resume on next run) \| `none` |
 | `AI_CODE_HEALING_ENABLED` | `false` | Enable the self-healing queue worker feature |
 | `AI_CODE_HEALING_MODE` | `pr` | Healing mode: `pr` \| `patch` |
+| `AI_CODE_HEALING_MODEL` | *(tackle.model)* | Model for heals — set to run them on a cheaper model than interactive sessions |
+| `AI_CODE_HEALING_PROVIDER` | *(tackle.provider)* | Provider for heals |
 | `AI_CODE_HEALING_QUEUE` | `healer` | Queue name for the `HealJobFailure` job |
 | `AI_CODE_HEALING_THRESHOLD` | `1` | Failures before healing is triggered |
 | `AI_CODE_HEALING_BASE_BRANCH` | `main` | Base branch for fix pull requests |
@@ -1240,6 +1242,8 @@ All healer options live under the `healing` key in `config/tackle.php`:
 |---|---|---|---|
 | `enabled` | `AI_CODE_HEALING_ENABLED` | `false` | Enable or disable the healer |
 | `mode` | `AI_CODE_HEALING_MODE` | `pr` | `pr` = open a pull request; `patch` = apply directly |
+| `model` | `AI_CODE_HEALING_MODEL` | *(falls back to `tackle.model`)* | Model heals run on — heals are unattended, so pinning a cheaper model here is common |
+| `provider` | `AI_CODE_HEALING_PROVIDER` | *(falls back to `tackle.provider`)* | Provider heals run on |
 | `queue` | `AI_CODE_HEALING_QUEUE` | `healer` | Queue name for the `HealJobFailure` job |
 | `threshold` | `AI_CODE_HEALING_THRESHOLD` | `1` | Number of failures before healing triggers |
 | `base_branch` | `AI_CODE_HEALING_BASE_BRANCH` | `main` | Branch PRs are opened against |

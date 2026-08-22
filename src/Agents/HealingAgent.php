@@ -34,6 +34,27 @@ class HealingAgent implements CodingAgent
         $this->guard = new PathGuard($workspace);
     }
 
+    /**
+     * The provider heals run on: tackle.healing.provider when set, otherwise
+     * the global tackle.provider. Resolved here (not via the #[AiProvider]
+     * attribute) because the healer is constructed with `new` off the queue,
+     * where container attribute resolution does not run.
+     */
+    public static function configuredProvider(): string
+    {
+        return (string) (config('tackle.healing.provider') ?: config('tackle.provider', 'anthropic'));
+    }
+
+    /**
+     * The model heals run on: tackle.healing.model when set, otherwise the
+     * global tackle.model. See configuredProvider() for why this is resolved
+     * explicitly rather than through #[AiModel].
+     */
+    public static function configuredModel(): string
+    {
+        return (string) (config('tackle.healing.model') ?: config('tackle.model', 'claude-sonnet-4-6'));
+    }
+
     protected function provider(): string
     {
         return $this->provider;

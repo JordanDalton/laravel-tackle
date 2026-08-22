@@ -526,6 +526,11 @@ return [
     'healing' => [
         'enabled' => env('AI_CODE_HEALING_ENABLED', false),
         'mode' => env('AI_CODE_HEALING_MODE', 'pr'),
+        // Model/provider for heals. Null falls back to the global tackle.model
+        // / tackle.provider — set these to run heals on a cheaper model than
+        // interactive sessions (heals run unattended on the queue).
+        'model' => env('AI_CODE_HEALING_MODEL'),
+        'provider' => env('AI_CODE_HEALING_PROVIDER'),
         'queue' => env('AI_CODE_HEALING_QUEUE', 'healer'),
         'threshold' => (int) env('AI_CODE_HEALING_THRESHOLD', 1),
         'branch_prefix' => env('AI_CODE_HEALING_BRANCH_PREFIX', 'tackle/heal-'),

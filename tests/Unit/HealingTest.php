@@ -1,5 +1,6 @@
 <?php
 
+use Tackle\Agents\HealingAgent;
 use Tackle\Healing\GitHubTokenReader;
 use Tackle\Healing\TelescopeReader;
 use Tackle\Support\PathGuard;
@@ -112,4 +113,48 @@ it('returns empty string when Telescope class is not installed', function () {
     $reader = new TelescopeReader;
 
     expect($reader->forJob('fake-uuid'))->toBe('');
+});
+
+// ---------------------------------------------------------------------------
+// HealingAgent — model/provider resolution (heals run off the queue, where
+// #[AiModel]/#[AiProvider] attributes do not resolve, so config must win)
+// ---------------------------------------------------------------------------
+
+it('resolves the heal model from the global tackle.model by default', function () {
+    config()->set('tackle.model', 'claude-sonnet-4-6');
+    config()->set('tackle.healing.model', null);
+
+    expect(HealingAgent::configuredModel())->toBe('claude-sonnet-4-6');
+});
+
+it('lets tackle.healing.model override the global model for heals', function () {
+    config()->set('tackle.model', 'claude-sonnet-4-6');
+    config()->set('tackle.healing.model', 'claude-haiku-4-5-20251001');
+
+    expect(HealingAgent::configuredModel())->toBe('claude-haiku-4-5-20251001');
+});
+
+it('resolves the heal provider with the same fallback', function () {
+    config()->set('tackle.provider', 'anthropic');
+    config()->set('tackle.healing.provider', null);
+    expect(HealingAgent::configuredProvider())->toBe('anthropic');
+
+    config()->set('tackle.healing.provider', 'openai');
+    expect(HealingAgent::configuredProvider())->toBe('openai');
+});
+
+it('passes the resolved model through to the agent it builds', function () {
+    config()->set('tackle.healing.model', 'claude-haiku-4-5-20251001');
+    config()->set('tackle.healing.provider', 'anthropic');
+
+    $agent = new HealingAgent(
+        sys_get_temp_dir(),
+        HealingAgent::configuredProvider(),
+        HealingAgent::configuredModel(),
+    );
+
+    $model = (new ReflectionClass($agent))->getProperty('model');
+    $model->setAccessible(true);
+
+    expect($model->getValue($agent))->toBe('claude-haiku-4-5-20251001');
 });

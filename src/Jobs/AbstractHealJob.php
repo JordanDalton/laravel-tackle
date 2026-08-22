@@ -77,7 +77,11 @@ abstract class AbstractHealJob implements ShouldQueue
         try {
             $worktreePath = $runner->prepare($branchName);
 
-            $agent = new HealingAgent($worktreePath);
+            $agent = new HealingAgent(
+                $worktreePath,
+                HealingAgent::configuredProvider(),
+                HealingAgent::configuredModel(),
+            );
             $summary = '';
 
             $agent->stream($this->agentPrompt())->each(function ($event) use (&$summary) {
