@@ -1275,6 +1275,7 @@ All healer options live under the `healing` key in `config/tackle.php`:
 | `base_branch` | `AI_CODE_HEALING_BASE_BRANCH` | `main` | Branch PRs are opened against |
 | `branch_prefix` | `AI_CODE_HEALING_BRANCH_PREFIX` | `tackle/heal-` | Prefix for fix branches |
 | `baseline` | `AI_CODE_HEALING_BASELINE` | `true` | Run the suite before the fix so the gate keys on *new* failures, not a fully green suite. Set `false` for very slow suites |
+| `static_analysis` | `AI_CODE_HEALING_STATIC_ANALYSIS` | `true` | Run Larastan/PHPStan over the changed files and gate on it (skipped if not installed) |
 | `max_files` | `AI_CODE_HEALING_MAX_FILES` | `20` | A heal touching more files is held back from auto-apply and flagged for review |
 | `max_diff_lines` | `AI_CODE_HEALING_MAX_DIFF_LINES` | `400` | A heal changing more lines is held back from auto-apply |
 | `protected_from_healing` | *(config only)* | migrations, `config/*`, `composer.json/.lock`, `.env*` | Modifying (not adding) these forces human review |
