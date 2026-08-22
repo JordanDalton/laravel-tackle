@@ -817,7 +817,7 @@ These tools are available to the agent in every session.
 | Tool | What it does |
 |---|---|
 | `RunArtisan` | Runs `php artisan <command>` in a subprocess. Allowlist-gated. |
-| `RunTests` | Runs Pest or `php artisan test` in a subprocess. Returns full output. |
+| `RunTests` | Runs Pest or `php artisan test` in a subprocess. Returns a structured summary — pass/fail counts and, per failure, the test name, `file:line`, and assertion — not the raw log. |
 | `RunPint` | Runs Laravel Pint to format files. Called before finishing a task. |
 | `RunLarastan` | Runs PHPStan / Larastan static analysis and returns the findings. Accepts an optional `path` and `level` override. No-ops gracefully if `vendor/bin/phpstan` is not present. |
 | `RunShell` | General shell — governed by the `shell` config mode. |

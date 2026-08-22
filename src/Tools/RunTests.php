@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
 use Tackle\Support\CommandGuard;
 use Tackle\Support\PathGuard;
-use Tackle\Support\Utf8;
+use Tackle\Support\TestOutputParser;
 
 class RunTests extends AbstractTool
 {
@@ -15,7 +15,7 @@ class RunTests extends AbstractTool
 
     public function description(): string
     {
-        return 'Run the test suite (Pest or PHPUnit via php artisan test) as a subprocess and return the full output. Use after modifying code to verify correctness. Requires "test" to be in the artisan allowlist for this environment.';
+        return 'Run the test suite (Pest or PHPUnit via php artisan test) as a subprocess. Returns a structured summary — pass/fail counts and, for each failure, the test name, file:line, and assertion. Use after modifying code to verify correctness. Requires "test" to be in the artisan allowlist for this environment.';
     }
 
     public function schema(JsonSchema $schema): array
@@ -54,6 +54,6 @@ class RunTests extends AbstractTool
             ->timeout(120)
             ->run($binary);
 
-        return Utf8::clean($result->output().$result->errorOutput()) ?: '(Tests ran with no output.)';
+        return TestOutputParser::summarize($result->output().$result->errorOutput());
     }
 }
