@@ -47,6 +47,11 @@ class CaseRepository
             $this->discountMath(),
             $this->nullableRelation(),
             $this->crossFileTotal(),
+            $this->boundaryEmpty(),
+            $this->taxRounding(),
+            $this->slugify(),
+            $this->statusLabel(),
+            $this->factorialBaseCase(),
         ];
     }
 
@@ -263,6 +268,166 @@ class CaseRepository
                     new EvalLineItem(1, 300),
                 ]) === 1300;
                 $happy = $cart->totalCents([new EvalLineItem(1, 100)]) === 100;
+            PROBE),
+        );
+    }
+
+    private function boundaryEmpty(): EvalCase
+    {
+        $file = 'EvalAverage.php';
+        $buggy = <<<'PHP'
+        <?php
+
+        class EvalAverage
+        {
+            // BUG: divides by count with no guard — crashes on an empty array.
+            public function mean(array $numbers): float
+            {
+                return array_sum($numbers) / count($numbers);
+            }
+        }
+        PHP;
+
+        return new EvalCase(
+            id: 'boundary-empty',
+            title: 'mean() crashes on an empty array',
+            category: 'bug',
+            files: [$file => $buggy],
+            prompt: 'EvalAverage::mean() throws a DivisionByZeroError when given an empty array. Return 0.0 for an empty array; keep the correct average otherwise.',
+            grader: Probe::subprocess($file, <<<'PROBE'
+                $a = new EvalAverage();
+                $safe = true; try { $z = $a->mean([]); } catch (\Throwable $e) { $safe = false; $z = null; }
+                $target = $safe && $z === 0.0;
+                $happy = $a->mean([2, 4]) === 3.0;
+            PROBE),
+        );
+    }
+
+    private function taxRounding(): EvalCase
+    {
+        $file = 'EvalTax.php';
+        $buggy = <<<'PHP'
+        <?php
+
+        class EvalTax
+        {
+            // BUG: truncates the tax instead of rounding to the nearest cent.
+            public function withTax(int $cents, int $ratePercent): int
+            {
+                return $cents + (int) ($cents * $ratePercent / 100);
+            }
+        }
+        PHP;
+
+        return new EvalCase(
+            id: 'tax-rounding',
+            title: 'withTax() truncates instead of rounding',
+            category: 'bug',
+            files: [$file => $buggy],
+            prompt: 'EvalTax::withTax() truncates the tax: 8% on 1099 cents should add 88 (87.92 rounded) for 1187, but it adds 87. Round the tax to the nearest cent.',
+            grader: Probe::subprocess($file, <<<'PROBE'
+                $t = new EvalTax();
+                $target = $t->withTax(1099, 8) === 1187;
+                $happy = $t->withTax(1000, 0) === 1000;
+            PROBE),
+        );
+    }
+
+    private function slugify(): EvalCase
+    {
+        $file = 'EvalSlug.php';
+        $buggy = <<<'PHP'
+        <?php
+
+        class EvalSlug
+        {
+            // BUG: only lowercases — leaves spaces and punctuation in the slug.
+            public function make(string $title): string
+            {
+                return strtolower($title);
+            }
+        }
+        PHP;
+
+        return new EvalCase(
+            id: 'slugify',
+            title: 'make() leaves spaces in the slug',
+            category: 'bug',
+            files: [$file => $buggy],
+            prompt: "EvalSlug::make() should turn a title into a URL slug — lowercase, words joined by single hyphens, no punctuation. 'Hello, World!' should become 'hello-world'.",
+            grader: Probe::subprocess($file, <<<'PROBE'
+                $s = new EvalSlug();
+                $target = $s->make('Hello, World!') === 'hello-world';
+                $happy = $s->make('already-a-slug') === 'already-a-slug';
+            PROBE),
+        );
+    }
+
+    private function statusLabel(): EvalCase
+    {
+        $file = 'EvalStatus.php';
+        $buggy = <<<'PHP'
+        <?php
+
+        class EvalStatus
+        {
+            // BUG: missing the 'refunded' case — returns 'Unknown' for it.
+            public function label(string $status): string
+            {
+                return match ($status) {
+                    'pending' => 'Pending',
+                    'paid' => 'Paid',
+                    'shipped' => 'Shipped',
+                    default => 'Unknown',
+                };
+            }
+        }
+        PHP;
+
+        return new EvalCase(
+            id: 'status-label',
+            title: 'label() is missing the refunded status',
+            category: 'bug',
+            files: [$file => $buggy],
+            prompt: "EvalStatus::label() returns 'Unknown' for the 'refunded' status. It should return 'Refunded', without breaking the existing statuses.",
+            grader: Probe::subprocess($file, <<<'PROBE'
+                $s = new EvalStatus();
+                $target = $s->label('refunded') === 'Refunded';
+                $happy = $s->label('paid') === 'Paid';
+            PROBE),
+        );
+    }
+
+    private function factorialBaseCase(): EvalCase
+    {
+        $file = 'EvalMath.php';
+        $buggy = <<<'PHP'
+        <?php
+
+        class EvalMath
+        {
+            // BUG: wrong base case — returns 0, so every factorial is 0.
+            public function factorial(int $n): int
+            {
+                if ($n <= 1) {
+                    return 0;
+                }
+
+                return $n * $this->factorial($n - 1);
+            }
+        }
+        PHP;
+
+        return new EvalCase(
+            id: 'factorial-base-case',
+            title: 'factorial() has the wrong base case',
+            category: 'bug',
+            files: [$file => $buggy],
+            prompt: 'EvalMath::factorial() always returns 0 because its base case is wrong. Fix it so factorial(5) is 120 and factorial(0) is 1.',
+            grader: Probe::subprocess($file, <<<'PROBE'
+                $m = new EvalMath();
+                $target = $m->factorial(5) === 120;
+                $happy = $m->factorial(0) === 1;
             PROBE),
         );
     }

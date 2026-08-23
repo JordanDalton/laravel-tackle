@@ -11,7 +11,7 @@ use TackleRemote\TackleRemoteServiceProvider;
 class InstallCommand extends Command
 {
     protected $signature = 'tackle:install
-        {component? : Optional add-on: "remote" (phone/browser UI), "review" (PR review workflow), "codex" (OpenAI Codex provider), "grok" (xAI Grok provider), or "guard" (exfiltration guard hooks)}
+        {component? : Optional add-on: "remote" (phone/browser UI), "review" (PR review workflow), "eval-ci" (nightly ai:eval workflow), "codex" (OpenAI Codex provider), "grok" (xAI Grok provider), or "guard" (exfiltration guard hooks)}
         {--stubs : Also publish customisable stubs to stubs/tackle/}
         {--migrate : Run migrations automatically after publishing}
         {--no-dev : For "remote" / "codex" / "grok": add to require instead of require-dev}';
@@ -26,6 +26,7 @@ class InstallCommand extends Command
             return match ($component) {
                 'remote' => $this->installRemote(),
                 'review' => $this->installReview(),
+                'eval-ci' => $this->installEvalCi(),
                 'codex' => $this->installCodex(),
                 'grok' => $this->installGrok(),
                 'guard' => $this->installGuard(),
@@ -228,6 +229,66 @@ class InstallCommand extends Command
     }
 
     /**
+     * Scaffold a scheduled GitHub Actions workflow that runs ai:eval and
+     * uploads the JSON report, so the agent's fix-rate is tracked over time.
+     * Never overwrites an existing workflow.
+     */
+    private function installEvalCi(): int
+    {
+        $path = base_path('.github/workflows/tackle-eval.yml');
+
+        if (file_exists($path)) {
+            $this->components->warn('.github/workflows/tackle-eval.yml already exists — leaving it untouched.');
+
+            return self::SUCCESS;
+        }
+
+        if (! is_dir(dirname($path))) {
+            mkdir(dirname($path), 0755, true);
+        }
+
+        file_put_contents($path, <<<'YAML'
+        name: Tackle Eval
+        on:
+          schedule:
+            - cron: '0 6 * * *'   # nightly at 06:00 UTC
+          workflow_dispatch:
+
+        jobs:
+          eval:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v4
+              - uses: shivammathur/setup-php@v2
+                with:
+                  php-version: '8.4'
+              - run: composer install --no-interaction --prefer-dist
+              - name: Run the eval suite
+                env:
+                  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+                run: php artisan ai:eval --json | tee eval-report.json
+              - uses: actions/upload-artifact@v4
+                if: always()
+                with:
+                  name: tackle-eval-report
+                  path: eval-report.json
+
+        YAML);
+
+        $this->line('');
+        $this->line('  <fg=green>✓</> Workflow written → <fg=cyan>.github/workflows/tackle-eval.yml</>');
+        $this->line('');
+        $this->line('Next steps:');
+        $this->line('');
+        $this->line('  1. Add the <fg=cyan>ANTHROPIC_API_KEY</> secret to the GitHub repository.');
+        $this->line('  2. It runs nightly (and on demand) — the JSON report is uploaded as an artifact.');
+        $this->line('  <fg=yellow>Note:</> each run calls the model for every case, so it costs real tokens. Tune the schedule / case set to taste.');
+        $this->line('');
+
+        return self::SUCCESS;
+    }
+
+    /**
      * Print the recommended tackle.hooks.pre_tool entries for the guard pack.
      * We show rather than rewrite config/tackle.php: editing a published,
      * possibly-customised config file programmatically is worse than a
@@ -256,6 +317,7 @@ class InstallCommand extends Command
         $this->components->error("Unknown component '{$component}'. Available:");
         $this->line('  <fg=cyan>php artisan tackle:install remote</>  — browser/phone UI for the agent');
         $this->line('  <fg=cyan>php artisan tackle:install review</>  — GitHub Actions workflow reviewing every PR');
+        $this->line('  <fg=cyan>php artisan tackle:install eval-ci</> — nightly ai:eval benchmark workflow');
         $this->line('  <fg=cyan>php artisan tackle:install codex</>   — OpenAI Codex provider (ChatGPT plan or API key)');
         $this->line('  <fg=cyan>php artisan tackle:install grok</>    — xAI Grok provider (API key or grok.com plan)');
         $this->line('  <fg=cyan>php artisan tackle:install guard</>   — exfiltration/injection guard hooks');

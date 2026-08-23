@@ -176,3 +176,22 @@ it('scaffolds the tackle-review workflow without overwriting', function () {
 it('rejects unknown components with the available list', function () {
     $this->artisan('tackle:install', ['component' => 'nope'])->assertFailed();
 });
+
+it('scaffolds the tackle-eval nightly workflow without overwriting', function () {
+    $path = base_path('.github/workflows/tackle-eval.yml');
+    @unlink($path);
+
+    $this->artisan('tackle:install', ['component' => 'eval-ci'])->assertSuccessful();
+
+    expect(file_get_contents($path))
+        ->toContain('name: Tackle Eval')
+        ->toContain('php artisan ai:eval --json')
+        ->toContain('cron:');
+
+    file_put_contents($path, 'custom: workflow');
+    $this->artisan('tackle:install', ['component' => 'eval-ci'])->assertSuccessful();
+
+    expect(file_get_contents($path))->toBe('custom: workflow');
+
+    @unlink($path);
+});

@@ -155,6 +155,16 @@ function applyCanonicalFix(string $dir, string $id): array
             "<?php\nclass EvalReceipt { public function customerName(\$order): string { return \$order->customer?->name ?? 'Guest'; } }\n"),
         'cross-file-total' => file_put_contents($dir.'/EvalLineItem.php',
             "<?php\nclass EvalLineItem { public function __construct(public int \$quantity, public int \$unitPriceCents) {} public function subtotalCents(): int { return \$this->quantity * \$this->unitPriceCents; } }\n"),
+        'boundary-empty' => file_put_contents($dir.'/EvalAverage.php',
+            "<?php\nclass EvalAverage { public function mean(array \$n): float { return \$n === [] ? 0.0 : array_sum(\$n) / count(\$n); } }\n"),
+        'tax-rounding' => file_put_contents($dir.'/EvalTax.php',
+            "<?php\nclass EvalTax { public function withTax(int \$c, int \$r): int { return \$c + (int) round(\$c * \$r / 100); } }\n"),
+        'slugify' => file_put_contents($dir.'/EvalSlug.php',
+            "<?php\nclass EvalSlug { public function make(string \$t): string { return trim(preg_replace('/[^a-z0-9]+/', '-', strtolower(\$t)), '-'); } }\n"),
+        'status-label' => file_put_contents($dir.'/EvalStatus.php',
+            "<?php\nclass EvalStatus { public function label(string \$s): string { return match (\$s) { 'pending' => 'Pending', 'paid' => 'Paid', 'shipped' => 'Shipped', 'refunded' => 'Refunded', default => 'Unknown' }; } }\n"),
+        'factorial-base-case' => file_put_contents($dir.'/EvalMath.php',
+            "<?php\nclass EvalMath { public function factorial(int \$n): int { return \$n <= 1 ? 1 : \$n * \$this->factorial(\$n - 1); } }\n"),
         default => null,
     };
 
