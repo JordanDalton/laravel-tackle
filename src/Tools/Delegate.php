@@ -120,7 +120,7 @@ class Delegate extends AbstractTool
             }
 
             if ($event instanceof StreamEnd) {
-                $this->budget->record($event->usage->promptTokens, $event->usage->completionTokens);
+                $this->budget->record($event->usage->promptTokens, $event->usage->completionTokens, $event->usage->cacheReadInputTokens ?? 0, $event->usage->cacheWriteInputTokens ?? 0);
 
                 if ($this->budget->overBudget()) {
                     throw new AgentInterruptedException('budget_exceeded');

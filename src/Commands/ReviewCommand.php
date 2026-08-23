@@ -143,7 +143,7 @@ class ReviewCommand extends Command
                         $this->output->write($event->delta);
                     }
                 } elseif ($event instanceof StreamEnd) {
-                    $budget->record($event->usage->promptTokens, $event->usage->completionTokens);
+                    $budget->record($event->usage->promptTokens, $event->usage->completionTokens, $event->usage->cacheReadInputTokens ?? 0, $event->usage->cacheWriteInputTokens ?? 0);
                 }
             });
         } catch (Throwable $e) {

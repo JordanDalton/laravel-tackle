@@ -278,7 +278,7 @@ class FixCommand extends Command
 
                 if ($event instanceof StreamEnd) {
                     $this->closeStream();
-                    $budget->record($event->usage->promptTokens, $event->usage->completionTokens);
+                    $budget->record($event->usage->promptTokens, $event->usage->completionTokens, $event->usage->cacheReadInputTokens ?? 0, $event->usage->cacheWriteInputTokens ?? 0);
 
                     if ($budget->overBudget()) {
                         promptError(sprintf(

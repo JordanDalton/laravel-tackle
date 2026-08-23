@@ -10,6 +10,10 @@ class BudgetTracker
 
     private int $outputTokens = 0;
 
+    private int $cacheReadTokens = 0;
+
+    private int $cacheWriteTokens = 0;
+
     private float $accruedCost = 0.0;
 
     /**
@@ -32,6 +36,11 @@ class BudgetTracker
 
     /** Rough chars-per-token for input-size estimation (code/English ~3.5-4). */
     private const CHARS_PER_TOKEN = 4;
+
+    /** Anthropic cache economics: reads bill at ~10%, the first write at 1.25x. */
+    private const CACHE_READ_MULTIPLIER = 0.10;
+
+    private const CACHE_WRITE_MULTIPLIER = 1.25;
 
     private float $budgetUsd;
 
@@ -72,17 +81,39 @@ class BudgetTracker
      * mid-session model switch reprices future usage without rewriting the
      * cost of what already ran.
      */
-    public function record(int $inputTokens, int $outputTokens): void
-    {
+    public function record(
+        int $inputTokens,
+        int $outputTokens,
+        int $cacheReadTokens = 0,
+        int $cacheWriteTokens = 0,
+    ): void {
         $this->inputTokens += $inputTokens;
         $this->outputTokens += $outputTokens;
+        $this->cacheReadTokens += $cacheReadTokens;
+        $this->cacheWriteTokens += $cacheWriteTokens;
+
+        // Fresh input + output at full rate; cache reads at ~10% and the first
+        // cache write at 1.25x of the input rate. Without this, budgets and
+        // eval costs undercount whenever prompt caching is on.
         $this->accruedCost += ($inputTokens / 1_000_000 * $this->inputCostPerM)
-            + ($outputTokens / 1_000_000 * $this->outputCostPerM);
+            + ($outputTokens / 1_000_000 * $this->outputCostPerM)
+            + ($cacheReadTokens / 1_000_000 * $this->inputCostPerM * self::CACHE_READ_MULTIPLIER)
+            + ($cacheWriteTokens / 1_000_000 * $this->inputCostPerM * self::CACHE_WRITE_MULTIPLIER);
 
         // A stream has ended; the next turn starts with a clean context and
         // the in-flight estimate is superseded by the real recorded usage.
         $this->contextChars = 0;
         $this->inFlightCost = 0.0;
+    }
+
+    public function cacheReadTokens(): int
+    {
+        return $this->cacheReadTokens;
+    }
+
+    public function cacheWriteTokens(): int
+    {
+        return $this->cacheWriteTokens;
     }
 
     /**
@@ -222,10 +253,15 @@ class BudgetTracker
 
     public function summary(): string
     {
+        $cached = ($this->cacheReadTokens + $this->cacheWriteTokens) > 0
+            ? sprintf(' (cached: %d read / %d write)', $this->cacheReadTokens, $this->cacheWriteTokens)
+            : '';
+
         return sprintf(
-            'Tokens used — input: %d, output: %d | Estimated cost: $%.4f / $%.2f budget',
+            'Tokens used — input: %d, output: %d%s | Estimated cost: $%.4f / $%.2f budget',
             $this->inputTokens,
             $this->outputTokens,
+            $cached,
             $this->estimatedCost(),
             $this->budgetUsd,
         );

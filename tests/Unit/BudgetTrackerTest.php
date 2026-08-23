@@ -100,3 +100,31 @@ it('produces a readable summary string', function () {
         ->toContain('1000')
         ->toContain('500');
 });
+
+it('prices cache reads at ~10% and the first write at 1.25x of the input rate', function () {
+    // $3/MTok input, $15/MTok output.
+    $tracker = new BudgetTracker(10.00, 3.00, 15.00);
+
+    // 1M fresh input + 1M cache read + 1M cache write + 100k output.
+    $tracker->record(1_000_000, 100_000, 1_000_000, 1_000_000);
+
+    // fresh 3.00 + read 0.30 + write 3.75 + output 1.50 = 8.55
+    expect(round($tracker->estimatedCost(), 4))->toBe(8.55)
+        ->and($tracker->cacheReadTokens())->toBe(1_000_000)
+        ->and($tracker->cacheWriteTokens())->toBe(1_000_000);
+});
+
+it('is backward compatible — record() without cache args prices only fresh tokens', function () {
+    $tracker = new BudgetTracker(10.00, 3.00, 15.00);
+    $tracker->record(1_000_000, 1_000_000);
+
+    expect($tracker->estimatedCost())->toBe(18.00)
+        ->and($tracker->cacheReadTokens())->toBe(0);
+});
+
+it('surfaces cached tokens in the summary when present', function () {
+    $tracker = new BudgetTracker(10.00, 3.00, 15.00);
+    $tracker->record(1000, 100, 5000, 500);
+
+    expect($tracker->summary())->toContain('cached: 5000 read / 500 write');
+});
