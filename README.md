@@ -205,6 +205,7 @@ All config options can be set via `.env`. Nothing requires editing a PHP file.
 | `AI_CODE_MAX_STEPS` | `40` | Tool-call ceiling for `ai:run` — cannot exceed the agent's own `#[MaxSteps]` |
 | `AI_CODE_BUDGET` | `1.00` | Hard spend limit in USD per session |
 | `AI_CODE_PROMPT_CACHE` | `true` | Cache the system prompt + tool schemas on Anthropic (`cache_control`) so the fixed per-step prefix bills at ~10% on repeat steps |
+| `tackle.tools` (config) | `null` | Allowlist of tool class base names for the coding agent — fewer tools = cheaper. Integration tools (GitHub/Sentry/Telescope) already appear only when configured |
 | `AI_CODE_EVALS_PATH` | `evals/` | Directory `ai:eval` loads project eval cases from |
 | `AI_CODE_EVALS_INCLUDE_BUILTIN` | `true` | Include the built-in eval cases alongside project ones |
 | `AI_CODE_COMPACTION_THRESHOLD` | `60000` | Conversation size (chars) that triggers automatic history compaction |

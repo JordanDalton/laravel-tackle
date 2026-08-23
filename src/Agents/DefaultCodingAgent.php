@@ -8,6 +8,7 @@ use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Promptable;
 use Laravel\Ai\Responses\StreamableAgentResponse;
+use Laravel\Telescope\Telescope;
 use Tackle\Agents\Concerns\CachesInstructions;
 use Tackle\Agents\Concerns\SwitchesModel;
 use Tackle\Attributes\AiModel;
@@ -234,7 +235,8 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
 
     public function tools(): iterable
     {
-        return EventedTool::wrap(ShieldedTool::wrap([
+        // Always-available core: read/edit/run/inspect the project.
+        $tools = [
             $this->readFile,
             $this->glob,
             $this->searchCode,
@@ -249,16 +251,44 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
             $this->readLog,
             $this->gitDiff,
             $this->listRoutes,
-            $this->readTelescopeEntry,
-            $this->readSentryIssue,
-            $this->readGitHubIssue,
-            $this->readPullRequest,
-            $this->createGitHubIssue,
-            $this->createPullRequest,
-            $this->commitAndPush,
             $this->askUser,
             $this->confirmAction,
-            ...(config('tackle.subagents', []) ? [$this->delegate] : []),
-        ]));
+        ];
+
+        // Integration tools cost schema tokens on every step, so only expose
+        // them when their integration is actually configured — the agent can't
+        // use a GitHub tool without a token anyway. Lazy exposure trims the
+        // per-step floor with zero capability loss.
+        if (config('tackle.github.token')) {
+            $tools[] = $this->readGitHubIssue;
+            $tools[] = $this->readPullRequest;
+            $tools[] = $this->createGitHubIssue;
+            $tools[] = $this->createPullRequest;
+            $tools[] = $this->commitAndPush;
+        }
+
+        if (config('tackle.sentry.auth_token')) {
+            $tools[] = $this->readSentryIssue;
+        }
+
+        if (class_exists(Telescope::class)) {
+            $tools[] = $this->readTelescopeEntry;
+        }
+
+        if (config('tackle.subagents', [])) {
+            $tools[] = $this->delegate;
+        }
+
+        // Optional explicit allowlist: tackle.tools = ['ReadFile', ...] keeps
+        // only those (by class basename). Null/empty = everything above.
+        $allow = config('tackle.tools');
+        if (is_array($allow) && $allow !== []) {
+            $tools = array_values(array_filter(
+                $tools,
+                fn ($tool) => in_array(class_basename($tool), $allow, true),
+            ));
+        }
+
+        return EventedTool::wrap(ShieldedTool::wrap($tools));
     }
 }

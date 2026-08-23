@@ -49,3 +49,37 @@ it('exposes the tools ai:run reports on', function () {
 
     expect($tools)->toContain('ReadFile', 'EditFile', 'RunTests', 'AskUser', 'ConfirmAction');
 });
+
+it('omits integration tools until their integration is configured', function () {
+    config()->set('tackle.github.token', null);
+    config()->set('tackle.sentry.auth_token', null);
+    config()->set('tackle.tools', null);
+
+    $names = collect(app(CodingAgent::class)->tools())
+        ->map(fn ($t) => is_callable([$t, 'name']) ? $t->name() : class_basename($t))
+        ->all();
+
+    expect($names)
+        ->toContain('ReadFile', 'EditFile') // always on
+        ->not->toContain('CreatePullRequest', 'ReadGitHubIssue', 'CommitAndPush', 'ReadSentryIssue');
+});
+
+it('exposes GitHub tools once a token is configured', function () {
+    config()->set('tackle.github.token', 'ghp_x');
+
+    $names = collect(app(CodingAgent::class)->tools())
+        ->map(fn ($t) => is_callable([$t, 'name']) ? $t->name() : class_basename($t))
+        ->all();
+
+    expect($names)->toContain('CreatePullRequest', 'ReadGitHubIssue', 'CommitAndPush');
+});
+
+it('restricts the toolset to tackle.tools when set', function () {
+    config()->set('tackle.tools', ['ReadFile', 'EditFile', 'RunTests']);
+
+    $names = collect(app(CodingAgent::class)->tools())
+        ->map(fn ($t) => is_callable([$t, 'name']) ? $t->name() : class_basename($t))
+        ->all();
+
+    expect($names)->toEqualCanonicalizing(['ReadFile', 'EditFile', 'RunTests']);
+});

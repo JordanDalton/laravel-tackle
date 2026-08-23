@@ -46,6 +46,12 @@ return [
     // same behaviour, lower cost. Set false to disable everywhere.
     'prompt_cache' => env('AI_CODE_PROMPT_CACHE', true),
 
+    // Restrict the coding agent's toolset to this allowlist (tool class base
+    // names, e.g. ['ReadFile', 'EditFile', 'RunTests']). Null = all tools.
+    // Fewer tools = fewer schemas re-sent each step = cheaper. Integration
+    // tools (GitHub/Sentry/Telescope) already appear only when configured.
+    'tools' => null,
+
     /*
     |--------------------------------------------------------------------------
     | Max Steps
