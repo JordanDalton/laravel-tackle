@@ -1135,7 +1135,7 @@ report gives:
 - **not-fixed / errors**, and **tokens + cost** per case and in total.
 
 The command exits non-zero if any case regressed or errored, so it can gate a
-CI job. Scaffold a nightly run with `php artisan tackle:install eval-ci` (writes a scheduled workflow that runs `ai:eval --json` and uploads the report).
+CI job. Scaffold a nightly run with `php artisan tackle:install eval-ci` (writes a scheduled workflow that runs `ai:eval --json` and uploads the report). Each run calls the model for every case (~$0.09 for the 10-case suite on Haiku), so tune the schedule, model (`--model=`), or case set — or drop the cron and keep only manual `workflow_dispatch` runs.
 
 **Scaffold a case** with `php artisan tackle:eval "refund rounding"` — it writes a starter `evals/refund-rounding.php` you fill in. (`tackle:eval` generates a case; `ai:eval` runs them.)
 
