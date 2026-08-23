@@ -34,6 +34,8 @@ class HealEvidence
         public readonly bool $analysisRan = false,
         public readonly bool $analysisOk = true,
         public readonly string $analysisSummary = '',
+        public readonly bool $redGreenChecked = false,
+        public readonly bool $redGreenProven = false,
     ) {}
 
     /**
@@ -170,6 +172,12 @@ class HealEvidence
         $lines[] = $this->regressionTestAdded
             ? '- ✅ **Regression test added** — a test reproducing the issue is included.'
             : '- ⚠️ **No regression test added** — the fix is not guarded against recurrence.';
+
+        if ($this->redGreenChecked) {
+            $lines[] = $this->redGreenProven
+                ? '- ✅ **Regression test proven** — it fails without the fix and passes with it (red→green).'
+                : '- ⚠️ **Regression test did not fail without the fix** — it may not actually reproduce the issue.';
+        }
 
         if ($this->analysisRan) {
             $lines[] = $this->analysisOk

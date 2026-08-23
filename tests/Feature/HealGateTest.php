@@ -83,6 +83,13 @@ class FakeSandbox extends SandboxRunner
         return $this->analysisResult;
     }
 
+    public array $redGreenResult = ['ran' => false, 'red' => false, 'green' => false];
+
+    public function redGreenCheck(string $worktreePath, array $newTestPaths, array $fixPaths): array
+    {
+        return $this->redGreenResult;
+    }
+
     public function cleanup(string $worktreePath, string $branchName): void {}
 }
 
@@ -350,4 +357,43 @@ it('auto-applies a heal that passes static analysis and formats the change', fun
     expect($sandbox->applied)->toBeTrue()
         ->and($sandbox->formatted)->toBeTrue()
         ->and($sandbox->prBody)->toBeNull();
+});
+
+it('records a proven red→green regression test in the evidence', function () {
+    config()->set('tackle.healing.mode', 'pr');
+
+    $sandbox = new FakeSandbox;
+    $sandbox->testRuns = [
+        ['ran' => true, 'ok' => true, 'failures' => []],
+        ['ran' => true, 'ok' => true, 'failures' => []],
+    ];
+    $sandbox->diffResult = [
+        'files' => ['app/Jobs/ProcessPayment.php' => 'M', 'tests/Feature/ProcessPaymentTest.php' => 'A'],
+        'insertions' => 12, 'deletions' => 1,
+    ];
+    $sandbox->redGreenResult = ['ran' => true, 'red' => true, 'green' => true];
+
+    runHeal($sandbox);
+
+    expect($sandbox->prBody)->toContain('Regression test proven');
+});
+
+it('flags a regression test that passes even without the fix', function () {
+    config()->set('tackle.healing.mode', 'pr');
+
+    $sandbox = new FakeSandbox;
+    $sandbox->testRuns = [
+        ['ran' => true, 'ok' => true, 'failures' => []],
+        ['ran' => true, 'ok' => true, 'failures' => []],
+    ];
+    $sandbox->diffResult = [
+        'files' => ['app/Jobs/ProcessPayment.php' => 'M', 'tests/Feature/ProcessPaymentTest.php' => 'A'],
+        'insertions' => 12, 'deletions' => 1,
+    ];
+    // Test passed even with the fix reverted → not a real reproduction.
+    $sandbox->redGreenResult = ['ran' => true, 'red' => false, 'green' => true];
+
+    runHeal($sandbox);
+
+    expect($sandbox->prBody)->toContain('did not fail without the fix');
 });

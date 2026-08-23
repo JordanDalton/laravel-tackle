@@ -126,6 +126,23 @@ abstract class AbstractHealJob implements ShouldQueue
                 ? $runner->analyzeChanged($worktreePath, $codeFiles)
                 : ['ran' => false, 'ok' => true, 'summary' => ''];
 
+            $regressionTestAdded = $this->regressionTestAdded($diff['files']);
+
+            // Prove the added test actually reproduces the bug (red→green), but
+            // only when tests are otherwise clean — no point on a broken suite.
+            $redGreen = ['ran' => false, 'red' => false, 'green' => false];
+            if ($regressionTestAdded && $after['ran'] && $after['failures'] === []) {
+                $newTests = array_values(array_filter(
+                    array_keys($diff['files']),
+                    fn (string $f) => strtoupper((string) $diff['files'][$f]) === 'A' && HealEvidence::isTestPath($f),
+                ));
+                $fixFiles = array_values(array_filter(
+                    array_keys($diff['files']),
+                    fn (string $f) => ! HealEvidence::isTestPath($f),
+                ));
+                $redGreen = $runner->redGreenCheck($worktreePath, $newTests, $fixFiles);
+            }
+
             $evidence = new HealEvidence(
                 baselineFailures: $baseline['failures'],
                 afterFailures: $after['failures'],
@@ -134,11 +151,13 @@ abstract class AbstractHealJob implements ShouldQueue
                 filesTouched: array_keys($diff['files']),
                 insertions: $diff['insertions'],
                 deletions: $diff['deletions'],
-                regressionTestAdded: $this->regressionTestAdded($diff['files']),
+                regressionTestAdded: $regressionTestAdded,
                 blastRadiusViolations: BlastRadius::violations($diff['files'], $diff['insertions'] + $diff['deletions']),
                 analysisRan: $analysis['ran'],
                 analysisOk: $analysis['ok'],
                 analysisSummary: $analysis['summary'],
+                redGreenChecked: $redGreen['ran'],
+                redGreenProven: $redGreen['ran'] && $redGreen['red'] && $redGreen['green'],
             );
 
             $testsPassed = $evidence->testsClean();

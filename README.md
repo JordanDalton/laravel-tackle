@@ -1347,6 +1347,7 @@ runs itself — the agent cannot declare itself done:
   requires that the fix introduce no new failures — not that the whole suite is
   green (real apps carry pre-existing failures). Set `baseline=false` to fall
   back to "suite green" on very slow suites.
+- **The regression test is proven.** When a heal is otherwise clean, the added test is run with the fix reverted (must fail) then restored (must pass) — a red→green proof that it actually reproduces the bug, surfaced in the PR evidence.
 - **A fix must change code.** A heal that touches only test files (or nothing) is treated as incomplete — never auto-applied, and opened as a PR tagged `[incomplete]`. This stops an agent from "passing" a performance heal by adding a green test and changing no code.
 - **Static analysis must be clean.** Larastan/PHPStan runs over the heal's changed files; new errors hold it back from auto-apply and flag the PR `[needs review]`. Skipped if PHPStan isn't installed. The heal's changes are also auto-formatted with Pint before the PR.
 - **Blast-radius limits.** A heal that touches too many files, changes too many

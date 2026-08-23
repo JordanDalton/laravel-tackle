@@ -101,6 +101,59 @@ class SandboxRunner
     }
 
     /**
+     * Prove the regression test actually reproduces the bug: run the new test
+     * with the fix reverted (expect red), then with the fix restored (expect
+     * green). Confirms the test isn't vacuous or passing for the wrong reason.
+     *
+     * The heal is already committed as HEAD; `git checkout HEAD~1 -- <fix>`
+     * reverts only the fix files (the new test didn't exist in HEAD~1, so it
+     * stays in place), then we restore with `git checkout HEAD -- <fix>`.
+     *
+     * @param  list<string>  $newTestPaths  test files the heal added
+     * @param  list<string>  $fixPaths  non-test files the heal changed
+     * @return array{ran: bool, red: bool, green: bool}
+     */
+    public function redGreenCheck(string $worktreePath, array $newTestPaths, array $fixPaths): array
+    {
+        if ($newTestPaths === [] || $fixPaths === []) {
+            return ['ran' => false, 'red' => false, 'green' => false];
+        }
+
+        try {
+            // Revert the fix, keep the test → the test should now FAIL.
+            Process::path($worktreePath)->timeout(30)
+                ->run(array_merge(['git', 'checkout', 'HEAD~1', '--'], $fixPaths));
+            $red = ! $this->runTestPaths($worktreePath, $newTestPaths);
+
+            // Restore the fix → the test should now PASS.
+            Process::path($worktreePath)->timeout(30)
+                ->run(array_merge(['git', 'checkout', 'HEAD', '--'], $fixPaths));
+            $green = $this->runTestPaths($worktreePath, $newTestPaths);
+
+            return ['ran' => true, 'red' => $red, 'green' => $green];
+        } catch (Throwable) {
+            // Best-effort — never let the proof step fail the heal.
+            return ['ran' => false, 'red' => false, 'green' => false];
+        }
+    }
+
+    /**
+     * Run only the given test files. True if they pass.
+     *
+     * @param  list<string>  $paths
+     */
+    public function runTestPaths(string $worktreePath, array $paths): bool
+    {
+        $binary = file_exists($worktreePath.'/vendor/bin/pest')
+            ? ['./vendor/bin/pest']
+            : ['php', 'artisan', 'test'];
+
+        return Process::path($worktreePath)->timeout(120)
+            ->run(array_merge($binary, $paths))
+            ->successful();
+    }
+
+    /**
      * The diff of the healing commit (HEAD vs its parent) as a status map plus
      * line counts. Uses the committed diff so newly-added files (a regression
      * test) are included, which a working-tree diff against HEAD would miss.
