@@ -57,7 +57,16 @@ class EventedTool implements Tool
 
     public function name(): string
     {
-        return ToolNameResolver::resolve($this->inner);
+        // Fall back to the class basename on laravel/ai versions without the
+        // resolver, so EventedTool never fatals when used directly (wrap()
+        // already declines to wrap on those versions).
+        if (self::supported()) {
+            return ToolNameResolver::resolve($this->inner);
+        }
+
+        return is_callable([$this->inner, 'name'])
+            ? $this->inner->name()
+            : class_basename($this->inner);
     }
 
     public function inner(): Tool
@@ -88,7 +97,11 @@ class EventedTool implements Tool
 
         if ($pre->arguments !== null && $pre->arguments !== $arguments) {
             $arguments = $pre->arguments;
-            $request = new Request($arguments, $request->toolCallId());
+            // Request gained a toolCallId constructor arg in a later laravel/ai;
+            // older versions take arguments only.
+            $request = method_exists($request, 'toolCallId')
+                ? new Request($arguments, $request->toolCallId())
+                : new Request($arguments);
         }
 
         $veto = Event::until(new ToolCalling($this->name(), $arguments));

@@ -16,7 +16,7 @@ use Laravel\Ai\Enums\Lab;
  */
 trait CachesInstructions
 {
-    public function providerOptions(Lab|string $provider): array
+    public function providerOptions($provider): array
     {
         if (! (bool) config('tackle.prompt_cache', true)) {
             return [];

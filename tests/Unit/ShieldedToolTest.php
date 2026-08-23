@@ -2,6 +2,7 @@
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Tools\Request;
+use Laravel\Ai\Tools\ToolNameResolver;
 use Tackle\Agents\InjectionClassifier;
 use Tackle\Support\ShieldedTool;
 use Tackle\Tools\AbstractTool;
@@ -80,7 +81,7 @@ it('only wraps the configured untrusted readers', function () {
 
     expect($wrapped[0])->toBeInstanceOf(ShieldedTool::class)
         ->and($wrapped[1])->toBe($other);
-});
+})->skip(fn () => ! class_exists(ToolNameResolver::class), 'shield wrapping requires laravel/ai ToolNameResolver');
 
 it('is a transparent passthrough when disabled', function () {
     config()->set('tackle.guard.injection_classifier.enabled', false);

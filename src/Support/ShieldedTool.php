@@ -63,7 +63,13 @@ class ShieldedTool implements Tool
 
     public function name(): string
     {
-        return ToolNameResolver::resolve($this->inner);
+        if (class_exists(ToolNameResolver::class)) {
+            return ToolNameResolver::resolve($this->inner);
+        }
+
+        return is_callable([$this->inner, 'name'])
+            ? $this->inner->name()
+            : class_basename($this->inner);
     }
 
     public function description(): Stringable|string

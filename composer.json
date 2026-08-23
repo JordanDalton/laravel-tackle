@@ -30,7 +30,10 @@
     "autoload": {
         "psr-4": {
             "Tackle\\": "src/"
-        }
+        },
+        "files": [
+            "src/compat.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {

@@ -42,7 +42,7 @@ it('wraps only Tool instances and passes everything else through', function () {
 
     expect($wrapped[0])->toBeInstanceOf(EventedTool::class)
         ->and($wrapped[1])->toBe($notATool);
-});
+})->skip(fn () => ! EventedTool::supported(), 'wrapping is a no-op without laravel/ai ToolNameResolver');
 
 it('does not double-wrap', function () {
     $once = EventedTool::wrap([new EventedTestEchoTool]);
@@ -108,4 +108,4 @@ it('wraps the default coding agent tool set with names intact', function () {
 
     expect($tools->first())->toBeInstanceOf(EventedTool::class)
         ->and($tools->map(fn ($t) => $t->name())->all())->toContain('ReadFile', 'EditFile', 'RunShell');
-});
+})->skip(fn () => ! EventedTool::supported(), 'wrapping is a no-op without laravel/ai ToolNameResolver');
