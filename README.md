@@ -87,7 +87,7 @@ Bug reports and pull requests are welcome on [GitHub](https://github.com/JordanD
 
 ## Security
 
-If you discover a security issue, please email jordan.dalton@ymail.com rather than opening a public issue.
+If you discover a security issue, please email jordan@daltonsolutions.com rather than opening a public issue.
 
 ## License
 
