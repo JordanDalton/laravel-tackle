@@ -163,7 +163,8 @@ it('scaffolds the tackle-review workflow without overwriting', function () {
 
     expect(file_get_contents($path))
         ->toContain('JordanDalton/tackle-review@v1')
-        ->toContain('pull-requests: write');
+        ->toContain('pull-requests: write')
+        ->toContain('uses tokens'); // per-PR cost note
 
     file_put_contents($path, 'custom: workflow');
     $this->artisan('tackle:install', ['component' => 'review'])->assertSuccessful();
@@ -186,7 +187,8 @@ it('scaffolds the tackle-eval nightly workflow without overwriting', function ()
     expect(file_get_contents($path))
         ->toContain('name: Tackle Eval')
         ->toContain('php artisan ai:eval --json')
-        ->toContain('cron:');
+        ->toContain('cron:')
+        ->toContain('Cost:'); // durable cost notice travels with the file
 
     file_put_contents($path, 'custom: workflow');
     $this->artisan('tackle:install', ['component' => 'eval-ci'])->assertSuccessful();

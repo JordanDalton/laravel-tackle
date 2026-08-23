@@ -197,6 +197,10 @@ class InstallCommand extends Command
 
         file_put_contents($path, <<<'YAML'
         name: Tackle Review
+
+        # Note: this reviews every pull request with the model, which uses tokens
+        # per PR. Scope it (e.g. paths / branches) if that matters for your repo.
+
         on:
           pull_request:
 
@@ -249,6 +253,13 @@ class InstallCommand extends Command
 
         file_put_contents($path, <<<'YAML'
         name: Tackle Eval
+
+        # ⚠️  Cost: this runs ai:eval on a schedule and calls the model for EVERY
+        #     case on every run (~$0.09 for the built-in suite on Haiku, more on
+        #     Sonnet). Before committing, tune it: change the cron, pin a cheaper
+        #     model (ai:eval --model=...), scope the cases (--case=...), or remove
+        #     the `schedule:` block to keep manual (workflow_dispatch) runs only.
+
         on:
           schedule:
             - cron: '0 6 * * *'   # nightly at 06:00 UTC
