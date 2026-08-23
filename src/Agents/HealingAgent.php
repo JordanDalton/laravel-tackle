@@ -14,6 +14,9 @@ use Tackle\Support\CommandGuard;
 use Tackle\Support\EventedTool;
 use Tackle\Support\PathGuard;
 use Tackle\Support\ProjectMemory;
+use Tackle\Tools\AppInfo;
+use Tackle\Tools\DescribeModels;
+use Tackle\Tools\DescribeSchema;
 use Tackle\Tools\EditFile;
 use Tackle\Tools\Glob;
 use Tackle\Tools\ReadFile;
@@ -120,6 +123,9 @@ class HealingAgent implements CodingAgent, HasProviderOptions
             new ReadFile($this->guard),
             new Glob($this->guard),
             new SearchCode($this->guard),
+            new DescribeSchema,
+            new DescribeModels($this->guard),
+            new AppInfo($this->guard),
             new EditFile($this->guard),
             new WriteFile($this->guard),
             new RunTests($this->guard, app(CommandGuard::class)),

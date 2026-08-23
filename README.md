@@ -836,6 +836,9 @@ These tools are available to the agent in every session.
 | `ReadLog` | Returns the last N lines of `storage/logs/laravel.log`. Accepts an optional filter string. |
 | `QueryDatabase` | Runs a read-only `SELECT` query and returns results as JSON. Capped at 100 rows. |
 | `ListRoutes` | Returns a formatted table of all registered routes with method, URI, name, and action. |
+| `DescribeSchema` | Real DB schema from the live connection — tables, columns, types, indexes, foreign keys. Authoritative, not guessed from migrations. |
+| `DescribeModels` | The Eloquent model graph via reflection — each model's table, fillable, casts, and relationships. |
+| `AppInfo` | The application stack — Laravel/PHP versions, drivers (via `artisan about`), and notable installed packages (Livewire/Inertia/Filament, Pest/PHPUnit, Fortify, …). |
 | `GitDiff` | Shows a git diff — supports staged, a specific commit, a branch range, or a path. |
 | `ReadTelescopeEntry` | Reads Telescope exception entries. Pass a job UUID for a specific lookup, or omit to return recent exceptions. No-ops gracefully if Telescope is not installed. |
 | `ReadSentryIssue` | Fetches a Sentry issue by ID — exception, stacktrace, breadcrumbs, and request context. Omit the ID to list recent unresolved issues for the configured project. No-ops gracefully if `SENTRY_AUTH_TOKEN` / `SENTRY_ORG` are not set. |

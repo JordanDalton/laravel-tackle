@@ -20,12 +20,15 @@ use Tackle\Support\EventedTool;
 use Tackle\Support\PathGuard;
 use Tackle\Support\ProjectMemory;
 use Tackle\Support\ShieldedTool;
+use Tackle\Tools\AppInfo;
 use Tackle\Tools\AskUser;
 use Tackle\Tools\CommitAndPush;
 use Tackle\Tools\ConfirmAction;
 use Tackle\Tools\CreateGitHubIssue;
 use Tackle\Tools\CreatePullRequest;
 use Tackle\Tools\Delegate;
+use Tackle\Tools\DescribeModels;
+use Tackle\Tools\DescribeSchema;
 use Tackle\Tools\EditFile;
 use Tackle\Tools\GitDiff;
 use Tackle\Tools\Glob;
@@ -69,6 +72,9 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
         private readonly RunLarastan $runLarastan,
         private readonly RunShell $runShell,
         private readonly QueryDatabase $queryDatabase,
+        private readonly DescribeSchema $describeSchema,
+        private readonly DescribeModels $describeModels,
+        private readonly AppInfo $appInfo,
         private readonly ReadLog $readLog,
         private readonly GitDiff $gitDiff,
         private readonly ListRoutes $listRoutes,
@@ -248,6 +254,9 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
             $this->runLarastan,
             $this->runShell,
             $this->queryDatabase,
+            $this->describeSchema,
+            $this->describeModels,
+            $this->appInfo,
             $this->readLog,
             $this->gitDiff,
             $this->listRoutes,
