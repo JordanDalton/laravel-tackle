@@ -10,8 +10,10 @@ use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
 use Tackle\Contracts\CodingAgent;
+use Tackle\Support\AppMap;
 use Tackle\Support\PathGuard;
 use Tackle\Support\ProjectMemory;
+use Tackle\Tools\DescribeModels;
 use Tackle\Tools\Glob;
 use Tackle\Tools\ReadFile;
 use Tackle\Tools\SearchCode;
@@ -27,6 +29,7 @@ class ReviewAgent implements CodingAgent, HasProviderOptions
         private readonly ReadFile $readFile,
         private readonly Glob $glob,
         private readonly SearchCode $searchCode,
+        private readonly DescribeModels $describeModels,
         #[AiProvider] private string $provider = 'anthropic',
         #[AiModel] private string $model = 'claude-sonnet-4-6',
     ) {}
@@ -52,6 +55,7 @@ class ReviewAgent implements CodingAgent, HasProviderOptions
             $this->readFile,
             $this->glob,
             $this->searchCode,
+            $this->describeModels,
         ];
     }
 
@@ -60,15 +64,20 @@ class ReviewAgent implements CodingAgent, HasProviderOptions
         $workspace = $this->pathGuard->workspace();
 
         $projectMemory = (new ProjectMemory($workspace))->section();
+        $appMap = (new AppMap($this->pathGuard))->indexSection();
 
         return <<<INSTRUCTIONS
-        You are an expert Laravel code reviewer operating inside the project at: {$workspace}
+        You are an expert Laravel code reviewer operating inside the project at: {$workspace}{$appMap}
 
         You will be given a git diff. Your job is to review it and surface real issues — not nitpick style.
 
         You have **read-only** access to the codebase. Use ReadFile and SearchCode to understand
         context around the changed code before forming opinions. Always read the full file for any
         function or class that appears in the diff before commenting on it.
+
+        For anything touching a model, call DescribeModels for it. It tells you the relationship
+        types, so you can tell an N+1 from a legitimate lazy load, and the real columns, so you can
+        catch a query against a column that does not exist — neither of which the diff shows you.
 
         ## Severity levels
 

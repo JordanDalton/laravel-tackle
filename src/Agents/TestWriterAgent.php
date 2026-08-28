@@ -10,8 +10,10 @@ use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
 use Tackle\Contracts\CodingAgent;
+use Tackle\Support\AppMap;
 use Tackle\Support\PathGuard;
 use Tackle\Support\ProjectMemory;
+use Tackle\Tools\DescribeModels;
 use Tackle\Tools\Glob;
 use Tackle\Tools\ReadFile;
 use Tackle\Tools\RunTests;
@@ -28,6 +30,7 @@ class TestWriterAgent implements CodingAgent, HasProviderOptions
         #[Workspace] private readonly PathGuard $pathGuard,
         private readonly ReadFile $readFile,
         private readonly Glob $glob,
+        private readonly DescribeModels $describeModels,
         private readonly SearchCode $searchCode,
         private readonly WriteFile $writeFile,
         private readonly RunTests $runTests,
@@ -55,6 +58,7 @@ class TestWriterAgent implements CodingAgent, HasProviderOptions
         return [
             $this->readFile,
             $this->glob,
+            $this->describeModels,
             $this->searchCode,
             $this->writeFile,
             $this->runTests,
@@ -66,17 +70,18 @@ class TestWriterAgent implements CodingAgent, HasProviderOptions
         $workspace = $this->pathGuard->workspace();
 
         $projectMemory = (new ProjectMemory($workspace))->section();
+        $appMap = (new AppMap($this->pathGuard))->indexSection();
 
         return <<<INSTRUCTIONS
         You are an expert Laravel test writer operating inside the project at: {$workspace}
 
-        Your job is to write thorough, idiomatic tests for the code you are given.
+        Your job is to write thorough, idiomatic tests for the code you are given.{$appMap}
 
         ## Process
 
         1. **Read the target class fully** — understand its constructor, dependencies, public methods, and side effects.
         2. **Find existing tests** — check the `tests/` directory to understand naming conventions, helpers, and what is already covered. Do not duplicate existing tests.
-        3. **Read closely-related classes** — factories, models, services, or traits the subject uses.
+        3. **Read closely-related classes** — factories, models, services, or traits the subject uses. For models, call DescribeModels rather than reading the file: it gives you the real columns, the casts, and the factory's actual state methods, which is what generated tests most often get wrong on the first run.
         4. **Write the tests** — use Pest by default (PHPUnit if the project has no Pest). Place feature tests in `tests/Feature/`, unit tests in `tests/Unit/`.
         5. **Run the tests** — verify they pass before finishing. If a test fails, fix it.
 

@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Schema;
 use Laravel\Ai\Tools\Request;
+use Tackle\Support\AppMap;
 use Tackle\Support\PathGuard;
 use Tackle\Tools\AppInfo;
 use Tackle\Tools\DescribeModels;
@@ -46,7 +47,7 @@ it('reports a missing table clearly', function () {
 // DescribeModels — reflection over a model on disk
 // ---------------------------------------------------------------------------
 
-it('describes Eloquent models: table, fillable, casts, relations', function () {
+it('describes one Eloquent model: table, fillable, casts, relations', function () {
     $dir = sys_get_temp_dir().'/tackle-models-'.uniqid();
     @mkdir($dir.'/app/Models', 0755, true);
     file_put_contents($dir.'/app/Models/Gadget.php', <<<'PHP'
@@ -63,19 +64,29 @@ it('describes Eloquent models: table, fillable, casts, relations', function () {
     require $dir.'/app/Models/Gadget.php';
 
     config()->set('tackle.workspace', $dir);
-    $out = (new DescribeModels(new PathGuard($dir)))->handle(new Request([]));
+    AppMap::forget();
+
+    $tool = new DescribeModels(new PathGuard($dir));
+
+    expect($tool->handle(new Request([])))->toContain('App\Models\Gadget');
+
+    $out = $tool->handle(new Request(['model' => 'Gadget']));
 
     expect($out)
-        ->toContain('Gadget')
-        ->toContain('fillable: name, price_cents')
-        ->toContain('casts:')->toContain('price_cents')
-        ->toContain('parts (HasMany)');
+        ->toContain('Gadget (gadgets)')
+        ->toContain('Fillable')->toContain('name, price_cents')
+        ->toContain('price_cents:integer')
+        ->toContain('parts')->toContain('HasMany')
+        // No gadgets table on this connection: say so rather than imply the
+        // model has no columns.
+        ->toContain('Columns  unavailable');
 });
 
 it('returns a clear message when there are no models', function () {
     $dir = sys_get_temp_dir().'/tackle-empty-'.uniqid();
     @mkdir($dir, 0755, true);
     config()->set('tackle.workspace', $dir);
+    AppMap::forget();
 
     expect((new DescribeModels(new PathGuard($dir)))->handle(new Request([])))
         ->toContain('No Eloquent models found');

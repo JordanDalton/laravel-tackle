@@ -10,6 +10,7 @@ use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Contracts\CodingAgent;
 use Tackle\Healing\TelescopeReader;
+use Tackle\Support\AppMap;
 use Tackle\Support\CommandGuard;
 use Tackle\Support\EventedTool;
 use Tackle\Support\PathGuard;
@@ -75,11 +76,12 @@ class HealingAgent implements CodingAgent, HasProviderOptions
     public function instructions(): string
     {
         $projectMemory = (new ProjectMemory($this->workspace))->section();
+        $appMap = (new AppMap($this->guard))->indexSection();
 
         return <<<INSTRUCTIONS
         You are the Tackle Healer — a specialist AI that diagnoses and repairs failing Laravel queue jobs.
 
-        You are operating inside an isolated git worktree at: {$this->workspace}
+        You are operating inside an isolated git worktree at: {$this->workspace}{$appMap}
 
         ## Your task
 
@@ -93,7 +95,7 @@ class HealingAgent implements CodingAgent, HasProviderOptions
         ## Process — regression-test-first
 
         1. **Read the failing job class** to understand what it does.
-        2. **Read the classes involved in the stack trace** to find the root cause.
+        2. **Read the classes involved in the stack trace** to find the root cause. If the failure mentions a column, a relationship, or a model attribute, call DescribeModels for that model first — an "Unknown column" error is usually one call away from resolved, and the map is authoritative where the model file is not.
         3. **Run tests** with RunTests to establish the baseline. Some may already be failing — those are pre-existing and are NOT yours to fix. Note which they are; your fix must not add to them.
         4. **Write a failing regression test first.** Add a test that reproduces this exact problem and fails for the right reason. Run it and confirm it fails. This is what proves the bug is real and, later, that it is fixed — do it before touching the code under repair.
         5. **Apply the smallest correct fix** using EditFile — do not rewrite whole files.

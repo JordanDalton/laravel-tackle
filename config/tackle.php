@@ -54,6 +54,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Map
+    |--------------------------------------------------------------------------
+    |
+    | The semantic map of your app, built from the booted application rather
+    | than from files: real columns and types off the live connection, casts,
+    | relations, scopes, observers, policies, and factory states.
+    |
+    | `index` injects a one-line-per-model index into every session's system
+    | prompt (~60 tokens) so the agent knows what exists without globbing
+    | app/Models and reading four files to find out. The detail comes on demand
+    | through the DescribeModels and DescribeRoute tools.
+    |
+    | The map is cached against a fingerprint of your model, migration, and
+    | route files, and flushed when a migration runs or the agent edits a
+    | model. In a worktree it still reflects the model classes loaded into the
+    | running process — PHP cannot reload a class — so the columns stay exact
+    | while the reflected metadata is as current as the process.
+    |
+    | `probe_untyped_relations` is the escape hatch for codebases that do not
+    | declare return types on relation methods. Off by default, deliberately:
+    | detecting them means invoking public methods to see what comes back, and
+    | an introspection tool must never be the thing that fires
+    | sendWelcomeEmail(). When it is off, the map reports how many methods it
+    | could not classify instead of pretending they are not there.
+    |
+    */
+    'app_map' => [
+        'enabled' => env('AI_CODE_APP_MAP', true),
+        'index' => env('AI_CODE_APP_MAP_INDEX', true),
+        'cache' => env('AI_CODE_APP_MAP_CACHE', true),
+        'probe_untyped_relations' => env('AI_CODE_APP_MAP_PROBE_RELATIONS', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Max Steps
     |--------------------------------------------------------------------------
     |

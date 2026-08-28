@@ -15,6 +15,7 @@ use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
 use Tackle\Contracts\CodingAgent;
+use Tackle\Support\AppMap;
 use Tackle\Support\CommandGuard;
 use Tackle\Support\EventedTool;
 use Tackle\Support\PathGuard;
@@ -28,6 +29,7 @@ use Tackle\Tools\CreateGitHubIssue;
 use Tackle\Tools\CreatePullRequest;
 use Tackle\Tools\Delegate;
 use Tackle\Tools\DescribeModels;
+use Tackle\Tools\DescribeRoute;
 use Tackle\Tools\DescribeSchema;
 use Tackle\Tools\EditFile;
 use Tackle\Tools\GitDiff;
@@ -74,6 +76,7 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
         private readonly QueryDatabase $queryDatabase,
         private readonly DescribeSchema $describeSchema,
         private readonly DescribeModels $describeModels,
+        private readonly DescribeRoute $describeRoute,
         private readonly AppInfo $appInfo,
         private readonly ReadLog $readLog,
         private readonly GitDiff $gitDiff,
@@ -115,6 +118,7 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
 
         $projectMemory = (new ProjectMemory($workspace))->section();
         $delegation = $this->delegationGuidance();
+        $appMap = (new AppMap($this->pathGuard))->indexSection();
 
         return <<<INSTRUCTIONS
         You are an expert Laravel coding assistant running inside the project at: {$workspace}
@@ -129,13 +133,14 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
         4. **Verify with tests.** After modifying code, run RunTests to confirm correctness. Fix any failures before finishing.
         5. **Check types when relevant.** If the project has PHPStan/Larastan installed, run RunLarastan on changed files after editing to catch type errors. Fix any findings before finishing.
         6. **Format before finishing.** Run RunPint on changed files before declaring a task done.
-        6. **Be honest about uncertainty.** If you are not sure what a piece of code does, read more of it rather than guessing.
+        6. **Be honest about uncertainty.** If you are not sure what a piece of code does, read more of it rather than guessing.{$appMap}
 
         ## Tool usage guidance
 
         - Use SearchCode to find symbols, class names, method names, or strings — faster than reading whole directories.
         - Use Glob to list files by pattern when you need to understand project structure.
         - Use ReadFile only after narrowing down to the specific file you need.
+        - Use DescribeModels before writing any code that touches a model, and DescribeRoute before editing a controller, its validation, or its middleware. Both read the booted application — real columns from the live database, the real resolved middleware stack — so they are authoritative where a model file, a migration, or the HTTP kernel is not, and they cost a fraction of reading those files. Never guess a column name or a relationship: ask the map.
         - Use EditFile with unique surrounding context. If old_str is not unique, widen it until it is.
         - Use WriteFile only for genuinely new files; never for files that already exist.
         - Use RunArtisan for framework operations (make:model, migrate, etc.). Allowed for this environment: {$allowlistStr}. Destructive (terminal confirmation required): {$destructiveStr}. Do NOT attempt RunArtisan with commands outside both lists — they will be refused. For blocked operations, tell the user to run the command themselves in their terminal.
@@ -256,6 +261,7 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
             $this->queryDatabase,
             $this->describeSchema,
             $this->describeModels,
+            $this->describeRoute,
             $this->appInfo,
             $this->readLog,
             $this->gitDiff,

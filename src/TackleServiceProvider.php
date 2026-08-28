@@ -3,6 +3,7 @@
 namespace Tackle;
 
 use Illuminate\Console\Events\ScheduledTaskFailed;
+use Illuminate\Database\Events\MigrationsEnded;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -20,6 +21,7 @@ use Tackle\Commands\InstallCommand;
 use Tackle\Commands\MakeAgentCommand;
 use Tackle\Commands\MakeEvalCommand;
 use Tackle\Commands\MakeToolCommand;
+use Tackle\Commands\MapCommand;
 use Tackle\Commands\McpCommand;
 use Tackle\Commands\OnboardCommand;
 use Tackle\Commands\PruneCommand;
@@ -33,10 +35,12 @@ use Tackle\Contracts\CodingAgent;
 use Tackle\Contracts\InteractionPolicy;
 use Tackle\Events\SessionEnded;
 use Tackle\Events\SessionStarted;
+use Tackle\Events\ToolCalled;
 use Tackle\Healing\JobFailureListener;
 use Tackle\Healing\ScheduledTaskFailureListener;
 use Tackle\Http\Controllers\NightwatchWebhookController;
 use Tackle\Http\Middleware\VerifyNightwatchSignature;
+use Tackle\Support\AppMap;
 use Tackle\Support\BudgetTracker;
 use Tackle\Support\HookRunner;
 use Tackle\Support\TerminalInteraction;
@@ -71,6 +75,7 @@ class TackleServiceProvider extends PackageServiceProvider
                 MakeEvalCommand::class,
                 MakeAgentCommand::class,
                 McpCommand::class,
+                MapCommand::class,
             ]);
     }
 
@@ -102,6 +107,7 @@ class TackleServiceProvider extends PackageServiceProvider
         }
 
         $this->registerNightwatchWebhook();
+        $this->registerAppMapInvalidation();
 
         Event::listen(SessionStarted::class, function (SessionStarted $event) {
             $this->app->make(HookRunner::class)->sessionEvent('session_start', [
@@ -118,6 +124,36 @@ class TackleServiceProvider extends PackageServiceProvider
                 'output_tokens' => $event->outputTokens,
                 'estimated_cost_usd' => $event->estimatedCostUsd,
             ]);
+        });
+    }
+
+    /**
+     * Keep the application map honest.
+     *
+     * The map is cached on a fingerprint of the model, migration, and route
+     * files, which covers changes made outside the session. These two
+     * listeners cover the changes made inside it: a migration that just ran,
+     * and the agent editing a model — both of which must be visible on the
+     * agent's very next call, not on the next process.
+     */
+    private function registerAppMapInvalidation(): void
+    {
+        if (! config('tackle.app_map.enabled', true)) {
+            return;
+        }
+
+        Event::listen(MigrationsEnded::class, fn () => $this->app->make(AppMap::class)->flush());
+
+        Event::listen(ToolCalled::class, function (ToolCalled $event) {
+            if (! in_array($event->tool, ['EditFile', 'WriteFile'], true)) {
+                return;
+            }
+
+            $path = (string) ($event->arguments['path'] ?? $event->arguments['file'] ?? '');
+
+            if ($path !== '' && AppMap::invalidatedBy($path)) {
+                $this->app->make(AppMap::class)->flush();
+            }
         });
     }
 

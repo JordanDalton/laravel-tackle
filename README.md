@@ -54,6 +54,8 @@ A family of agents, all sharing one tool infrastructure and safety layer:
 
 Plus [`ai:explain`](https://tackle.jordandalton.com/agents/explain-and-test), [`ai:test`](https://tackle.jordandalton.com/agents/explain-and-test#generate-tests), and [`ai:respond`](https://tackle.jordandalton.com/agents/review).
 
+Every agent also sees the **[application map](https://tackle.jordandalton.com/guide/app-map)** — your real columns and types off the live connection, relationships, scopes, observers, policies, factory states, and the fully resolved middleware and validation on any route, read from the booted application rather than inferred from files. An index of your models rides in every session's prompt; the detail is one tool call away. It's the thing an agent running outside your app can't have.
+
 Every agent is extensible — [add your own tools](https://tackle.jordandalton.com/extending/custom-tools), [write new agents](https://tackle.jordandalton.com/extending/custom-agents), [hook the tool lifecycle](https://tackle.jordandalton.com/extending/hooks), or [swap the default agent](https://tackle.jordandalton.com/extending/custom-agents) — without forking. And the terminal isn't the only way in: [Tackle Remote](https://tackle.jordandalton.com/integrations/remote) drives the same harness from your phone.
 
 ## Documentation
