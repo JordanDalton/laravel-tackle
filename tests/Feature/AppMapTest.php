@@ -304,8 +304,11 @@ it('reports an empty workspace clearly', function () {
 it('shows the index through tackle:map', function () {
     mapWorkspace();
 
+    // One substring per line: expectsOutputToContain matches writes in order,
+    // and an earlier expectation consumes the line a later one wanted.
     $this->artisan('tackle:map')
-        ->expectsOutputToContain('MapArticle(map_articles)')
+        ->expectsOutputToContain('map_articles')
+        ->expectsOutputToContain('map_authors')
         ->assertSuccessful();
 });
 
@@ -313,8 +316,27 @@ it('describes one model through tackle:map', function () {
     mapWorkspace();
 
     $this->artisan('tackle:map', ['model' => 'MapArticle'])
+        ->expectsOutputToContain('COLUMNS')
+        ->expectsOutputToContain('RELATIONS')
+        ->assertSuccessful();
+});
+
+it('prints exactly what the agent sees with tackle:map --plain', function () {
+    mapWorkspace();
+
+    // The agent's view is uncoloured and section labels are lower case — the
+    // colour rendering is for the terminal only.
+    $this->artisan('tackle:map', ['model' => 'MapArticle', '--plain' => true])
         ->expectsOutputToContain('Columns')
         ->assertSuccessful();
+});
+
+it('fails clearly on tackle:map for an unknown model', function () {
+    mapWorkspace();
+
+    $this->artisan('tackle:map', ['model' => 'Nope'])
+        ->expectsOutputToContain("Model 'Nope' not found")
+        ->assertFailed();
 });
 
 it('describes a route through tackle:map --route', function () {
@@ -327,12 +349,16 @@ it('describes a route through tackle:map --route', function () {
         ->assertSuccessful();
 });
 
-it('rebuilds on tackle:map --fresh', function () {
+it('rebuilds the cache on tackle:map --fresh', function () {
     $dir = mapWorkspace();
     $map = new AppMap(new PathGuard($dir));
     $map->index();
 
+    expect(is_file($map->path()))->toBeTrue();
+
     $this->artisan('tackle:map', ['--fresh' => true])
-        ->expectsOutputToContain('Cache discarded')
+        ->expectsOutputToContain('MapArticle')
         ->assertSuccessful();
+
+    expect(is_file($map->path()))->toBeTrue();
 });

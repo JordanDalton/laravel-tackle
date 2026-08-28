@@ -69,27 +69,49 @@ class AppMap
      */
     public function index(): string
     {
-        return $this->cached('index', function () {
-            $models = $this->models();
+        $lines = [];
 
-            $lines = [];
+        if ($index = $this->modelIndex()) {
+            $lines[] = 'Models: '.implode(' ', array_map(
+                fn ($table, $name) => $name.'('.$table.')',
+                $index,
+                array_keys($index),
+            ));
+        }
 
-            if ($models !== []) {
-                $lines[] = 'Models: '.implode(' ', array_map(function (string $class) {
-                    try {
-                        return class_basename($class).'('.(new $class)->getTable().')';
-                    } catch (Throwable) {
-                        return class_basename($class);
-                    }
-                }, $models));
+        if ($routes = $this->routeSummary()) {
+            $lines[] = $routes;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Every model's short name mapped to its table. The raw material of the
+     * index, kept structured so `tackle:map` can lay it out for a human while
+     * the agent gets the one-line version.
+     *
+     * @return array<string, string>
+     */
+    public function modelIndex(): array
+    {
+        $cached = $this->cached('index:models', function () {
+            $index = [];
+
+            foreach ($this->models() as $class) {
+                try {
+                    $index[class_basename($class)] = (new $class)->getTable();
+                } catch (Throwable) {
+                    $index[class_basename($class)] = '?';
+                }
             }
 
-            if ($routes = $this->routeSummary()) {
-                $lines[] = $routes;
-            }
-
-            return implode("\n", $lines);
+            return json_encode($index);
         });
+
+        $index = json_decode($cached, true);
+
+        return is_array($index) ? $index : [];
     }
 
     /**
@@ -143,7 +165,27 @@ class AppMap
                 .implode(', ', array_map('class_basename', $models));
         }
 
-        return $this->cached('model:'.$match, fn () => $this->describe($match));
+        return $this->cached('model:'.$match, fn () => $this->renderPlain($this->modelData($match)));
+    }
+
+    /**
+     * The same picture as model(), structured rather than rendered.
+     *
+     * The agent gets plain text — colour codes would be pure token waste in a
+     * context window — so `tackle:map` builds its own presentation from this
+     * instead of re-parsing the text meant for the model.
+     *
+     * @return array<string, mixed>|null null when no such model exists
+     */
+    public function data(string $name): ?array
+    {
+        foreach ($this->models() as $class) {
+            if ($class === $name || class_basename($class) === class_basename($name)) {
+                return $this->modelData($class);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -207,67 +249,171 @@ class AppMap
     // Describing a model
     // -----------------------------------------------------------------------
 
-    private function describe(string $class): string
+    /**
+     * Everything known about one model, gathered once and rendered twice —
+     * as plain text for the agent, and in colour by `tackle:map` for a human.
+     *
+     * @return array<string, mixed>
+     */
+    private function modelData(string $class): array
     {
+        $base = ['name' => class_basename($class), 'class' => $class];
+
         try {
             /** @var Model $model */
             $model = new $class;
         } catch (Throwable $e) {
-            return class_basename($class).' — could not instantiate: '.$e->getMessage();
+            return $base + ['error' => 'could not instantiate: '.$e->getMessage()];
         }
 
         $ref = new ReflectionClass($class);
         $table = $model->getTable();
 
-        $out = [$this->header($class, $model, $ref, $table)];
+        return $base + [
+            'error' => null,
+            'table' => $table,
+            'badges' => $this->badges($class, $model),
+            'columns' => $this->columnData($model, $table),
+            'meta' => array_filter([
+                'Casts' => collect($model->getCasts())->map(fn ($t, $k) => "{$k}:{$this->shortType($t)}")->implode('  '),
+                'Fillable' => implode(', ', $model->getFillable()),
+                'Guarded' => $model->getFillable() === [] ? implode(', ', $model->getGuarded()) : '',
+                'Hidden' => implode(', ', $model->getHidden()),
+                'Appends' => implode(', ', $this->appends($model, $ref)),
+            ]),
+            'relations' => $this->relations($model, $ref),
+            'extras' => array_filter([
+                'Scopes' => implode('  ', $this->scopes($ref)),
+                'Global scopes' => implode(', ', $this->globalScopes($model)),
+                'Accessors' => implode(', ', $this->accessors($ref)),
+                'Factory' => $this->factory($class),
+            ]),
+            'note' => $this->untypedNote($ref) ?: null,
+        ];
+    }
 
-        $out[] = '';
-        $out[] = $this->columns($model, $table);
-
-        $meta = array_filter([
-            $this->line('Casts', collect($model->getCasts())->map(fn ($t, $k) => "{$k}:{$this->shortType($t)}")->implode('  ')),
-            $this->line('Fillable', implode(', ', $model->getFillable())),
-            $this->line('Guarded', $model->getFillable() === [] ? implode(', ', $model->getGuarded()) : ''),
-            $this->line('Hidden', implode(', ', $model->getHidden())),
-            $this->line('Appends', implode(', ', $this->appends($model, $ref))),
-        ]);
-
-        if ($meta !== []) {
-            $out[] = '';
-            $out = array_merge($out, $meta);
+    /**
+     * The agent's view: no colour, no box drawing, nothing that costs tokens
+     * without carrying meaning.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function renderPlain(array $data): string
+    {
+        if ($data['error'] !== null) {
+            return $data['name'].' — '.$data['error'];
         }
 
-        if ($relations = $this->relations($model, $ref)) {
+        $header = array_merge([$data['name'].' ('.$data['table'].')'], $data['badges']);
+
+        $out = [implode(' · ', $header), $data['class'], ''];
+
+        $out[] = $this->renderColumns($data['columns']);
+
+        if ($data['meta'] !== []) {
             $out[] = '';
-            $out[] = 'Relations';
-            foreach ($relations as $relation) {
-                $out[] = '  '.$relation;
+
+            foreach ($data['meta'] as $label => $value) {
+                $out[] = sprintf('%-14s %s', $label, $value);
             }
         }
 
-        $extras = array_filter([
-            $this->line('Scopes', implode('  ', $this->scopes($ref))),
-            $this->line('Global scopes', implode(', ', $this->globalScopes($model))),
-            $this->line('Accessors', implode(', ', $this->accessors($ref))),
-            $this->line('Factory', $this->factory($class)),
-        ]);
-
-        if ($extras !== []) {
+        if ($data['relations'] !== []) {
             $out[] = '';
-            $out = array_merge($out, $extras);
+            $out[] = 'Relations';
+
+            foreach ($data['relations'] as $relation) {
+                $out[] = '  '.$this->renderRelation($relation);
+            }
         }
 
-        if ($note = $this->untypedNote($ref)) {
+        if ($data['extras'] !== []) {
             $out[] = '';
-            $out[] = $note;
+
+            foreach ($data['extras'] as $label => $value) {
+                $out[] = sprintf('%-14s %s', $label, $value);
+            }
+        }
+
+        if ($data['note'] !== null) {
+            $out[] = '';
+            $out[] = $data['note'];
         }
 
         return implode("\n", $out);
     }
 
-    private function header(string $class, Model $model, ReflectionClass $ref, string $table): string
+    /**
+     * @param  array<string, mixed>  $columns
+     */
+    private function renderColumns(array $columns): string
     {
-        $parts = [class_basename($class).' ('.$table.')'];
+        if ($columns['note'] !== null) {
+            return 'Columns  '.$columns['note'];
+        }
+
+        $width = $this->widths($columns['rows']);
+        $lines = ['Columns'];
+
+        foreach ($columns['rows'] as $row) {
+            $lines[] = rtrim(sprintf(
+                '  %-'.$width[0].'s %-'.$width[1].'s %s',
+                $row['name'],
+                $row['type'],
+                implode(' ', $row['flags']),
+            ));
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param  array<string, mixed>  $relation
+     */
+    private function renderRelation(array $relation): string
+    {
+        if ($relation['related'] === null) {
+            return rtrim(sprintf('%-20s %s', $relation['name'], $relation['type']));
+        }
+
+        return rtrim(sprintf(
+            '%-20s %-16s → %-16s %s',
+            $relation['name'],
+            $relation['type'],
+            $relation['related'],
+            $relation['key'] ? '('.$relation['key'].')' : '',
+        ));
+    }
+
+    /**
+     * Column widths sized to the model in hand — a table of short names should
+     * not be padded out to fit the widest name in some other model.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{0: int, 1: int}
+     */
+    private function widths(array $rows): array
+    {
+        $name = 4;
+        $type = 4;
+
+        foreach ($rows as $row) {
+            $name = max($name, strlen((string) $row['name']));
+            $type = max($type, strlen((string) $row['type']));
+        }
+
+        return [min($name, 40), min($type, 24)];
+    }
+
+    /**
+     * The short facts that belong beside a model's name — the ones that change
+     * how its queries behave.
+     *
+     * @return list<string>
+     */
+    private function badges(string $class, Model $model): array
+    {
+        $parts = [];
 
         if (in_array(SoftDeletes::class, class_uses_recursive($class), true)) {
             $parts[] = 'SoftDeletes';
@@ -294,7 +440,7 @@ class AppMap
             $parts[] = 'Policy: '.class_basename($policy);
         }
 
-        return implode(' · ', $parts)."\n".$ref->getName();
+        return $parts;
     }
 
     /**
@@ -304,14 +450,16 @@ class AppMap
      * explicitly rather than quietly returning a partial map: half a map
      * presented as complete is worse than none, because the agent writes
      * confident code against columns it believes exist.
+     *
+     * @return array{rows: list<array{name: string, type: string, flags: list<string>}>, note: ?string}
      */
-    private function columns(Model $model, string $table): string
+    private function columnData(Model $model, string $table): array
     {
         try {
             $schema = Schema::connection($model->getConnectionName());
 
             if (! $schema->hasTable($table)) {
-                return "Columns  unavailable — table '{$table}' does not exist on this connection (has it been migrated?).";
+                return ['rows' => [], 'note' => "unavailable — table '{$table}' does not exist on this connection (has it been migrated?)."];
             }
 
             $foreign = [];
@@ -332,7 +480,7 @@ class AppMap
             }
 
             $key = $model->getKeyName();
-            $lines = ['Columns'];
+            $rows = [];
 
             foreach ($schema->getColumns($table) as $column) {
                 $name = (string) ($column['name'] ?? '?');
@@ -354,18 +502,17 @@ class AppMap
                     $flags[] = 'default '.$column['default'];
                 }
 
-                $lines[] = sprintf(
-                    '  %-24s %-16s %s',
-                    $name,
-                    (string) ($column['type'] ?? $column['type_name'] ?? '?'),
-                    implode(' ', $flags),
-                );
+                $rows[] = [
+                    'name' => $name,
+                    'type' => (string) ($column['type'] ?? $column['type_name'] ?? '?'),
+                    'flags' => $flags,
+                ];
             }
 
-            return implode("\n", array_map('rtrim', $lines));
+            return ['rows' => $rows, 'note' => null];
         } catch (Throwable $e) {
-            return 'Columns  unavailable — the database could not be read ('.$e->getMessage().'). '
-                .'Everything below comes from reflection and is unaffected; the column list is the only missing part.';
+            return ['rows' => [], 'note' => 'unavailable — the database could not be read ('.$e->getMessage().'). '
+                .'Everything below comes from reflection and is unaffected; the column list is the only missing part.'];
         }
     }
 
@@ -379,7 +526,7 @@ class AppMap
      * related class and foreign key. Undeclared relations are reported as a
      * gap instead of being hunted for, unless the project opts in.
      *
-     * @return list<string>
+     * @return list<array{name: string, type: string, related: ?string, key: ?string}>
      */
     private function relations(Model $model, ReflectionClass $ref): array
     {
@@ -400,7 +547,7 @@ class AppMap
                 $relation = $model->{$name}();
             } catch (Throwable) {
                 if ($declared) {
-                    $relations[] = rtrim(sprintf('%-20s %s', $name, class_basename($type->getName())));
+                    $relations[] = ['name' => $name, 'type' => class_basename($type->getName()), 'related' => null, 'key' => null];
                 }
 
                 continue;
@@ -410,15 +557,12 @@ class AppMap
                 continue;
             }
 
-            $key = method_exists($relation, 'getForeignKeyName') ? $relation->getForeignKeyName() : null;
-
-            $relations[] = trim(sprintf(
-                '%-20s %-16s → %-16s %s',
-                $name,
-                class_basename($relation),
-                class_basename($relation->getRelated()),
-                $key ? '('.$key.')' : '',
-            ));
+            $relations[] = [
+                'name' => $name,
+                'type' => class_basename($relation),
+                'related' => class_basename($relation->getRelated()),
+                'key' => method_exists($relation, 'getForeignKeyName') ? $relation->getForeignKeyName() : null,
+            ];
         }
 
         return $relations;
@@ -680,11 +824,6 @@ class AppMap
         return str_contains($cast, '\\') ? class_basename(explode(':', $cast)[0]) : $cast;
     }
 
-    private function line(string $label, string $value): string
-    {
-        return $value === '' ? '' : sprintf('%-14s %s', $label, $value);
-    }
-
     // -----------------------------------------------------------------------
     // Discovery, routes, caching
     // -----------------------------------------------------------------------
@@ -726,14 +865,22 @@ class AppMap
 
     private function routeSummary(): string
     {
+        ['routes' => $routes, 'controllers' => $controllers] = $this->routeCounts();
+
+        return $routes === 0
+            ? ''
+            : "Routes: {$routes} across {$controllers} controllers. Use ListRoutes to find one, DescribeRoute for its middleware, validation and authorization.";
+    }
+
+    /**
+     * How many routes, and how many controllers behind them.
+     *
+     * @return array{routes: int, controllers: int}
+     */
+    public function routeCounts(): array
+    {
         try {
             $routes = app('router')->getRoutes();
-            $total = count($routes);
-
-            if ($total === 0) {
-                return '';
-            }
-
             $controllers = [];
 
             foreach ($routes as $route) {
@@ -744,9 +891,9 @@ class AppMap
                 }
             }
 
-            return "Routes: {$total} across ".count($controllers).' controllers. Use ListRoutes to find one, DescribeRoute for its middleware, validation and authorization.';
+            return ['routes' => count($routes), 'controllers' => count($controllers)];
         } catch (Throwable) {
-            return '';
+            return ['routes' => 0, 'controllers' => 0];
         }
     }
 
