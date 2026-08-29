@@ -36,6 +36,7 @@ use function Laravel\Prompts\select;
 use function Laravel\Prompts\stream;
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\text;
+use function Laravel\Prompts\textarea;
 use function Laravel\Prompts\title;
 use function Laravel\Prompts\warning;
 
@@ -686,10 +687,8 @@ class CodeCommand extends Command
         $path = $this->customCommands->path($name);
         $editor = getenv('VISUAL') ?: getenv('EDITOR');
 
-        // No guessing. Dropping someone into an editor they did not choose and
-        // cannot exit is a worse outcome than telling them where the file is.
         if (! is_string($editor) || trim($editor) === '') {
-            note("No \$EDITOR set. The file is at:\n{$path}");
+            $this->editInline($name, $path);
 
             return;
         }
@@ -699,14 +698,55 @@ class CodeCommand extends Command
         try {
             Process::forever()->tty()->run($editor.' '.escapeshellarg($path));
         } catch (Throwable $e) {
-            // No TTY to hand over (Windows, an odd terminal) — say where the
-            // file is rather than leaving the user with an exception.
-            note("Could not open \$EDITOR ({$e->getMessage()}). The file is at:\n{$path}");
+            // No TTY to hand over (Windows, an odd terminal). Edit in the
+            // session rather than leaving the user holding an exception.
+            note("Could not hand over to \$EDITOR ({$e->getMessage()}) — editing here instead.");
+
+            $this->editInline($name, $path);
 
             return;
         }
 
         note("/{$name} is live — the next call uses what you just saved.");
+    }
+
+    /**
+     * Edit a command without leaving the session.
+     *
+     * $EDITOR is unset on a stock macOS shell, which made the first version of
+     * /edit print a path and stop — technically safe, practically useless. The
+     * fix is not to guess at an editor (dropping someone into a vi they cannot
+     * exit is the outcome worth avoiding) but to not need one: a prompt
+     * template is a few lines of prose, and Prompts can edit those in place.
+     */
+    private function editInline(string $name, string $path): void
+    {
+        $this->closeStream();
+
+        $current = (string) @file_get_contents($path);
+
+        $edited = textarea(
+            label: "/{$name}",
+            default: $current,
+            hint: 'Ctrl+D to save · $ARGUMENTS is replaced by the rest of the line · export EDITOR in your shell to use your own editor here',
+            rows: min(15, max(5, substr_count(trim($current), "\n") + 3)),
+        );
+
+        if (trim($edited) === '') {
+            note("Left /{$name} unchanged — an empty command would do nothing.");
+
+            return;
+        }
+
+        if (trim($edited) === trim($current)) {
+            note("No changes to /{$name}.");
+
+            return;
+        }
+
+        $this->customCommands->save($name, $edited);
+
+        note("Saved {$this->relative($path)} — /{$name} is live, no restart.");
     }
 
     /**
