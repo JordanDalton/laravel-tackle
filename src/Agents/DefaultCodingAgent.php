@@ -35,6 +35,7 @@ use Tackle\Tools\EditFile;
 use Tackle\Tools\GitDiff;
 use Tackle\Tools\Glob;
 use Tackle\Tools\ListRoutes;
+use Tackle\Tools\MutateDatabase;
 use Tackle\Tools\QueryDatabase;
 use Tackle\Tools\ReadFile;
 use Tackle\Tools\ReadGitHubIssue;
@@ -74,6 +75,7 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
         private readonly RunLarastan $runLarastan,
         private readonly RunShell $runShell,
         private readonly QueryDatabase $queryDatabase,
+        private readonly MutateDatabase $mutateDatabase,
         private readonly DescribeSchema $describeSchema,
         private readonly DescribeModels $describeModels,
         private readonly DescribeRoute $describeRoute,
@@ -280,6 +282,13 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
             $tools[] = $this->createGitHubIssue;
             $tools[] = $this->createPullRequest;
             $tools[] = $this->commitAndPush;
+        }
+
+        // Writes are off by default and gated again by environment. Exposing
+        // the tool only when it could actually run keeps its schema out of
+        // every other session's per-step cost.
+        if (config('tackle.database.mutations', false)) {
+            $tools[] = $this->mutateDatabase;
         }
 
         if (config('tackle.sentry.auth_token')) {

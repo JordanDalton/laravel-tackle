@@ -54,6 +54,34 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Database Writes
+    |--------------------------------------------------------------------------
+    |
+    | Off by default, deliberately. Every other tool leans on the same safety
+    | net — your files are in git, so a bad edit is `git checkout`. Rows are
+    | not. A wrong WHERE on an UPDATE is a restore-from-backup, which is why
+    | QueryDatabase is read-only.
+    |
+    | Turning this on adds the MutateDatabase tool: one UPDATE, INSERT, or
+    | DELETE at a time, run inside a transaction that is only committed after a
+    | human has seen the exact number of rows it touched. UPDATE and DELETE
+    | must carry a WHERE clause, chained statements are refused, and anything
+    | over max_rows is rolled back rather than confirmed.
+    |
+    | `environments` is a second lock: the flag alone cannot arm production.
+    | Before enabling this, consider whether a purpose-built tool for the change
+    | you actually want (php artisan tackle:tool ResendInvoice) would serve
+    | better — you decide what can change, and the agent only decides when.
+    |
+    */
+    'database' => [
+        'mutations' => env('AI_CODE_DB_MUTATIONS', false),
+        'environments' => ['local'],
+        'max_rows' => env('AI_CODE_DB_MUTATION_MAX_ROWS', 100),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Rendered Tables
     |--------------------------------------------------------------------------
     |

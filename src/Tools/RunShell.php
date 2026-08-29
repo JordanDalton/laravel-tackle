@@ -78,7 +78,52 @@ class RunShell extends AbstractTool
             return $refusal;
         }
 
+        if ($refusal = $this->checkArtisan($command)) {
+            return $refusal;
+        }
+
         return $this->execute($command);
+    }
+
+    /**
+     * Hold an artisan invocation to the artisan allowlist, not just the shell
+     * one.
+     *
+     * `php artisan` sits in the default shell_allowlist and is matched by
+     * prefix, so `shell=allowlist` would otherwise run any artisan command
+     * unattended — including the `migrate:fresh` and `db:wipe` that
+     * artisan_destructive exists to gate. RunArtisan refuses those; running
+     * the same thing through a shell should not be the way around it. The
+     * narrower guard wins.
+     *
+     * Only `allowlist` mode is affected. `approve` already puts a human in
+     * front of every command, and `yolo` is unrestricted by definition and
+     * documented as such.
+     */
+    private function checkArtisan(string $command): ?string
+    {
+        if (! preg_match('#^(?:php\s+)?(?:\./)?artisan\s+(.+)$#i', trim($command), $match)) {
+            return null;
+        }
+
+        $artisan = trim($match[1]);
+
+        $destructive = $this->commandGuard->resolveList(config('tackle.artisan_destructive', []));
+
+        if ($this->commandGuard->matches($artisan, $destructive)) {
+            return "Refused: 'php artisan {$artisan}' is in artisan_destructive, which requires terminal "
+                .'confirmation. Shell mode is allowlist, so there is nobody to confirm. Use RunArtisan in an '
+                .'interactive session, or run it yourself.';
+        }
+
+        $allowlist = $this->commandGuard->resolveList(config('tackle.artisan_allowlist', []));
+
+        if ($this->commandGuard->check($artisan, $allowlist) !== null) {
+            return "Refused: 'php artisan {$artisan}' is not in the artisan allowlist. Being able to run a shell "
+                .'does not widen what artisan may do. Allowed: '.(implode(', ', $allowlist) ?: '(none)');
+        }
+
+        return null;
     }
 
     private function runWithApproval(string $command): string

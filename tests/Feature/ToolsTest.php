@@ -225,6 +225,42 @@ it('RunShell allows allowlisted commands in allowlist mode', function () {
     expect($result)->toContain('hello');
 });
 
+it('RunShell holds artisan to the artisan allowlist, not just the shell one', function () {
+    // 'php artisan' in shell_allowlist is matched by prefix, so without this
+    // the broad guard would quietly supersede the narrow one and let any
+    // artisan command run unattended.
+    config()->set('tackle.shell', 'allowlist');
+    config()->set('tackle.shell_allowlist', ['php artisan']);
+    config()->set('tackle.artisan_allowlist', ['route:list']);
+
+    $shell = new RunShell(makeGuard(), new CommandGuard);
+
+    expect($shell->handle(req(['command' => 'php artisan tinker --execute="User::truncate()"'])))
+        ->toContain('not in the artisan allowlist');
+});
+
+it('RunShell refuses destructive artisan commands with nobody to confirm', function () {
+    config()->set('tackle.shell', 'allowlist');
+    config()->set('tackle.shell_allowlist', ['php artisan']);
+    config()->set('tackle.artisan_allowlist', ['migrate']);
+    config()->set('tackle.artisan_destructive', ['db:wipe']);
+
+    expect((new RunShell(makeGuard(), new CommandGuard))->handle(req(['command' => 'php artisan db:wipe'])))
+        ->toContain('artisan_destructive')
+        ->toContain('nobody to confirm');
+});
+
+it('RunShell still runs an artisan command both lists allow', function () {
+    config()->set('tackle.shell', 'allowlist');
+    config()->set('tackle.shell_allowlist', ['php artisan']);
+    config()->set('tackle.artisan_allowlist', ['route:list']);
+
+    // The workspace has no artisan binary, so the command fails — the point is
+    // that it was permitted to run rather than refused by a guard.
+    expect((new RunShell(makeGuard(), new CommandGuard))->handle(req(['command' => 'php artisan route:list'])))
+        ->not->toContain('not in the artisan allowlist');
+});
+
 it('RunShell refuses non-allowlisted commands in allowlist mode', function () {
     config()->set('tackle.shell', 'allowlist');
     config()->set('tackle.shell_allowlist', ['composer', 'npm']);
