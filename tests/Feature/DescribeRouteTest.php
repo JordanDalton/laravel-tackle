@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Session\Middleware\StartSession;
@@ -125,4 +126,18 @@ it('asks for an argument when given none', function () {
 it('exposes the same thing through the tool', function () {
     expect((new DescribeRoute(new RouteMap))->handle(new ToolRequest(['route' => 'route-map.articles.store'])))
         ->toContain('StoreRouteMapArticleRequest');
+});
+
+it('boots the HTTP kernel so middleware groups actually exist', function () {
+    // Laravel 11+ registers the `web` and `api` groups in the HTTP kernel's
+    // constructor. Tackle always runs from the console, where that kernel is
+    // never instantiated — so without this, `web` expanded to whatever a
+    // service provider happened to add and every route looked almost
+    // unprotected. Found on a real app: `web` resolved to one class instead
+    // of nine.
+    app()->forgetInstance(Kernel::class);
+
+    (new RouteMap)->describe('route-map.articles.store');
+
+    expect(app()->resolved(Kernel::class))->toBeTrue();
 });

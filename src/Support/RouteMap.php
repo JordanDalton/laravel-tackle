@@ -2,6 +2,7 @@
 
 namespace Tackle\Support;
 
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Routing\Route as RoutingRoute;
@@ -28,6 +29,9 @@ use Throwable;
  */
 class RouteMap
 {
+    /** The HTTP kernel is worth resolving once per process, not per route. */
+    private bool $kernelBooted = false;
+
     /**
      * Describe the routes matching a URI, name, or action fragment.
      */
@@ -134,6 +138,8 @@ class RouteMap
     private function middleware(RoutingRoute $route): string
     {
         try {
+            $this->bootHttpKernel();
+
             $router = app('router');
 
             $declared = $route->gatherMiddleware();
@@ -152,6 +158,53 @@ class RouteMap
                 : $declaredStr."\n             resolves to: ".$resolvedStr;
         } catch (Throwable $e) {
             return '(could not resolve: '.$e->getMessage().')';
+        }
+    }
+
+    /**
+     * Make sure the middleware groups actually exist before resolving them.
+     *
+     * In Laravel 11+ the HTTP kernel's constructor is what registers `web`,
+     * `api`, and friends on the router. Tackle always runs from the console,
+     * where that kernel is never instantiated — so `web` resolved to whatever
+     * a service provider happened to add and nothing else. On a real Fortify
+     * app that meant one class where a request would run eleven.
+     *
+     * Resolving the kernel late has its own catch: its registration replaces a
+     * group rather than merging into it, so middleware a provider had already
+     * pushed onto `web` would vanish. In a real request the kernel is
+     * constructed before providers boot and both end up in the stack, so the
+     * truthful answer is the union — snapshot what is there, resolve, and put
+     * the extras back. The order within a group is not guaranteed to match
+     * request time, but the set is right, and the set is what the question is
+     * about.
+     *
+     * Nothing here handles a request; it only populates the router's group
+     * registry in a process that is never going to serve one.
+     */
+    private function bootHttpKernel(): void
+    {
+        if ($this->kernelBooted) {
+            return;
+        }
+
+        $this->kernelBooted = true;
+
+        try {
+            $router = app('router');
+            $registered = $router->getMiddlewareGroups();
+
+            app(HttpKernel::class);
+
+            foreach ($registered as $group => $stack) {
+                foreach ($stack as $middleware) {
+                    $router->pushMiddlewareToGroup($group, $middleware);
+                }
+            }
+        } catch (Throwable) {
+            // A console-only application has no HTTP kernel to boot. The
+            // route's own middleware is still reported; only group expansion
+            // is unavailable, which is the honest outcome there.
         }
     }
 

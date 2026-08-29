@@ -166,12 +166,17 @@ class MapCommand extends Command
         $type = max(4, ...array_map(fn ($row) => strlen($row['type']), $columns['rows']));
 
         foreach ($columns['rows'] as $row) {
-            $this->line(rtrim(sprintf(
-                '    %-'.$name.'s  <fg=gray>%-'.$type.'s</>  %s',
+            $flags = implode(' ', array_map(fn ($flag) => $this->flag($flag), $row['flags']));
+
+            // Pad the type only when something follows it — otherwise the row
+            // ends in padding hidden inside a colour tag, which rtrim cannot
+            // see and anyone pasting the output inherits.
+            $this->line(sprintf(
+                '    %-'.$name.'s  <fg=gray>%s</>%s',
                 $this->safe($row['name']),
-                $this->safe($row['type']),
-                implode(' ', array_map(fn ($flag) => $this->flag($flag), $row['flags'])),
-            )));
+                $flags === '' ? $this->safe($row['type']) : sprintf('%-'.$type.'s', $this->safe($row['type'])),
+                $flags === '' ? '' : '  '.$flags,
+            ));
         }
     }
 
@@ -192,20 +197,22 @@ class MapCommand extends Command
         $related = max(4, ...array_map(fn ($r) => strlen((string) $r['related']), $relations));
 
         foreach ($relations as $relation) {
+            $key = $relation['key'] ? '  <fg=gray>('.$this->safe($relation['key']).')</>' : '';
+
             $target = $relation['related'] === null
                 ? '<fg=gray>(could not resolve)</>'
                 : sprintf(
-                    '<fg=gray>→</>  <fg=green>%-'.$related.'s</>  %s',
-                    $this->safe($relation['related']),
-                    $relation['key'] ? '<fg=gray>('.$this->safe($relation['key']).')</>' : '',
+                    '<fg=gray>→</>  <fg=green>%s</>%s',
+                    $key === '' ? $this->safe($relation['related']) : sprintf('%-'.$related.'s', $this->safe($relation['related'])),
+                    $key,
                 );
 
-            $this->line(rtrim(sprintf(
+            $this->line(sprintf(
                 '    %-'.$name.'s  <fg=cyan>%-'.$type.'s</>  %s',
                 $this->safe($relation['name']),
                 $this->safe($relation['type']),
                 $target,
-            )));
+            ));
         }
     }
 
