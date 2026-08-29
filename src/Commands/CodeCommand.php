@@ -4,6 +4,7 @@ namespace Tackle\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Streaming\Events\StreamEnd;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolCall;
@@ -24,7 +25,9 @@ use Tackle\Support\SessionStore;
 use Tackle\Support\StreamRenderer;
 use Tackle\Support\ToolSummary;
 use Tackle\Support\WorktreeManager;
+use Throwable;
 
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error as promptError;
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\note;
@@ -54,6 +57,26 @@ class CodeCommand extends Command
         {--no-worktree : Disable worktree isolation for this session}';
 
     protected $description = 'Start an interactive AI coding session powered by Laravel Tackle.';
+
+    /**
+     * Built-in slash commands: name => its line in /help.
+     *
+     * One source for both the help listing and tab completion. They were two
+     * hand-maintained lists and they drifted the first time a command was
+     * added — /raw shipped completable only from memory.
+     */
+    private const BUILT_INS = [
+        'plan' => '/plan <task> — plan first, edit after your approval',
+        'model' => '/model [name] — switch the model (no name lists models with rates)',
+        'compact' => '/compact — summarize older session history now',
+        'clear' => '/clear — forget the session history',
+        'sessions' => '/sessions — list saved sessions',
+        'save' => '/save <name> — save your last prompt as a project command',
+        'edit' => '/edit [name] — open a project command in $EDITOR',
+        'forget' => '/forget [name] — delete a project command',
+        'raw' => '/raw — toggle markdown tables between drawn and literal',
+        'help' => '/help — this list',
+    ];
 
     private ?Stream $activeStream = null;
 
@@ -262,7 +285,7 @@ class CodeCommand extends Command
                 } else {
                     $this->runAgentTurn($agent, $budget, $task, $attachments);
                 }
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $this->closeStream();
                 promptError('Agent error: '.$e->getMessage());
                 note('The session is still active — continue with a new task.');
@@ -293,6 +316,21 @@ class CodeCommand extends Command
     private function handleSlashCommand(string $name, string $args, CodingAgent $agent): ?string
     {
         switch ($name) {
+            case 'save':
+                $this->saveCommand($args);
+
+                return null;
+
+            case 'edit':
+                $this->editCommand($args);
+
+                return null;
+
+            case 'forget':
+                $this->forgetCommand($args);
+
+                return null;
+
             case 'raw':
                 $this->renderTables = ! $this->renderTables;
 
@@ -303,13 +341,7 @@ class CodeCommand extends Command
                 return null;
 
             case 'help':
-                $builtins = "/plan <task> — plan first, edit after your approval\n"
-                    ."/model [name] — switch the model (no name lists models with rates)\n"
-                    ."/compact — summarize older session history now\n"
-                    ."/clear — forget the session history\n"
-                    ."/sessions — list saved sessions\n"
-                    ."/raw — toggle markdown tables between drawn and literal\n"
-                    .'/help — this list';
+                $builtins = implode("\n", self::BUILT_INS);
                 $customs = collect($this->customCommands->all())
                     ->keys()
                     ->map(fn (string $custom) => "/{$custom}")
@@ -581,6 +613,191 @@ class CodeCommand extends Command
     }
 
     /**
+     * Save the prompt you just typed as a project command.
+     *
+     * Verbatim, and without the model: asking the agent to "save that as a
+     * command" makes it reconstruct your words, which costs tokens for a copy
+     * and paraphrases the thing you liked enough to keep.
+     */
+    private function saveCommand(string $args): void
+    {
+        $name = trim(preg_split('/\s+/', trim($args))[0] ?? '');
+
+        if ($name === '') {
+            promptError('Usage: /save <name> — saves your last prompt as .tackle/commands/<name>.md');
+
+            return;
+        }
+
+        if (! CustomCommands::validName($name)) {
+            promptError("'{$name}' cannot be a command name — use letters, numbers, hyphens, and underscores.");
+
+            return;
+        }
+
+        // A project command named after a built-in would never run: the switch
+        // above catches the name first. Better to refuse than to write a file
+        // that silently does nothing.
+        if (array_key_exists($name, self::BUILT_INS)) {
+            promptError("/{$name} is a built-in command — pick another name.");
+
+            return;
+        }
+
+        $prompt = CustomCommands::lastPrompt($this->history);
+
+        if ($prompt === null) {
+            promptError('Nothing to save yet — /save keeps the last prompt you sent.');
+
+            return;
+        }
+
+        if ($this->customCommands->has($name)
+            && ! confirm("/{$name} already exists. Overwrite it?", default: false)) {
+            return;
+        }
+
+        note("Saving as /{$name}:\n\n".$this->preview($prompt));
+
+        if (! confirm("Save to .tackle/commands/{$name}.md?")) {
+            return;
+        }
+
+        $path = $this->customCommands->save($name, $prompt);
+
+        note("Saved {$this->relative($path)} — /{$name} works right now, no restart.\n"
+            ."It is uncommitted: your team gets it when you commit it.\n"
+            .'Put $ARGUMENTS in the file where you want the rest of the line substituted.');
+    }
+
+    /**
+     * Open a project command in $EDITOR. It is your prose in a markdown file —
+     * the editor you already have beats anything reimplemented at a prompt,
+     * and the change is live the moment you save.
+     */
+    private function editCommand(string $args): void
+    {
+        $name = $this->pickCommand($args, 'Edit which command?');
+
+        if ($name === null) {
+            return;
+        }
+
+        $path = $this->customCommands->path($name);
+        $editor = getenv('VISUAL') ?: getenv('EDITOR');
+
+        // No guessing. Dropping someone into an editor they did not choose and
+        // cannot exit is a worse outcome than telling them where the file is.
+        if (! is_string($editor) || trim($editor) === '') {
+            note("No \$EDITOR set. The file is at:\n{$path}");
+
+            return;
+        }
+
+        $this->closeStream();
+
+        try {
+            Process::forever()->tty()->run($editor.' '.escapeshellarg($path));
+        } catch (Throwable $e) {
+            // No TTY to hand over (Windows, an odd terminal) — say where the
+            // file is rather than leaving the user with an exception.
+            note("Could not open \$EDITOR ({$e->getMessage()}). The file is at:\n{$path}");
+
+            return;
+        }
+
+        note("/{$name} is live — the next call uses what you just saved.");
+    }
+
+    /**
+     * Delete a project command, after saying what will be lost and whether git
+     * still has a copy.
+     */
+    private function forgetCommand(string $args): void
+    {
+        $name = $this->pickCommand($args, 'Delete which command?');
+
+        if ($name === null) {
+            return;
+        }
+
+        $path = $this->customCommands->path($name);
+        $body = (string) @file_get_contents($path);
+
+        note("/{$name} — ".$this->relative($path)."\n\n".$this->preview($body)."\n\n"
+            .($this->tracked($path)
+                ? 'Committed to git, so `git checkout` brings it back.'
+                : 'Not committed to git — deleting it loses it.'));
+
+        if (! confirm("Delete /{$name}?", default: false)) {
+            return;
+        }
+
+        $this->customCommands->delete($name)
+            ? note("Deleted /{$name}.")
+            : promptError("Could not delete /{$name}.");
+    }
+
+    /**
+     * Resolve a command name from the argument, or offer a picker. Returns
+     * null when there is nothing to choose or the name is unknown.
+     */
+    private function pickCommand(string $args, string $question): ?string
+    {
+        $available = array_keys($this->customCommands->all());
+
+        if ($available === []) {
+            note('No project commands yet. /save <name> keeps your last prompt as one.');
+
+            return null;
+        }
+
+        $name = trim(preg_split('/\s+/', trim($args))[0] ?? '');
+
+        if ($name === '') {
+            return (string) select($question, $available);
+        }
+
+        if (! in_array($name, $available, true)) {
+            promptError("/{$name} is not a project command. Available: /".implode('  /', $available));
+
+            return null;
+        }
+
+        return $name;
+    }
+
+    private function preview(string $text, int $lines = 6): string
+    {
+        $split = explode("\n", trim($text));
+        $shown = implode("\n", array_slice($split, 0, $lines));
+
+        return count($split) > $lines
+            ? $shown."\n… (".(count($split) - $lines).' more lines)'
+            : $shown;
+    }
+
+    private function tracked(string $path): bool
+    {
+        $root = $this->workspaceRoot();
+
+        exec(
+            'git -C '.escapeshellarg($root).' ls-files --error-unmatch '.escapeshellarg($path).' 2>/dev/null',
+            $out,
+            $status,
+        );
+
+        return $status === 0;
+    }
+
+    private function relative(string $path): string
+    {
+        $root = rtrim($this->workspaceRoot(), '/').'/';
+
+        return str_starts_with($path, $root) ? substr($path, strlen($root)) : $path;
+    }
+
+    /**
      * Draw what the renderer asked for: text into the live stream, and a
      * table as a table — which means closing the stream first, since the two
      * cannot share the cursor.
@@ -712,7 +929,9 @@ class CodeCommand extends Command
         // Slash-command completion while typing the command name itself.
         if (str_starts_with($input, '/') && ! str_contains($input, ' ')) {
             $query = substr($input, 1);
-            $names = ['plan', 'model', 'compact', 'clear', 'sessions', 'help', ...array_keys($this->customCommands->all())];
+            // Read live, so a command written during this session — by you in
+            // another window, or by the agent itself — completes immediately.
+            $names = [...array_keys(self::BUILT_INS), ...array_keys($this->customCommands->all())];
 
             return collect($names)
                 ->filter(fn (string $name) => $query === '' || stripos($name, $query) !== false)
