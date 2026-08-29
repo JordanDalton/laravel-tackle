@@ -21,6 +21,7 @@ use Tackle\Support\CustomCommands;
 use Tackle\Support\ImageAttachments;
 use Tackle\Support\ModelCatalog;
 use Tackle\Support\SessionStore;
+use Tackle\Support\StreamRenderer;
 use Tackle\Support\ToolSummary;
 use Tackle\Support\WorktreeManager;
 
@@ -30,6 +31,7 @@ use function Laravel\Prompts\note;
 use function Laravel\Prompts\outro;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\stream;
+use function Laravel\Prompts\table;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\title;
 use function Laravel\Prompts\warning;
@@ -55,6 +57,12 @@ class CodeCommand extends Command
 
     private ?Stream $activeStream = null;
 
+    /**
+     * Whether a markdown table in the response is drawn as a table. Toggled
+     * for the session with /raw, for when you want the markdown itself.
+     */
+    private bool $renderTables = true;
+
     private array $history = [];
 
     private ?array $fileIndex = null;
@@ -77,6 +85,7 @@ class CodeCommand extends Command
         $this->compactor = $compactor;
         $this->sessions = $sessions;
         $this->sessionName = (string) ($this->option('session') ?: 'default');
+        $this->renderTables = (bool) config('tackle.render_tables', true);
 
         if (! App::runningInConsole()) {
             $this->error('ai:code must be run from the terminal.');
@@ -284,12 +293,22 @@ class CodeCommand extends Command
     private function handleSlashCommand(string $name, string $args, CodingAgent $agent): ?string
     {
         switch ($name) {
+            case 'raw':
+                $this->renderTables = ! $this->renderTables;
+
+                note($this->renderTables
+                    ? 'Markdown tables will be drawn as tables.'
+                    : 'Markdown tables will be printed as written.');
+
+                return null;
+
             case 'help':
                 $builtins = "/plan <task> — plan first, edit after your approval\n"
                     ."/model [name] — switch the model (no name lists models with rates)\n"
                     ."/compact — summarize older session history now\n"
                     ."/clear — forget the session history\n"
                     ."/sessions — list saved sessions\n"
+                    ."/raw — toggle markdown tables between drawn and literal\n"
                     .'/help — this list';
                 $customs = collect($this->customCommands->all())
                     ->keys()
@@ -503,23 +522,23 @@ class CodeCommand extends Command
     private function runAgentTurn(CodingAgent $agent, BudgetTracker $budget, string $task, array $attachments = []): string
     {
         $text = '';
+        $renderer = new StreamRenderer($this->renderTables);
 
         try {
             $response = $agent->stream($task, $attachments);
 
-            $response->each(function ($event) use ($budget, &$text) {
+            $response->each(function ($event) use ($budget, $renderer, &$text) {
                 if ($event instanceof TextDelta) {
-                    if ($this->activeStream === null) {
-                        $this->line('');
-                        $this->activeStream = stream();
-                    }
-                    $this->activeStream->append($event->delta);
+                    // The transcript keeps the markdown; only the terminal
+                    // sees the rendering.
                     $text .= $event->delta;
+                    $this->render($renderer->push($event->delta));
 
                     return;
                 }
 
                 if ($event instanceof ToolCall) {
+                    $this->render($renderer->flush());
                     $this->closeStream();
                     $this->renderToolCall($event);
 
@@ -533,6 +552,7 @@ class CodeCommand extends Command
                 }
 
                 if ($event instanceof StreamEnd) {
+                    $this->render($renderer->flush());
                     $this->closeStream();
                     $budget->record($event->usage->promptTokens, $event->usage->completionTokens, $event->usage->cacheReadInputTokens ?? 0, $event->usage->cacheWriteInputTokens ?? 0);
 
@@ -553,10 +573,42 @@ class CodeCommand extends Command
                 }
             });
         } finally {
+            $this->render($renderer->flush());
             $this->closeStream();
         }
 
         return $text;
+    }
+
+    /**
+     * Draw what the renderer asked for: text into the live stream, and a
+     * table as a table — which means closing the stream first, since the two
+     * cannot share the cursor.
+     *
+     * @param  list<array<string, mixed>>  $ops
+     */
+    private function render(array $ops): void
+    {
+        foreach ($ops as $op) {
+            if ($op['type'] === 'table') {
+                $this->closeStream();
+                $this->line('');
+                table($op['headers'], $op['rows']);
+
+                continue;
+            }
+
+            if ($op['text'] === '') {
+                continue;
+            }
+
+            if ($this->activeStream === null) {
+                $this->line('');
+                $this->activeStream = stream();
+            }
+
+            $this->activeStream->append($op['text']);
+        }
     }
 
     private function closeStream(): void

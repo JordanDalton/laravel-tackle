@@ -54,6 +54,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Rendered Tables
+    |--------------------------------------------------------------------------
+    |
+    | When the agent answers with a markdown table, draw it as a table in the
+    | terminal instead of printing the pipes. The response is not buffered to
+    | do this — only the table's own lines are held back, so everything else
+    | still streams as it arrives.
+    |
+    | The conversation transcript always keeps the original markdown; this is
+    | presentation only. Toggle it for a single session with /raw when you want
+    | the markdown itself — to paste somewhere, usually.
+    |
+    */
+    'render_tables' => env('AI_CODE_RENDER_TABLES', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Map
     |--------------------------------------------------------------------------
     |
