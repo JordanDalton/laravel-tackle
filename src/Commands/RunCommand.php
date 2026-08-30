@@ -303,11 +303,33 @@ class RunCommand extends Command
         }
     }
 
+    /**
+     * A diff stat that counts files the agent created.
+     *
+     * `git diff` only reports tracked files, so a run whose whole job was
+     * adding a controller, a routes file and a test showed no changes at all.
+     * Staging intent-to-add first makes new files visible to the diff without
+     * staging their contents, leaving the working tree exactly as the agent
+     * left it for whoever reviews or commits next.
+     */
     private function diffStat(string $root): string
     {
+        $this->trackNewFiles($root);
+
         return trim((string) shell_exec(
             'git -C '.escapeshellarg($root).' diff --stat 2>/dev/null'
         ));
+    }
+
+    /**
+     * Record new files with --intent-to-add so they appear in a diff.
+     *
+     * Deliberately not `git add`: the contents stay unstaged, so the run's
+     * output is still reviewed as a whole rather than arriving half-staged.
+     */
+    private function trackNewFiles(string $root): void
+    {
+        shell_exec('git -C '.escapeshellarg($root).' add --intent-to-add --all 2>/dev/null');
     }
 
     /**
@@ -315,6 +337,8 @@ class RunCommand extends Command
      */
     private function changedFiles(string $root): array
     {
+        $this->trackNewFiles($root);
+
         $output = trim((string) shell_exec(
             'git -C '.escapeshellarg($root).' diff --name-only 2>/dev/null'
         ));

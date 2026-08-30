@@ -354,3 +354,45 @@ it('reports usage as measured on a clean run', function () {
 
     expect($json['usage']['measured'])->toBeTrue();
 });
+
+it('reports files the agent created, not only ones it modified', function () {
+    // `git diff` only sees tracked files, so a run whose entire job was adding
+    // a controller, a routes file and a test reported no changes at all — and
+    // there was then no way to tell a working run from one that thrashed.
+    $repo = sys_get_temp_dir().'/tackle-changed-files-'.bin2hex(random_bytes(4));
+    mkdir($repo);
+    file_put_contents($repo.'/tracked.txt', "old\n");
+    shell_exec('git -C '.escapeshellarg($repo).' init -q . && git -C '.escapeshellarg($repo)
+        .' add -A && git -C '.escapeshellarg($repo).' -c user.email=t@t -c user.name=t commit -qm init');
+
+    file_put_contents($repo.'/tracked.txt', "changed\n");
+    file_put_contents($repo.'/created.php', "<?php // brand new\n");
+
+    $method = new ReflectionMethod(RunCommand::class, 'changedFiles');
+    $files = $method->invoke(app(RunCommand::class), $repo);
+
+    expect($files)->toContain('created.php')
+        ->and($files)->toContain('tracked.txt');
+
+    // Nothing is actually staged: the run's output stays reviewable as a whole.
+    expect(trim((string) shell_exec('git -C '.escapeshellarg($repo).' diff --cached --name-only')))
+        ->toBe('');
+
+    shell_exec('rm -rf '.escapeshellarg($repo));
+});
+
+it('counts created files in the diff stat', function () {
+    $repo = sys_get_temp_dir().'/tackle-diff-stat-'.bin2hex(random_bytes(4));
+    mkdir($repo);
+    file_put_contents($repo.'/tracked.txt', "old\n");
+    shell_exec('git -C '.escapeshellarg($repo).' init -q . && git -C '.escapeshellarg($repo)
+        .' add -A && git -C '.escapeshellarg($repo).' -c user.email=t@t -c user.name=t commit -qm init');
+
+    file_put_contents($repo.'/created.php', "<?php // brand new\n");
+
+    $method = new ReflectionMethod(RunCommand::class, 'diffStat');
+
+    expect($method->invoke(app(RunCommand::class), $repo))->toContain('created.php');
+
+    shell_exec('rm -rf '.escapeshellarg($repo));
+});
