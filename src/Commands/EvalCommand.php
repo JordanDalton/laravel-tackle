@@ -119,6 +119,8 @@ class EvalCommand extends Command
                 return [
                     'inputTokens' => $budget->inputTokens(),
                     'outputTokens' => $budget->outputTokens(),
+                    'cacheReadTokens' => $budget->cacheReadTokens(),
+                    'cacheWriteTokens' => $budget->cacheWriteTokens(),
                     'costUsd' => $budget->estimatedCost(),
                 ];
             },

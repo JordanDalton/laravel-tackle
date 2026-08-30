@@ -57,6 +57,26 @@ class EvalReport
         return (int) array_sum(array_map(fn (EvalResult $r) => $r->outputTokens, $this->results));
     }
 
+    public function totalCacheReadTokens(): int
+    {
+        return (int) array_sum(array_map(fn (EvalResult $r) => $r->cacheReadTokens, $this->results));
+    }
+
+    public function totalCacheWriteTokens(): int
+    {
+        return (int) array_sum(array_map(fn (EvalResult $r) => $r->cacheWriteTokens, $this->results));
+    }
+
+    /**
+     * Every input token the suite put through the model, cached or not — the
+     * figure to compare when asking whether a change to the agent made it
+     * carry less context.
+     */
+    public function totalContextTokens(): int
+    {
+        return $this->totalInputTokens() + $this->totalCacheReadTokens() + $this->totalCacheWriteTokens();
+    }
+
     public function totalCost(): float
     {
         return (float) array_sum(array_map(fn (EvalResult $r) => $r->costUsd, $this->results));
@@ -77,6 +97,9 @@ class EvalReport
             'false_fix_rate' => round($this->falseFixRate(), 4),
             'input_tokens' => $this->totalInputTokens(),
             'output_tokens' => $this->totalOutputTokens(),
+            'cache_read_tokens' => $this->totalCacheReadTokens(),
+            'cache_write_tokens' => $this->totalCacheWriteTokens(),
+            'context_tokens' => $this->totalContextTokens(),
             'cost_usd' => round($this->totalCost(), 4),
             'cases' => array_map(fn (EvalResult $r) => [
                 'id' => $r->caseId,
@@ -84,6 +107,9 @@ class EvalReport
                 'status' => $r->status(),
                 'input_tokens' => $r->inputTokens,
                 'output_tokens' => $r->outputTokens,
+                'cache_read_tokens' => $r->cacheReadTokens,
+                'cache_write_tokens' => $r->cacheWriteTokens,
+                'context_tokens' => $r->inputTokens + $r->cacheReadTokens + $r->cacheWriteTokens,
                 'cost_usd' => round($r->costUsd, 4),
                 'duration_ms' => $r->durationMs,
                 'note' => $r->grade->note,
@@ -107,7 +133,7 @@ class EvalReport
                 $icon,
                 mb_strimwidth($r->caseId, 0, 28),
                 $r->status(),
-                number_format($r->inputTokens + $r->outputTokens),
+                number_format($r->inputTokens + $r->cacheReadTokens + $r->cacheWriteTokens + $r->outputTokens),
                 $r->costUsd,
                 (int) round($r->durationMs / 1000),
                 $r->error !== null ? '  — '.$r->error : ($r->grade->note !== '' ? '  — '.$r->grade->note : ''),
@@ -116,12 +142,13 @@ class EvalReport
 
         $summary = sprintf(
             "Cases: %d  ·  fixed: %d (%.0f%%)  ·  false-fixes: %d (%.0f%%)  ·  not-fixed: %d  ·  errors: %d\n".
-            'Tokens: %s in / %s out  ·  Cost: $%.4f',
+            'Context: %s in (%s fresh) / %s out  ·  Cost: $%.4f',
             $this->total(),
             $this->fixed(), $this->fixRate() * 100,
             $this->falseFixes(), $this->falseFixRate() * 100,
             $this->notFixed(),
             $this->errors(),
+            number_format($this->totalContextTokens()),
             number_format($this->totalInputTokens()),
             number_format($this->totalOutputTokens()),
             $this->totalCost(),

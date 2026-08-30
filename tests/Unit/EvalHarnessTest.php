@@ -288,3 +288,30 @@ it('does not credit a cross-file fix that hardcodes the expected total', functio
 
     expect($result->status())->toBe('false-fix');
 });
+
+it('reports the whole context a case carried, not just the fresh part', function () {
+    // With caching on, fresh input is a rounding error — the first run of this
+    // suite reported "input_tokens: 10" for a case that pushed thousands of
+    // tokens through the model. An eval whose job is comparing two agents'
+    // context volume could not see 99% of it.
+    $report = new EvalReport([
+        new EvalResult('a', 'bug', new EvalGrade(true), 10, 700, 0.04, 500, null, 8000, 2000),
+        new EvalResult('b', 'bug', new EvalGrade(true), 20, 800, 0.05, 600, null, 9000, 1000),
+    ]);
+
+    expect($report->totalInputTokens())->toBe(30)
+        ->and($report->totalCacheReadTokens())->toBe(17000)
+        ->and($report->totalCacheWriteTokens())->toBe(3000)
+        ->and($report->totalContextTokens())->toBe(20030);
+
+    $json = $report->toArray();
+
+    expect($json['context_tokens'])->toBe(20030)
+        ->and($json['cases'][0]['context_tokens'])->toBe(10010);
+});
+
+it('defaults cache counts to zero for a result built without them', function () {
+    $report = new EvalReport([new EvalResult('a', 'bug', new EvalGrade(true), 100, 10, 0.01, 500)]);
+
+    expect($report->totalContextTokens())->toBe(100);
+});
