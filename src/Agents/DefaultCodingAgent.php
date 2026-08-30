@@ -143,7 +143,7 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
 
         - Use SearchCode to find symbols, class names, method names, or strings — faster than reading whole directories.
         - Use Glob to list files by pattern when you need to understand project structure.
-        - Use ReadFile only after narrowing down to the specific file you need.
+        - Use ReadFile only after narrowing down to the specific file you need. For a large file, pass offset and limit to read the lines around what SearchCode found — the whole file is re-sent on every step after you read it.
         - Use DescribeModels before writing any code that touches a model, and DescribeRoute before editing a controller, its validation, or its middleware. Both read the booted application — real columns from the live database, the real resolved middleware stack — so they are authoritative where a model file, a migration, or the HTTP kernel is not, and they cost a fraction of reading those files. Never guess a column name or a relationship: ask the map.
         - Use EditFile with unique surrounding context. If old_str is not unique, widen it until it is.
         - Use WriteFile only for genuinely new files; never for files that already exist.

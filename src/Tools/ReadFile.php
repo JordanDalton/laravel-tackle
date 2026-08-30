@@ -15,7 +15,7 @@ class ReadFile extends AbstractTool
 
     public function description(): string
     {
-        return 'Read the contents of a text file. Provide a path relative to the workspace root or an absolute path. Binary files are refused; very large files are truncated — use SearchCode to locate the part you need.';
+        return 'Read a text file, or a range of lines from it. Provide a path relative to the workspace root or an absolute path. For a large file, use SearchCode to find the line you need and read a range around it with offset and limit — the whole file is re-sent on every following step, so read only what you need. Binary files are refused; very large reads are truncated.';
     }
 
     public function schema(JsonSchema $schema): array
@@ -24,6 +24,10 @@ class ReadFile extends AbstractTool
             'path' => $schema->string()
                 ->description('Path to the file to read.')
                 ->required(),
+            'offset' => $schema->integer()
+                ->description('First line to read, 1-based. Omit to start at the top.'),
+            'limit' => $schema->integer()
+                ->description('How many lines to read from offset. Omit to read to the end.'),
         ];
     }
 
@@ -55,7 +59,50 @@ class ReadFile extends AbstractTool
             return "'{$path}' is a binary file (".number_format((int) File::size($absolute)).' bytes) — not readable as text.';
         }
 
-        return ToolOutput::cap(Utf8::clean(File::get($absolute)), 'ReadFile');
+        $contents = Utf8::clean(File::get($absolute));
+
+        $offset = max(0, $request->integer('offset', 0));
+        $limit = max(0, $request->integer('limit', 0));
+
+        if ($offset <= 1 && $limit === 0) {
+            return ToolOutput::cap($contents, 'ReadFile');
+        }
+
+        return ToolOutput::cap($this->slice($contents, $path, max(1, $offset), $limit), 'ReadFile');
+    }
+
+    /**
+     * A line range, numbered, with a note saying where it sits in the file.
+     *
+     * A whole file is the most expensive thing the agent can pull into
+     * context by accident — and the description told it to use SearchCode to
+     * find the part it needs, then gave it no way to read only that part.
+     * Numbering the lines means the next EditFile can be aimed without a
+     * second read.
+     */
+    private function slice(string $contents, string $path, int $offset, int $limit): string
+    {
+        $lines = explode("\n", $contents);
+        $total = count($lines);
+
+        if ($offset > $total) {
+            return "'{$path}' has {$total} lines; offset {$offset} is past the end.";
+        }
+
+        $end = $limit > 0 ? min($total, $offset + $limit - 1) : $total;
+        $numbered = [];
+
+        for ($i = $offset; $i <= $end; $i++) {
+            $numbered[] = sprintf('%'.strlen((string) $total).'d| %s', $i, $lines[$i - 1]);
+        }
+
+        $header = "'{$path}' lines {$offset}-{$end} of {$total}";
+
+        if ($end < $total) {
+            $header .= ' (more below — raise offset to continue)';
+        }
+
+        return $header."\n".implode("\n", $numbered);
     }
 
     private function absolute(string $path): string
