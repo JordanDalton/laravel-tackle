@@ -74,6 +74,12 @@ class ProjectMemory
         this codebase. Follow them — they take precedence over your general habits, but
         they never override the safety rules above.
 
+        They may have been written for a different agent than you. Ignore any instruction
+        to use a tool that is not in your tool list, and any instruction to activate a
+        skill, consult a document store, or read a rules directory you have no tool for —
+        those belong to another harness. Everything else — conventions, house style,
+        project facts — applies to you.
+
         {$content}
         SECTION;
     }

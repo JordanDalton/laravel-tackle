@@ -10,6 +10,9 @@ use Tackle\Agents\ReviewAgent;
 use Tackle\Agents\TestWriterAgent;
 use Tackle\Agents\UpgradeAgent;
 use Tackle\Contracts\CodingAgent;
+use Tackle\Contracts\InteractionPolicy;
+use Tackle\Support\AutoApproveInteraction;
+use Tackle\Support\DenyInteraction;
 
 /**
  * laravel/ai narrows and widens its Agent contract between releases, and an
@@ -48,6 +51,63 @@ it('exposes the tools ai:run reports on', function () {
         ->all();
 
     expect($tools)->toContain('ReadFile', 'EditFile', 'RunTests', 'AskUser', 'ConfirmAction');
+});
+
+// ---------------------------------------------------------------------------
+// Headless runs
+// ---------------------------------------------------------------------------
+
+function toolNames(): array
+{
+    return collect(app(CodingAgent::class)->tools())
+        ->map(fn ($tool) => is_callable([$tool, 'name']) ? $tool->name() : class_basename($tool))
+        ->all();
+}
+
+function agentInstructions(): string
+{
+    $method = new ReflectionMethod(app(CodingAgent::class), 'instructions');
+
+    return (string) $method->invoke(app(CodingAgent::class));
+}
+
+it('drops AskUser and ConfirmAction when nobody can answer', function () {
+    // Their schemas cost ~340 tokens on every step of a headless run, for two
+    // tools that auto-approve or auto-deny whatever the agent asks.
+    app()->instance(InteractionPolicy::class, new AutoApproveInteraction);
+
+    expect(toolNames())->not->toContain('AskUser')
+        ->and(toolNames())->not->toContain('ConfirmAction')
+        // Everything else stays.
+        ->and(toolNames())->toContain('ReadFile', 'EditFile', 'RunTests');
+});
+
+it('drops them under --yes and without it alike', function () {
+    app()->instance(InteractionPolicy::class, new DenyInteraction);
+
+    expect(toolNames())->not->toContain('AskUser')
+        ->and(toolNames())->not->toContain('ConfirmAction');
+});
+
+it('replaces the interaction rules with a finish-the-job rule when headless', function () {
+    app()->instance(InteractionPolicy::class, new AutoApproveInteraction);
+
+    $instructions = agentInstructions();
+
+    expect($instructions)->not->toContain('User interaction — REQUIRED RULES')
+        ->not->toContain('call AskUser with those options')
+        // The one rule that matters more without a human, not less.
+        ->toContain('open a pull request')
+        ->toContain('issue_number')
+        ->toContain('never end a turn with a question');
+});
+
+it('keeps the full interaction rules when a user is there', function () {
+    $instructions = agentInstructions();
+
+    expect($instructions)->toContain('User interaction — REQUIRED RULES')
+        ->toContain('call AskUser with those options')
+        ->toContain('Always call ConfirmAction before any destructive');
 });
 
 it('omits integration tools until their integration is configured', function () {

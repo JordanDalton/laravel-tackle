@@ -48,6 +48,23 @@ it('loads TACKLE.md content', function () {
         ->and($memory->section())->toContain('integer cents');
 });
 
+it('tells the agent to ignore instructions written for a different harness', function () {
+    // AGENTS.md is a cross-tool convention, so the file Tackle reads was very
+    // often written for someone else's toolset — Laravel Boost's AGENTS.md
+    // spends ~900 tokens on MCP tools Tackle does not have, and marks some of
+    // them MUST. Tackle then says "follow them, they take precedence", which
+    // is an endorsement of instructions the agent cannot carry out.
+    file_put_contents(memoryWorkspace().'/AGENTS.md', 'Prefer the database-query tool over reading files.');
+
+    $section = (new ProjectMemory(memoryWorkspace()))->section();
+
+    expect($section)->toContain('written for a different agent')
+        ->toContain('not in your tool list')
+        // The rest of the file still applies — this narrows it, it does not
+        // license the agent to disregard the project's conventions.
+        ->toContain('conventions, house style');
+});
+
 it('falls back to AGENTS.md then CLAUDE.md', function () {
     file_put_contents(memoryWorkspace().'/CLAUDE.md', 'claude rules');
     file_put_contents(memoryWorkspace().'/AGENTS.md', 'agents rules');

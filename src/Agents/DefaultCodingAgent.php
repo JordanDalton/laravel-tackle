@@ -15,6 +15,7 @@ use Tackle\Attributes\AiModel;
 use Tackle\Attributes\AiProvider;
 use Tackle\Attributes\Workspace;
 use Tackle\Contracts\CodingAgent;
+use Tackle\Contracts\InteractionPolicy;
 use Tackle\Support\AppMap;
 use Tackle\Support\CommandGuard;
 use Tackle\Support\EventedTool;
@@ -120,6 +121,7 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
 
         $projectMemory = (new ProjectMemory($workspace))->section();
         $delegation = $this->delegationGuidance();
+        $interactionRules = $this->interactionRules();
         $appMap = (new AppMap($this->pathGuard))->indexSection();
 
         return <<<INSTRUCTIONS
@@ -151,29 +153,68 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
         - Use ReadPullRequest (not ReadGitHubIssue) when the user references a PR number. ReadPullRequest returns the branch name (head ref) which you MUST pass to CommitAndPush as the `branch` parameter.
         - Use CommitAndPush to stage, commit, and push additional changes to an existing PR branch. Always pass the `branch` parameter — the branch name returned by ReadPullRequest or the one you passed to CreatePullRequest. CommitAndPush will show the user a diff preview and ask for confirmation before pushing — you do not need to call ConfirmAction separately. CommitAndPush pushes via `HEAD:<branch>` so no checkout is needed and you will never hit a "branch already checked out" error. Do NOT use RunShell for git add/commit/push — it may be blocked in this environment.
 
-        ## User interaction — REQUIRED RULES
-
-        **RULE: When the user asks "what are my options?", "what could this return?", "what are some ideas?", "give me some choices", or any similar exploratory question that results in a list of options — you MUST call AskUser with those options. Do NOT write them as a numbered list or bullet points in your response text.**
-
-        The correct flow is:
-        1. Research (read files, search code, etc.) to understand the context.
-        2. Identify the options.
-        3. Call AskUser with a short label for each option. Always append a final option: "Something else — let me describe what I want". If the user selects it, ask them to clarify in plain text, then proceed based on their answer.
-        4. Wait for the user's selection, then proceed to implement or explain only what they chose.
-
-        NEVER do this: research → write a numbered list in text → end with "Would you like me to implement one?"
-        ALWAYS do this: research → call AskUser with the options → act on the returned selection.
-
-        **RULE: After completing work that was sourced from a GitHub issue (fetched via ReadGitHubIssue), always offer to open a pull request. Call ConfirmAction first ("Open a pull request for issue #N?"), then call CreatePullRequest with a descriptive branch name (e.g. tackle/issue-3-fix-login), a clear title, and a summary of what was changed and why. Pass the issue_number so the PR auto-closes the issue on merge.**
-
-        **RULE: Always call ConfirmAction before any destructive or irreversible operation** (deleting files, dropping tables, running migrations on production). If the user cancels, stop and explain what you would have done.
-
+        {$interactionRules}
         ## Safety
 
         - You cannot read or write .env files, storage/, vendor/, or .git/. This is enforced in PHP, not advisory.
         - All edits are left unstaged. The user can review them with `git diff`.
         - Do not auto-commit or push changes.{$projectMemory}
         INSTRUCTIONS;
+    }
+
+    /**
+     * Rules about asking the user things — worth nothing when there is no user.
+     *
+     * A headless run auto-approves or auto-denies every confirmation, so the
+     * AskUser choreography and the "always confirm first" rules are ~400 tokens
+     * re-sent on every step of a run where they cannot fire. What survives is
+     * the one rule that is *more* important without a human: finish an issue by
+     * opening the pull request, unprompted.
+     */
+    /**
+     * Rules about asking the user things — worth nothing when there is no user.
+     *
+     * A headless run auto-approves or auto-denies every confirmation, so the
+     * AskUser choreography and the "always confirm first" rules are ~400 tokens
+     * re-sent on every step of a run where they cannot fire. What survives is
+     * the one rule that matters more without a human, not less: finish an issue
+     * by opening the pull request, unprompted.
+     *
+     * Returned unindented — the caller interpolates it into a heredoc whose own
+     * indentation has already been stripped.
+     */
+    private function interactionRules(): string
+    {
+        if (! app(InteractionPolicy::class)->isInteractive()) {
+            return <<<'RULES'
+## Finishing the job
+
+**RULE: After completing work that was sourced from a GitHub issue (fetched via ReadGitHubIssue), open a pull request — do not ask, and do not stop at the diff.** Call CreatePullRequest with a descriptive branch name (e.g. tackle/issue-3-fix-login), a clear title, and a summary of what was changed and why. Pass the issue_number so the PR auto-closes the issue on merge.
+
+Nobody is watching this run, so never wait for input and never end a turn with a question. Where you would have asked, choose the most reasonable option and say which one you chose and why.
+
+RULES;
+        }
+
+        return <<<'RULES'
+## User interaction — REQUIRED RULES
+
+**RULE: When the user asks "what are my options?", "what could this return?", "what are some ideas?", "give me some choices", or any similar exploratory question that results in a list of options — you MUST call AskUser with those options. Do NOT write them as a numbered list or bullet points in your response text.**
+
+The correct flow is:
+1. Research (read files, search code, etc.) to understand the context.
+2. Identify the options.
+3. Call AskUser with a short label for each option. Always append a final option: "Something else — let me describe what I want". If the user selects it, ask them to clarify in plain text, then proceed based on their answer.
+4. Wait for the user's selection, then proceed to implement or explain only what they chose.
+
+NEVER do this: research → write a numbered list in text → end with "Would you like me to implement one?"
+ALWAYS do this: research → call AskUser with the options → act on the returned selection.
+
+**RULE: After completing work that was sourced from a GitHub issue (fetched via ReadGitHubIssue), always offer to open a pull request. Call ConfirmAction first ("Open a pull request for issue #N?"), then call CreatePullRequest with a descriptive branch name (e.g. tackle/issue-3-fix-login), a clear title, and a summary of what was changed and why. Pass the issue_number so the PR auto-closes the issue on merge.**
+
+**RULE: Always call ConfirmAction before any destructive or irreversible operation** (deleting files, dropping tables, running migrations on production). If the user cancels, stop and explain what you would have done.
+
+RULES;
     }
 
     /**
@@ -268,9 +309,16 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
             $this->readLog,
             $this->gitDiff,
             $this->listRoutes,
-            $this->askUser,
-            $this->confirmAction,
         ];
+
+        // AskUser and ConfirmAction only mean something when a person can
+        // answer. Headless runs auto-approve or auto-deny, so calling either is
+        // a wasted step, and their schemas are ~340 tokens re-sent on every
+        // step of the run. Same reasoning as the integration tools below.
+        if (app(InteractionPolicy::class)->isInteractive()) {
+            $tools[] = $this->askUser;
+            $tools[] = $this->confirmAction;
+        }
 
         // Integration tools cost schema tokens on every step, so only expose
         // them when their integration is actually configured — the agent can't
