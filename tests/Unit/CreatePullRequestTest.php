@@ -202,3 +202,56 @@ it('does not confuse a different issue number', function () {
     expect($method->invoke($tool, 'Closes #300', 30))->toBeFalse()
         ->and($method->invoke($tool, 'Closes #3', 30))->toBeFalse();
 });
+
+// ---------------------------------------------------------------------------
+// Verification block
+// ---------------------------------------------------------------------------
+
+it('reports the red-green proof in the PR body', function () {
+    config()->set('tackle.github.token', 'ghp_token');
+    config()->set('tackle.github.repo', 'acme/app');
+
+    // A closure fake: pattern-keyed fakes proved unreliable for array
+    // commands, and this test is about the PR body, not fake plumbing.
+    $testRuns = 0;
+    Process::fake(function ($process) use (&$testRuns) {
+        $command = is_array($process->command) ? implode(' ', $process->command) : $process->command;
+
+        if (str_contains($command, '--porcelain')) {
+            return Process::result(" M app/Foo.php\n?? tests/FooTest.php\n");
+        }
+
+        if (str_contains($command, 'artisan test') || str_contains($command, 'vendor/bin/pest')) {
+            // Green with the fix, red without it.
+            return ++$testRuns === 1 ? Process::result('ok') : Process::result('fail', exitCode: 1);
+        }
+
+        return Process::result('');
+    });
+
+    Http::fake(['*api.github.com*' => Http::response(['html_url' => 'https://github.com/acme/app/pull/9'], 201)]);
+
+    makePrTool()->handle(new Request([
+        'title' => 'Fix',
+        'body' => 'Details.',
+        'branch' => 'tackle/fix',
+    ]));
+
+    Http::assertSent(fn ($request) => str_contains($request->body(), 'Verification')
+        && str_contains($request->body(), 'fails without the change')
+        // No slash: the body is raw JSON, where the path is tests\/FooTest.php.
+        && str_contains($request->body(), 'FooTest.php'));
+});
+
+it('says nothing about verification when no test was added', function () {
+    config()->set('tackle.github.token', 'ghp_token');
+    config()->set('tackle.github.repo', 'acme/app');
+
+    fakeGitSuccess(); // ' M app/Foo.php' — a change with no test
+
+    Http::fake(['*api.github.com*' => Http::response(['html_url' => 'https://github.com/acme/app/pull/9'], 201)]);
+
+    makePrTool()->handle(new Request(['title' => 'Fix', 'body' => 'Details.', 'branch' => 'tackle/fix']));
+
+    Http::assertSent(fn ($request) => ! str_contains($request->body(), 'Verification'));
+});

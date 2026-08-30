@@ -153,6 +153,14 @@ return [
     */
     'max_steps' => env('AI_CODE_MAX_STEPS', 40),
 
+    // Before CreatePullRequest opens a PR that adds tests, run those tests
+    // twice: with the change (must pass) and with it reverted (must fail).
+    // The result is reported in the PR body. A test that passes either way
+    // verifies nothing, and the PR now says so. Best-effort — never blocks.
+    'verify' => [
+        'red_green' => env('AI_CODE_VERIFY_RED_GREEN', true),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Budget (USD)

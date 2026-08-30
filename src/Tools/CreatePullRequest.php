@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
 use Tackle\Support\GitHubClient;
 use Tackle\Support\PathGuard;
+use Tackle\Support\RedGreenProof;
 use Throwable;
 
 class CreatePullRequest extends AbstractTool
@@ -68,6 +69,11 @@ class CreatePullRequest extends AbstractTool
             return 'No changes to commit. Make sure the agent has edited files before opening a PR.';
         }
 
+        // Prove the new tests test the change while everything is still
+        // uncommitted — the answer to "what would you need to see before
+        // trusting this PR" was verification, every time we asked.
+        $proof = (new RedGreenProof($this->pathGuard))->run();
+
         try {
             // Create and switch to the new branch
             $checkout = Process::path($this->pathGuard->workspace())->run("git checkout -b {$escapedBranch}");
@@ -95,7 +101,7 @@ class CreatePullRequest extends AbstractTool
             // so appending unconditionally produced PRs closing the same issue
             // twice. GitHub accepts any of its closing keywords, so check for
             // all of them rather than only the one this tool writes.
-            $prBody = $body;
+            $prBody = $body.RedGreenProof::markdown($proof);
 
             if ($issueNumber > 0 && ! $this->alreadyCloses($body, $issueNumber)) {
                 $prBody .= "\n\nCloses #{$issueNumber}";
