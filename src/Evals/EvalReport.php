@@ -111,11 +111,30 @@ class EvalReport
                 'cache_write_tokens' => $r->cacheWriteTokens,
                 'context_tokens' => $r->inputTokens + $r->cacheReadTokens + $r->cacheWriteTokens,
                 'cost_usd' => round($r->costUsd, 4),
+                'tool_calls' => $r->toolCalls,
+                'tool_counts' => $r->toolCounts(),
                 'duration_ms' => $r->durationMs,
                 'note' => $r->grade->note,
                 'error' => $r->error,
             ], $this->results),
         ];
+    }
+
+    /**
+     * A run's shape as a compact line: ReadFile×3 SearchCode×2 EditFile RunTests.
+     *
+     * Two arms of the same corpus are then diffable by eye — which is the
+     * question a total step count cannot answer.
+     *
+     * @param  array<string, int>  $counts
+     */
+    private static function toolShape(array $counts): string
+    {
+        return implode(' ', array_map(
+            fn (string $tool, int $n): string => $n > 1 ? "{$tool}×{$n}" : $tool,
+            array_keys($counts),
+            $counts,
+        ));
     }
 
     public function render(): string
@@ -138,6 +157,10 @@ class EvalReport
                 (int) round($r->durationMs / 1000),
                 $r->error !== null ? '  — '.$r->error : ($r->grade->note !== '' ? '  — '.$r->grade->note : ''),
             );
+
+            if ($r->toolCalls !== []) {
+                $rows[] = '      '.self::toolShape($r->toolCounts());
+            }
         }
 
         $summary = sprintf(

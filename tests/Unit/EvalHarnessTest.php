@@ -321,3 +321,34 @@ it('defaults cache counts to zero for a result built without them', function () 
 
     expect($report->totalContextTokens())->toBe(100);
 });
+
+it('records what a run actually called, not just how many times', function () {
+    // A step count says a run was expensive. The sequence says what it spent
+    // the steps on — eight ReadFile calls is a re-reading problem, six
+    // RunTests a verification loop, and a total shows neither.
+    $runner = new EvalRunner;
+    $case = (new CaseRepository)->only(['div-by-zero'])[0];
+
+    $result = $runner->run($case, fn () => [
+        'toolCalls' => ['ReadFile', 'SearchCode', 'ReadFile', 'EditFile', 'RunTests', 'ReadFile'],
+    ]);
+
+    expect($result->toolCalls)->toHaveCount(6)
+        ->and($result->toolCounts())->toBe([
+            'ReadFile' => 3, 'SearchCode' => 1, 'EditFile' => 1, 'RunTests' => 1,
+        ]);
+
+    $json = (new EvalReport([$result]))->toArray();
+
+    expect($json['cases'][0]['tool_counts']['ReadFile'])->toBe(3)
+        ->and($json['cases'][0]['tool_calls'][0])->toBe('ReadFile');
+});
+
+it('renders a run shape beneath each case', function () {
+    $runner = new EvalRunner;
+    $case = (new CaseRepository)->only(['div-by-zero'])[0];
+
+    $result = $runner->run($case, fn () => ['toolCalls' => ['ReadFile', 'ReadFile', 'EditFile']]);
+
+    expect((new EvalReport([$result]))->render())->toContain('ReadFile×2 EditFile');
+});

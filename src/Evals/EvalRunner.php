@@ -17,15 +17,15 @@ class EvalRunner
     public function __construct(private readonly ?string $baseDir = null) {}
 
     /**
-     * @param  callable(string, EvalCase): array{inputTokens?: int, outputTokens?: int, cacheReadTokens?: int, cacheWriteTokens?: int, costUsd?: float}  $solve
-     *                                                                                                                                                           Given the case directory and case, mutate the files to solve it and
-     *                                                                                                                                                           return usage. May throw — the case is then recorded as an error.
+     * @param  callable(string, EvalCase): array{inputTokens?: int, outputTokens?: int, cacheReadTokens?: int, cacheWriteTokens?: int, costUsd?: float, toolCalls?: list<string>}  $solve
+     *                                                                                                                                                                                     Given the case directory and case, mutate the files to solve it and
+     *                                                                                                                                                                                     return usage. May throw — the case is then recorded as an error.
      */
     public function run(EvalCase $case, callable $solve): EvalResult
     {
         $dir = $this->seed($case);
         $start = (int) (microtime(true) * 1000);
-        $usage = ['inputTokens' => 0, 'outputTokens' => 0, 'cacheReadTokens' => 0, 'cacheWriteTokens' => 0, 'costUsd' => 0.0];
+        $usage = ['inputTokens' => 0, 'outputTokens' => 0, 'cacheReadTokens' => 0, 'cacheWriteTokens' => 0, 'costUsd' => 0.0, 'toolCalls' => []];
         $error = null;
 
         try {
@@ -53,6 +53,7 @@ class EvalRunner
             error: $error,
             cacheReadTokens: (int) $usage['cacheReadTokens'],
             cacheWriteTokens: (int) $usage['cacheWriteTokens'],
+            toolCalls: array_values((array) $usage['toolCalls']),
         );
     }
 

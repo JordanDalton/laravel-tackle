@@ -83,10 +83,20 @@ class EvalCommand extends Command
 
                 $steps = 0;
 
+                // The sequence of tools, in order. Step counts tell you a run
+                // was expensive; this tells you what it spent the steps on —
+                // eight ReadFile calls is a re-reading problem, six RunTests a
+                // verification loop, and neither is visible in a total.
+                $toolCalls = [];
+
                 try {
-                    $agent->stream($case->prompt)->each(function ($event) use ($budget, &$steps, $maxSteps) {
-                        if ($event instanceof ToolCall && ++$steps > $maxSteps) {
-                            throw new \RuntimeException('max steps reached');
+                    $agent->stream($case->prompt)->each(function ($event) use ($budget, &$steps, &$toolCalls, $maxSteps) {
+                        if ($event instanceof ToolCall) {
+                            $toolCalls[] = $event->toolCall->name;
+
+                            if (++$steps > $maxSteps) {
+                                throw new \RuntimeException('max steps reached');
+                            }
                         }
                         if ($event instanceof StreamEnd) {
                             $budget->record($event->usage->promptTokens, $event->usage->completionTokens, $event->usage->cacheReadInputTokens ?? 0, $event->usage->cacheWriteInputTokens ?? 0);
@@ -117,6 +127,7 @@ class EvalCommand extends Command
                 ));
 
                 return [
+                    'toolCalls' => $toolCalls,
                     'inputTokens' => $budget->inputTokens(),
                     'outputTokens' => $budget->outputTokens(),
                     'cacheReadTokens' => $budget->cacheReadTokens(),

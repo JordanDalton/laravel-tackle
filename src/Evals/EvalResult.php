@@ -26,7 +26,23 @@ class EvalResult
         // custom eval harness.
         public readonly int $cacheReadTokens = 0,
         public readonly int $cacheWriteTokens = 0,
+        /** @var list<string> tool names in call order */
+        public readonly array $toolCalls = [],
     ) {}
+
+    /**
+     * How many times each tool was called, most-used first — the shape of the
+     * run rather than its length.
+     *
+     * @return array<string, int>
+     */
+    public function toolCounts(): array
+    {
+        $counts = array_count_values($this->toolCalls);
+        arsort($counts);
+
+        return $counts;
+    }
 
     public function status(): string
     {
