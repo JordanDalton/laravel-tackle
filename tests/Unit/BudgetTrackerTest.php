@@ -187,3 +187,29 @@ it('keeps estimated_cost_usd rounded to four places', function () {
 
     expect($tracker->usageSummary()['estimated_cost_usd'])->toBe(round($tracker->estimatedCost(), 4));
 });
+
+it('falls back to the in-flight estimate when the provider reported nothing', function () {
+    $tracker = new BudgetTracker(10.00, 3.00, 15.00);
+
+    // 40,000 characters of tool output pulled into a turn that then died.
+    $tracker->recordToolOutput(40_000);
+
+    $summary = $tracker->usageSummary();
+
+    expect($summary['measured'])->toBeFalse()
+        ->and($summary['estimated_cost_usd'])->toBeGreaterThan(0)
+        // Nothing is invented: the split is unknown, so it stays zero.
+        ->and($summary['input_tokens'])->toBe(0);
+});
+
+it('prefers the real figures once the provider reports them', function () {
+    $tracker = new BudgetTracker(10.00, 3.00, 15.00);
+
+    $tracker->recordToolOutput(40_000);
+    $tracker->record(1000, 100);
+
+    $summary = $tracker->usageSummary();
+
+    expect($summary['measured'])->toBeTrue()
+        ->and($summary['estimated_cost_usd'])->toBe(round($tracker->estimatedCost(), 4));
+});

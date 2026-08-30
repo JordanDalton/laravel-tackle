@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Artisan;
 use Laravel\Ai\Responses\Data;
 use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Streaming\Events\Error;
 use Laravel\Ai\Streaming\Events\StreamEnd;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolCall;
@@ -303,4 +304,53 @@ it('writes a plain text log with no ANSI escapes', function () {
         ->and($output)->toContain('Reading things.')
         ->and($output)->toContain('# outcome: completed')
         ->and($output)->not->toContain("\033[");
+});
+
+// ---------------------------------------------------------------------------
+// Usage on a run that does not finish cleanly
+// ---------------------------------------------------------------------------
+
+it('keeps the token counts when the step ceiling is reached', function () {
+    // Usage arrives in a single StreamEnd at the end of the whole loop, so
+    // tearing the loop down by throwing through it reported $0.0000 for a run
+    // that had just spent 41 steps of Sonnet. The loop now stops itself and
+    // still reports.
+    fakeAgent([
+        toolCallEvent('ReadFile', ['path' => 'a.php']),
+        toolResultEvent('ReadFile', 'ok'),
+        new StreamEnd('e', 'tool_calls', new Usage(52_000, 3_100, 4_000, 40_000), 0),
+    ]);
+
+    [$json, $exit] = runJson();
+
+    expect($exit)->toBe(RunCommand::EXIT_MAX_STEPS)
+        ->and($json['outcome'])->toBe('max_steps_reached')
+        ->and($json['usage']['input_tokens'])->toBe(52_000)
+        ->and($json['usage']['cache_read_tokens'])->toBe(40_000)
+        ->and($json['usage']['estimated_cost_usd'])->toBeGreaterThan(0)
+        ->and($json['usage']['measured'])->toBeTrue();
+});
+
+it('marks usage unmeasured when the provider never reported any', function () {
+    // A run that dies mid-loop — a provider error, a tool that throws — never
+    // sees StreamEnd. Reporting zero cost would be a lie in the direction that
+    // flatters us, so the estimate stands in and says so.
+    fakeAgent([
+        toolCallEvent('ReadFile', ['path' => 'a.php']),
+        toolResultEvent('ReadFile', str_repeat('x', 40_000)),
+        new Error('e', 'provider_error', 'provider exploded', false, 0),
+    ]);
+
+    [$json] = runJson();
+
+    expect($json['usage']['measured'])->toBeFalse()
+        ->and($json['usage']['input_tokens'])->toBe(0);
+});
+
+it('reports usage as measured on a clean run', function () {
+    fakeAgent([textDelta('done'), streamEnd(in: 100, out: 20)]);
+
+    [$json] = runJson();
+
+    expect($json['usage']['measured'])->toBeTrue();
 });

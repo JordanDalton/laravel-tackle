@@ -17,6 +17,16 @@ class BudgetTracker
     private float $accruedCost = 0.0;
 
     /**
+     * Whether the provider ever reported real usage.
+     *
+     * Usage arrives once, on StreamEnd, at the end of the whole multi-step
+     * loop — so a run that dies mid-loop has real token counts for none of the
+     * steps it took. Reporting $0.0000 for such a run is worse than reporting
+     * an estimate, because the runs that die mid-loop are the long ones.
+     */
+    private bool $measured = false;
+
+    /**
      * Characters of tool output pulled into context during the current turn.
      * The budget can only be checked when a stream ends, but context grows
      * with every tool result and is re-sent on every step — this is the
@@ -87,6 +97,7 @@ class BudgetTracker
         int $cacheReadTokens = 0,
         int $cacheWriteTokens = 0,
     ): void {
+        $this->measured = true;
         $this->inputTokens += $inputTokens;
         $this->outputTokens += $outputTokens;
         $this->cacheReadTokens += $cacheReadTokens;
@@ -104,6 +115,12 @@ class BudgetTracker
         // the in-flight estimate is superseded by the real recorded usage.
         $this->contextChars = 0;
         $this->inFlightCost = 0.0;
+    }
+
+    /** Whether the figures came from the provider or from estimation. */
+    public function measured(): bool
+    {
+        return $this->measured;
     }
 
     public function cacheReadTokens(): int
@@ -283,7 +300,13 @@ class BudgetTracker
      * separate lines, because they are separate prices. Reporting the sum as
      * one figure hides the only lever that matters on a multi-step run.
      *
-     * @return array{input_tokens: int, output_tokens: int, cache_read_tokens: int, cache_write_tokens: int, cache_hit_rate: float, estimated_cost_usd: float}
+     * `measured` is false when the provider never reported usage — the run
+     * died inside the step loop, before the single StreamEnd that carries it.
+     * The cost then falls back to the in-flight estimate, and the token counts
+     * stay zero rather than being invented. A consumer that bills on this must
+     * treat an unmeasured cost as a floor, not a figure.
+     *
+     * @return array{input_tokens: int, output_tokens: int, cache_read_tokens: int, cache_write_tokens: int, cache_hit_rate: float, estimated_cost_usd: float, measured: bool}
      */
     public function usageSummary(): array
     {
@@ -293,7 +316,8 @@ class BudgetTracker
             'cache_read_tokens' => $this->cacheReadTokens,
             'cache_write_tokens' => $this->cacheWriteTokens,
             'cache_hit_rate' => round($this->cacheHitRate(), 4),
-            'estimated_cost_usd' => round($this->estimatedCost(), 4),
+            'estimated_cost_usd' => round($this->measured ? $this->estimatedCost() : $this->projectedCost(), 4),
+            'measured' => $this->measured,
         ];
     }
 

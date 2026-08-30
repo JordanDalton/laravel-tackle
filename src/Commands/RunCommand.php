@@ -261,8 +261,10 @@ class RunCommand extends Command
 
             $reporter->toolCall($event->toolCall->name, (array) $event->toolCall->arguments);
 
-            // Enforced here because laravel/ai resolves its own MaxSteps from a
-            // class attribute, which cannot be overridden at runtime.
+            // Backstop only. The agent exposes maxSteps() so laravel/ai stops
+            // its own loop at the ceiling and still emits the StreamEnd that
+            // carries usage; this catches the versions in our range that
+            // ignore the method, at the cost of losing that usage.
             if ($this->steps > $this->maxSteps) {
                 throw new AgentInterruptedException('max_steps_reached');
             }
@@ -284,10 +286,19 @@ class RunCommand extends Command
         }
 
         if ($event instanceof StreamEnd) {
+            // Record before any throw below: this is the only event carrying
+            // usage, and it arrives once for the whole loop.
             $budget->record($event->usage->promptTokens, $event->usage->completionTokens, $event->usage->cacheReadInputTokens ?? 0, $event->usage->cacheWriteInputTokens ?? 0);
 
             if ($budget->overBudget()) {
                 throw new AgentInterruptedException('budget_exceeded');
+            }
+
+            // The loop ran out of steps while the model still wanted to call
+            // tools. Same outcome as the backstop above, but reached with the
+            // token counts intact.
+            if ($event->reason === 'tool_calls') {
+                throw new AgentInterruptedException('max_steps_reached');
             }
         }
     }

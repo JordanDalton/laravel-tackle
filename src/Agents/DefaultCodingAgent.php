@@ -287,6 +287,23 @@ RULES;
         $this->conversationMessages = [];
     }
 
+    /**
+     * The step ceiling, as a runtime value laravel/ai will honour.
+     *
+     * TextGenerationOptions checks for this method before falling back to the
+     * #[MaxSteps] attribute, so --max-steps actually reaches the generation
+     * loop and the loop can stop itself. That matters for more than the
+     * ceiling: usage arrives in a single StreamEnd at the end of the loop, so
+     * tearing the loop down by throwing through it discards the token counts
+     * for every step it took. Letting it finish keeps them.
+     */
+    public function maxSteps(): int
+    {
+        $configured = config('tackle.max_steps', 40);
+
+        return is_numeric($configured) && (int) $configured > 0 ? (int) $configured : 40;
+    }
+
     public function tools(): iterable
     {
         // Always-available core: read/edit/run/inspect the project.
