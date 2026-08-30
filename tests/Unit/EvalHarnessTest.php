@@ -165,6 +165,12 @@ function applyCanonicalFix(string $dir, string $id): array
             "<?php\nclass EvalStatus { public function label(string \$s): string { return match (\$s) { 'pending' => 'Pending', 'paid' => 'Paid', 'shipped' => 'Shipped', 'refunded' => 'Refunded', default => 'Unknown' }; } }\n"),
         'factorial-base-case' => file_put_contents($dir.'/EvalMath.php',
             "<?php\nclass EvalMath { public function factorial(int \$n): int { return \$n <= 1 ? 1 : \$n * \$this->factorial(\$n - 1); } }\n"),
+        // Navigation cases: the fix is trivial once the right file is found,
+        // which is the point — what they grade is the finding.
+        'locate-among-decoys' => file_put_contents($dir.'/EvalInvoiceTotal.php',
+            "<?php\nclass EvalInvoiceTotal { public function total(array \$lineCents, int \$taxPercent): int { \$s = array_sum(\$lineCents); return \$s + intdiv(\$s * \$taxPercent, 100); } }\n"),
+        'locate-by-behaviour' => file_put_contents($dir.'/EvalUserNameFormatter.php',
+            "<?php\nclass EvalUserNameFormatter { public function initials(string \$first, string \$last): string { \$out = strtoupper(\$first[0] ?? '').'.'; return \$last === '' ? \$out : \$out.strtoupper(\$last[0]).'.'; } }\n"),
         default => null,
     };
 

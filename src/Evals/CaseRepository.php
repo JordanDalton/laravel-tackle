@@ -52,6 +52,8 @@ class CaseRepository
             $this->slugify(),
             $this->statusLabel(),
             $this->factorialBaseCase(),
+            $this->locateAmongDecoys(),
+            $this->locateByBehaviour(),
         ];
     }
 
@@ -359,6 +361,145 @@ class CaseRepository
                 $s = new EvalSlug();
                 $target = $s->make('Hello, World!') === 'hello-world';
                 $happy = $s->make('already-a-slug') === 'already-a-slug';
+            PROBE),
+        );
+    }
+
+    /**
+     * Find the right file when the prompt names a symptom, not a path.
+     *
+     * Every other case here hands the agent the filename. Real tasks do not:
+     * an issue says "the total is wrong on the invoice", and the agent spends
+     * its first few steps working out where that lives. A run watched in
+     * production burned a third of its steps on exactly this and still edited
+     * the wrong file — a failure the rest of this corpus cannot detect.
+     *
+     * The decoys are the point. Fixing the named symptom is easy once found;
+     * editing a plausible neighbour instead is the failure being graded.
+     */
+    private function locateAmongDecoys(): EvalCase
+    {
+        $files = [
+            'EvalInvoiceTotal.php' => <<<'PHP'
+            <?php
+            class EvalInvoiceTotal
+            {
+                /** @param list<int> $lineCents */
+                public function total(array $lineCents, int $taxPercent): int
+                {
+                    $subtotal = array_sum($lineCents);
+
+                    // BUG: tax is added to each line, then again to the subtotal.
+                    return $subtotal + intdiv($subtotal * $taxPercent, 100) + $taxPercent;
+                }
+            }
+            PHP,
+            'EvalInvoiceRenderer.php' => <<<'PHP'
+            <?php
+            class EvalInvoiceRenderer
+            {
+                public function render(int $totalCents): string
+                {
+                    return '$'.number_format($totalCents / 100, 2);
+                }
+            }
+            PHP,
+            'EvalOrderTotal.php' => <<<'PHP'
+            <?php
+            class EvalOrderTotal
+            {
+                /** @param list<int> $lineCents */
+                public function total(array $lineCents): int
+                {
+                    return array_sum($lineCents);
+                }
+            }
+            PHP,
+            'EvalTaxTable.php' => <<<'PHP'
+            <?php
+            class EvalTaxTable
+            {
+                public function percentFor(string $region): int
+                {
+                    return ['uk' => 20, 'de' => 19][$region] ?? 0;
+                }
+            }
+            PHP,
+        ];
+
+        return new EvalCase(
+            id: 'locate-among-decoys',
+            title: 'Find the miscalculated invoice total without being told where it lives',
+            category: 'navigation',
+            files: $files,
+            prompt: 'An invoice for two lines of 1000 cents each at 20% tax is charging 2420 cents instead of 2400. Find the cause and fix it. Do not change behaviour that is already correct.',
+            grader: Probe::subprocess(array_keys($files), <<<'PROBE'
+                $i = new EvalInvoiceTotal();
+                $target = $i->total([1000, 1000], 20) === 2400;
+
+                // The decoys must survive untouched: a plausible neighbour
+                // edited into agreement is a false fix, not a fix.
+                $happy = $i->total([1000, 1000], 0) === 2000
+                    && (new EvalOrderTotal())->total([500, 250]) === 750
+                    && (new EvalTaxTable())->percentFor('uk') === 20
+                    && (new EvalInvoiceRenderer())->render(2400) === '$24.00';
+            PROBE),
+        );
+    }
+
+    /**
+     * The same skill without a number to grep for: the prompt describes
+     * behaviour, and the only way to the right file is reading what each one
+     * does. Searching for a literal from the prompt will not shortcut it.
+     */
+    private function locateByBehaviour(): EvalCase
+    {
+        $files = [
+            'EvalUserNameFormatter.php' => <<<'PHP'
+            <?php
+            class EvalUserNameFormatter
+            {
+                public function initials(string $first, string $last): string
+                {
+                    // BUG: an empty last name yields a trailing dot.
+                    return strtoupper($first[0] ?? '').'.'.strtoupper($last[0] ?? '').'.';
+                }
+            }
+            PHP,
+            'EvalUserGreeting.php' => <<<'PHP'
+            <?php
+            class EvalUserGreeting
+            {
+                public function greet(string $name): string
+                {
+                    return 'Hello, '.$name.'!';
+                }
+            }
+            PHP,
+            'EvalUserSlug.php' => <<<'PHP'
+            <?php
+            class EvalUserSlug
+            {
+                public function slug(string $first, string $last): string
+                {
+                    return trim(strtolower($first.'-'.$last), '-');
+                }
+            }
+            PHP,
+        ];
+
+        return new EvalCase(
+            id: 'locate-by-behaviour',
+            title: 'Find the formatter that leaves a trailing separator',
+            category: 'navigation',
+            files: $files,
+            prompt: 'Somewhere in this code a user with no surname is displayed with a stray trailing dot after their initial. Find it and stop it, leaving the two-name case exactly as it is.',
+            grader: Probe::subprocess(array_keys($files), <<<'PROBE'
+                $f = new EvalUserNameFormatter();
+                $target = $f->initials('Ada', '') === 'A.';
+                $happy = $f->initials('Ada', 'Lovelace') === 'A.L.'
+                    && (new EvalUserGreeting())->greet('Ada') === 'Hello, Ada!'
+                    && (new EvalUserSlug())->slug('Ada', '') === 'ada';
             PROBE),
         );
     }
