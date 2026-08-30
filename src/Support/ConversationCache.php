@@ -5,6 +5,7 @@ namespace Tackle\Support;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Psr\Http\Message\RequestInterface;
+use stdClass;
 
 /**
  * Extends Anthropic prompt caching from the fixed prefix to the conversation.
@@ -114,37 +115,20 @@ class ConversationCache
             return $request;
         }
 
-        $body = (string) $request->getBody();
+        $marked = self::mark((string) $request->getBody());
 
-        if ($body === '') {
-            return $request;
-        }
-
-        $decoded = json_decode($body, true);
-
-        if (! is_array($decoded) || ! isset($decoded['messages']) || ! is_array($decoded['messages'])) {
-            return $request;
-        }
-
-        $marked = self::mark($decoded);
-
-        if ($marked === $decoded) {
-            return $request;
-        }
-
-        $encoded = json_encode($marked, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-
-        if ($encoded === false) {
+        if ($marked === null) {
             return $request;
         }
 
         return $request
-            ->withBody(Utils::streamFor($encoded))
-            ->withHeader('Content-Length', (string) strlen($encoded));
+            ->withBody(Utils::streamFor($marked))
+            ->withHeader('Content-Length', (string) strlen($marked));
     }
 
     /**
-     * Put a cache breakpoint on the final content block of the message list.
+     * Put a cache breakpoint on the final content block of the message list,
+     * returning the rewritten body — or null when there is nothing to change.
      *
      * Anthropic caches the cumulative prefix up to a breakpoint and reuses the
      * longest cached prefix it can find, so a breakpoint at the very end means
@@ -158,86 +142,94 @@ class ConversationCache
      * Prefixes below Anthropic's minimum cacheable length are ignored by the
      * API rather than rejected, so short conversations quietly cost nothing.
      *
-     * @param  array<string, mixed>  $body
-     * @return array<string, mixed>
+     * Takes and returns JSON rather than an array because the round trip is
+     * the dangerous part here, not the edit. Decoding to associative arrays
+     * cannot tell {} from [], so a tool schema's empty `properties` object
+     * comes back as an empty list and Anthropic rejects the entire request —
+     * every step, before the first token. Decoding to objects keeps the two
+     * apart.
      */
-    public static function mark(array $body): array
+    public static function mark(string $json): ?string
     {
-        $messages = $body['messages'] ?? [];
+        $body = json_decode($json);
 
-        if (! is_array($messages) || $messages === []) {
-            return $body;
+        if (! $body instanceof stdClass || ! isset($body->messages) || ! is_array($body->messages)) {
+            return null;
         }
 
         // Someone has already placed breakpoints in the conversation. Adding
         // ours risks exceeding the limit of four and overrides a deliberate
         // choice, so leave it alone.
-        if (self::alreadyMarked($messages)) {
-            return $body;
+        if (self::alreadyMarked($body->messages)) {
+            return null;
         }
 
         // Walk back to the last message that actually carries content: a
         // trailing message with an empty content array has no block to mark.
-        foreach (array_reverse(array_keys($messages)) as $index) {
-            $message = $messages[$index];
-
-            if (! is_array($message) || ! isset($message['content'])) {
+        foreach (array_reverse($body->messages) as $message) {
+            if (! $message instanceof stdClass || ! isset($message->content)) {
                 continue;
             }
-
-            $content = $message['content'];
 
             // String content is the API's shorthand for a single text block.
             // Expanding it changes nothing the model sees.
-            if (is_string($content)) {
-                if (trim($content) === '') {
+            if (is_string($message->content)) {
+                if (trim($message->content) === '') {
                     continue;
                 }
 
-                $messages[$index]['content'] = [[
+                $message->content = [(object) [
                     'type' => 'text',
-                    'text' => $content,
-                    'cache_control' => ['type' => 'ephemeral'],
+                    'text' => $message->content,
+                    'cache_control' => self::breakpoint(),
                 ]];
 
-                $body['messages'] = $messages;
-
-                return $body;
+                return self::encode($body);
             }
 
-            if (! is_array($content) || $content === []) {
+            if (! is_array($message->content) || $message->content === []) {
                 continue;
             }
 
-            $last = array_key_last($content);
+            $last = $message->content[array_key_last($message->content)];
 
-            if (! is_array($content[$last])) {
+            if (! $last instanceof stdClass) {
                 continue;
             }
 
-            $content[$last]['cache_control'] = ['type' => 'ephemeral'];
-            $messages[$index]['content'] = $content;
+            $last->cache_control = self::breakpoint();
 
-            $body['messages'] = $messages;
-
-            return $body;
+            return self::encode($body);
         }
 
-        return $body;
+        return null;
+    }
+
+    private static function breakpoint(): stdClass
+    {
+        return (object) ['type' => 'ephemeral'];
+    }
+
+    /** Null rather than a broken body if the graph will not re-encode. */
+    private static function encode(stdClass $body): ?string
+    {
+        $encoded = json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        return $encoded === false ? null : $encoded;
     }
 
     /** @param  array<mixed>  $messages */
     private static function alreadyMarked(array $messages): bool
     {
         foreach ($messages as $message) {
-            $content = is_array($message) ? ($message['content'] ?? null) : null;
+            $content = $message instanceof stdClass ? ($message->content ?? null) : null;
 
             if (! is_array($content)) {
                 continue;
             }
 
             foreach ($content as $block) {
-                if (is_array($block) && isset($block['cache_control'])) {
+                if ($block instanceof stdClass && isset($block->cache_control)) {
                     return true;
                 }
             }
