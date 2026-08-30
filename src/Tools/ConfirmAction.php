@@ -28,7 +28,7 @@ class ConfirmAction extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $action = (string) $request->string('action', 'Proceed?');
+        $action = (string) $this->arg($request, 'action', 'Proceed?');
         $default = $request->boolean('default', true);
 
         return $this->interaction()->confirm($action, $default) ? 'confirmed' : 'cancelled';

@@ -35,6 +35,6 @@ class DescribeRoute extends AbstractTool
 
     public function handle(Request $request): string
     {
-        return $this->routes->describe((string) $request->string('route', ''));
+        return $this->routes->describe((string) $this->arg($request, 'route', ''));
     }
 }

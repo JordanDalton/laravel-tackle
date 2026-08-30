@@ -29,7 +29,7 @@ class Glob extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $pattern = $request->string('pattern', '*');
+        $pattern = $this->arg($request, 'pattern', '*');
         $workspace = $this->guard->workspace();
 
         $files = str_contains($pattern, '**')

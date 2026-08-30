@@ -29,7 +29,7 @@ class ReadFile extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $path = $request->string('path', '');
+        $path = $this->arg($request, 'path', '');
 
         if ($refusal = $this->guard->checkRead($path)) {
             return $refusal;

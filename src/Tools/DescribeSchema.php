@@ -29,7 +29,7 @@ class DescribeSchema extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $table = trim((string) $request->string('table', ''));
+        $table = trim((string) $this->arg($request, 'table', ''));
 
         try {
             if ($table === '') {

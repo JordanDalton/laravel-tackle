@@ -51,8 +51,8 @@ class MutateDatabase extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $sql = trim($request->string('statement', ''));
-        $reason = trim($request->string('reason', ''));
+        $sql = trim($this->arg($request, 'statement', ''));
+        $reason = trim($this->arg($request, 'reason', ''));
 
         if ($refusal = $this->refuse($sql)) {
             return $refusal;

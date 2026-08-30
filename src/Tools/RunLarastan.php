@@ -39,7 +39,7 @@ class RunLarastan extends AbstractTool
                 ."'composer require --dev nunomaduro/larastan' to enable static analysis.";
         }
 
-        $memoryLimit = $request->string('memory_limit', '');
+        $memoryLimit = $this->arg($request, 'memory_limit', '');
         $phpBin = $memoryLimit !== ''
             ? 'php -d memory_limit='.escapeshellarg($memoryLimit)
             : 'php';
@@ -51,7 +51,7 @@ class RunLarastan extends AbstractTool
             $args[] = '--level='.$level;
         }
 
-        $path = trim((string) $request->string('path', ''));
+        $path = trim((string) $this->arg($request, 'path', ''));
         if ($path !== '') {
             $args[] = escapeshellarg($path);
         }

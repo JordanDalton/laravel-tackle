@@ -33,7 +33,7 @@ class RunPint extends AbstractTool
             return "Pint is not installed. Run 'composer require laravel/pint --dev' first.";
         }
 
-        $target = $request->string('path', '');
+        $target = $this->arg($request, 'path', '');
         $arg = $target !== '' ? ' '.escapeshellarg($target) : '';
 
         $result = Process::path($workspace)

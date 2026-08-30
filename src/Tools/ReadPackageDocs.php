@@ -46,7 +46,7 @@ class ReadPackageDocs extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $package = trim($request->string('package', ''));
+        $package = trim($this->arg($request, 'package', ''));
 
         if (! preg_match('#^[a-z0-9]([_.-]?[a-z0-9]+)*/[a-z0-9](([_.]|-{1,2})?[a-z0-9]+)*$#i', $package)) {
             return "'{$package}' is not a valid Composer package name (expected vendor/name).";
@@ -64,7 +64,7 @@ class ReadPackageDocs extends AbstractTool
             return "No documentation files found in vendor/{$package}. Check the package's repository or website for its upgrade guide.";
         }
 
-        $file = trim($request->string('file', ''));
+        $file = trim($this->arg($request, 'file', ''));
 
         if ($file === '') {
             return "Documentation files in vendor/{$package}:\n- ".implode("\n- ", $docs)

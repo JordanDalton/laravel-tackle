@@ -36,8 +36,8 @@ class CommitAndPush extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $message = (string) $request->string('message', '');
-        $branch = trim((string) $request->string('branch', ''));
+        $message = (string) $this->arg($request, 'message', '');
+        $branch = trim((string) $this->arg($request, 'branch', ''));
 
         if (trim($message) === '') {
             return 'message is required.';

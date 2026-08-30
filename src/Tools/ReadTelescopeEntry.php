@@ -27,7 +27,7 @@ class ReadTelescopeEntry extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $uuid = $request->string('job_uuid', '');
+        $uuid = $this->arg($request, 'job_uuid', '');
 
         if ($uuid !== '') {
             $entry = $this->reader->forJob($uuid);

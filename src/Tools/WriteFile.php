@@ -26,8 +26,8 @@ class WriteFile extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $path = $request->string('path', '');
-        $content = $request->string('content', '');
+        $path = $this->arg($request, 'path', '');
+        $content = $this->arg($request, 'content', '');
 
         if ($refusal = $this->guard->checkWrite($path)) {
             return $refusal;

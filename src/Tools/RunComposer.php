@@ -60,7 +60,7 @@ class RunComposer extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $subcommand = trim($request->string('subcommand', ''));
+        $subcommand = trim($this->arg($request, 'subcommand', ''));
 
         if (! in_array($subcommand, self::READ_ONLY, strict: true)
             && ! in_array($subcommand, self::MUTATING, strict: true)) {
@@ -69,7 +69,7 @@ class RunComposer extends AbstractTool
                 .implode(', ', self::MUTATING).'.';
         }
 
-        $args = preg_split('/\s+/', trim($request->string('args', '')), flags: PREG_SPLIT_NO_EMPTY);
+        $args = preg_split('/\s+/', trim($this->arg($request, 'args', '')), flags: PREG_SPLIT_NO_EMPTY);
 
         foreach ($args as $arg) {
             if (preg_match('/^(--working-dir(=.*)?|-d|--global|-g)$/', $arg)) {

@@ -26,7 +26,7 @@ class QueryDatabase extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $sql = trim($request->string('query', ''));
+        $sql = trim($this->arg($request, 'query', ''));
 
         if ($sql === '') {
             return 'A non-empty query is required.';

@@ -65,8 +65,8 @@ class Delegate extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $name = (string) $request->string('agent', '');
-        $task = (string) $request->string('task', '');
+        $name = (string) $this->arg($request, 'agent', '');
+        $task = (string) $this->arg($request, 'task', '');
 
         if (self::$delegating) {
             return 'Refused: subagents cannot delegate further. Finish this task yourself and include the open question in your report.';

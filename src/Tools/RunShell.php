@@ -35,7 +35,7 @@ class RunShell extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $command = trim($request->string('command', ''));
+        $command = trim($this->arg($request, 'command', ''));
 
         if ($command === '') {
             return 'A non-empty command is required.';

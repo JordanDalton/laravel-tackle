@@ -27,7 +27,7 @@ class ReadSentryIssue extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $issueId = $request->string('issue_id', '');
+        $issueId = $this->arg($request, 'issue_id', '');
 
         if ($issueId !== '') {
             $result = $this->reader->forIssue($issueId);

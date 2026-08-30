@@ -45,15 +45,15 @@ class GitDiff extends AbstractTool
 
         if ($request->boolean('staged', false)) {
             $cmd[] = '--staged';
-        } elseif ($commit = $request->string('commit', '')) {
+        } elseif ($commit = $this->arg($request, 'commit', '')) {
             array_push($cmd, "{$commit}^", $commit);
-        } elseif ($against = $request->string('against', '')) {
+        } elseif ($against = $this->arg($request, 'against', '')) {
             $cmd[] = "{$against}...HEAD";
         } else {
             $cmd[] = 'HEAD';
         }
 
-        if ($path = $request->string('path', '')) {
+        if ($path = $this->arg($request, 'path', '')) {
             $cmd[] = '--';
             $cmd[] = $path;
         }

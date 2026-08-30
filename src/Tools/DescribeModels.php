@@ -46,7 +46,7 @@ class DescribeModels extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $only = trim((string) $request->string('model', ''));
+        $only = trim((string) $this->arg($request, 'model', ''));
 
         if ($only !== '') {
             return $this->map->model($only);

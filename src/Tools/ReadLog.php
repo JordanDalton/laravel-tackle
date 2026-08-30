@@ -36,7 +36,7 @@ class ReadLog extends AbstractTool
         }
 
         $lines = min((int) $request->integer('lines', self::DEFAULT_LINES), self::MAX_LINES);
-        $filter = $request->string('filter', '');
+        $filter = $this->arg($request, 'filter', '');
 
         $all = file($logPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         $tail = array_slice($all, -$lines);

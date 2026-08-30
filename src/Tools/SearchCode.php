@@ -42,8 +42,8 @@ class SearchCode extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $query = $request->string('query', '');
-        $subpath = $request->string('path', '');
+        $query = $this->arg($request, 'query', '');
+        $subpath = $this->arg($request, 'path', '');
         $isRegex = $request->boolean('regex', false);
 
         if ($query === '') {

@@ -42,7 +42,7 @@ class RunTests extends AbstractTool
                 .'that points to a separate test database before running tests here.';
         }
 
-        $filter = $request->string('filter', '');
+        $filter = $this->arg($request, 'filter', '');
         $filterArg = $filter !== '' ? ' --filter='.escapeshellarg($filter) : '';
 
         $binary = file_exists($workspace.'/vendor/bin/pest')

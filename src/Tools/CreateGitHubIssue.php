@@ -35,13 +35,13 @@ class CreateGitHubIssue extends AbstractTool
             return 'GitHub is not configured. Set GITHUB_TOKEN (or run: gh auth login) and GITHUB_REPO in .env.';
         }
 
-        $title = (string) $request->string('title', '');
+        $title = (string) $this->arg($request, 'title', '');
 
         if (trim($title) === '') {
             return 'title is required.';
         }
 
-        $body = (string) $request->string('body', '');
+        $body = (string) $this->arg($request, 'body', '');
         $labels = $request->array('labels', []);
         $repo = $this->client->repo();
 

@@ -27,9 +27,9 @@ class EditFile extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $path = $request->string('path', '');
-        $oldStr = $request->string('old_str', '');
-        $newStr = $request->string('new_str', '');
+        $path = $this->arg($request, 'path', '');
+        $oldStr = $this->arg($request, 'old_str', '');
+        $newStr = $this->arg($request, 'new_str', '');
 
         if ($refusal = $this->guard->checkWrite($path)) {
             return $refusal;
