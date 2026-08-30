@@ -218,7 +218,9 @@ it('emits a single parseable JSON document with the run summary', function () {
         ->and($json)->toBeArray()
         ->and($json['ok'])->toBeTrue()
         ->and($json['outcome'])->toBe('completed')
-        ->and($json['text'])->toBe('Looked at it. All good.')
+        // Prose either side of a tool call is two turns, so it is separated
+        // rather than run together — this used to assert the concatenation.
+        ->and($json['text'])->toBe("Looked at it.\n\nAll good.")
         ->and($json['steps'])->toBe(1)
         ->and($json['interactions_denied'])->toBe(0)
         ->and($json['usage']['input_tokens'])->toBe(2000)

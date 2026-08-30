@@ -18,6 +18,17 @@ class JsonReporter implements RunReporter
 
     private string $text = '';
 
+    /**
+     * Whether the next prose starts a new turn.
+     *
+     * The reporter is told about deltas and tool calls, never about turns, so
+     * text from consecutive turns ran together: "Let me read the file
+     * first.The method already has a docblock". A tool call between two runs
+     * of prose is exactly where one turn ended and the next began, which makes
+     * it a reliable boundary without widening the interface.
+     */
+    private bool $newTurn = false;
+
     public function __construct(private OutputStyle $output) {}
 
     public function starting(array $context): void
@@ -29,6 +40,10 @@ class JsonReporter implements RunReporter
 
     public function toolCall(string $tool, array $args): void
     {
+        if ($this->text !== '') {
+            $this->newTurn = true;
+        }
+
         $this->events[] = [
             'type' => 'tool_call',
             'tool' => $tool,
@@ -47,6 +62,16 @@ class JsonReporter implements RunReporter
 
     public function text(string $delta): void
     {
+        // Only once actual prose arrives, so a stray whitespace delta after a
+        // tool call does not spend the break.
+        if ($this->newTurn && trim($delta) !== '') {
+            $this->newTurn = false;
+
+            if (! str_ends_with($this->text, "\n\n")) {
+                $this->text = rtrim($this->text)."\n\n";
+            }
+        }
+
         $this->text .= $delta;
     }
 
