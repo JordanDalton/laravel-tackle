@@ -202,3 +202,18 @@ it('reports per-case progress on stderr in JSON mode', function () {
         // stdout is still exactly one parseable document.
         ->and(json_decode(substr($output, strpos($output, '{')), true))->toHaveKey('total');
 });
+
+it('runs every case --repeat times', function () {
+    app()->bind(CodingAgent::class, fn () => new EvalFakeAgent);
+
+    Artisan::call('ai:eval', ['--case' => ['div-by-zero'], '--repeat' => 3, '--json' => true]);
+
+    $doc = evalJson();
+
+    expect($doc['total'])->toBe(3)
+        ->and($doc['by_case']['div-by-zero']['runs'])->toBe(3);
+});
+
+it('rejects a non-positive --repeat', function () {
+    expect(Artisan::call('ai:eval', ['--case' => ['div-by-zero'], '--repeat' => 0]))->not->toBe(0);
+});

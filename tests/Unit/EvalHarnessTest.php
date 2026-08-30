@@ -377,3 +377,77 @@ it('keeps the case directory when asked, and says where it is', function () {
 
     shell_exec('rm -rf '.escapeshellarg($result->keptDir));
 });
+
+it('gives each case a runnable test suite instead of making the agent build one', function () {
+    // Without a runner, RunTests reports "no tests found" and the agent
+    // reasonably concludes it should build one — a run watched here wrote a
+    // composer.json, a phpunit.xml and six tests, then installed 16MB of Pest
+    // to verify a one-method fix.
+    $seen = null;
+    (new EvalRunner)->run((new CaseRepository)->only(['div-by-zero'])[0], function (string $dir) use (&$seen) {
+        $seen = [
+            'runner' => file_exists($dir.'/vendor/bin/pest'),
+            'config' => file_exists($dir.'/phpunit.xml'),
+            'tests' => glob($dir.'/tests/*.php') ?: [],
+        ];
+
+        return [];
+    });
+
+    expect($seen['runner'])->toBeTrue()
+        ->and($seen['config'])->toBeTrue()
+        // Empty on purpose. A seeded green test made RunTests pass whatever the
+        // agent wrote: it ran it once, saw green, and stopped — turning a case
+        // it had solved correctly in fifteen steps into a false fix in seven.
+        ->and($seen['tests'])->toBeEmpty();
+});
+
+it('removes the seeded vendor symlink without touching what it points at', function () {
+    // Getting this wrong deletes the vendor directory the suite is running from.
+    $result = (new EvalRunner)->keepDirectories()
+        ->run((new CaseRepository)->only(['div-by-zero'])[0], fn () => []);
+
+    $dir = $result->keptDir;
+    expect(is_link($dir.'/vendor'))->toBeTrue();
+
+    $target = readlink($dir.'/vendor');
+
+    (new ReflectionMethod(EvalRunner::class, 'cleanup'))->invoke(new EvalRunner, $dir);
+
+    expect(is_dir($dir))->toBeFalse()
+        ->and(is_dir($target))->toBeTrue()
+        ->and(file_exists($target.'/autoload.php'))->toBeTrue();
+});
+
+// ---------------------------------------------------------------------------
+// Repeated runs
+// ---------------------------------------------------------------------------
+
+it('groups repeated runs of a case into a rate and a cost range', function () {
+    // The same case, same model, same prompt ranged from $0.05 to $0.42 across
+    // three runs. A verdict from one of them is an anecdote.
+    $report = new EvalReport([
+        new EvalResult('slugify', 'bug', new EvalGrade(true), 10, 1, 0.05, 100),
+        new EvalResult('slugify', 'bug', new EvalGrade(true, true), 10, 1, 0.42, 100),
+        new EvalResult('slugify', 'bug', new EvalGrade(true), 10, 1, 0.22, 100),
+        new EvalResult('off-by-one', 'bug', new EvalGrade(true), 10, 1, 0.04, 100),
+    ]);
+
+    $byCase = $report->toArray()['by_case'];
+
+    expect($byCase['slugify'])->toMatchArray(['runs' => 3, 'fixed' => 2, 'false_fixes' => 1, 'cost_min' => 0.05, 'cost_max' => 0.42, 'cost_mean' => 0.23])
+        ->and($byCase['off-by-one']['runs'])->toBe(1)
+        ->and($report->render())->toContain('slugify')
+        ->toContain('fixed 2/3')
+        ->toContain('false-fix 1/3')
+        ->toContain('$0.0500–$0.4200')
+        ->toContain('Runs: 4');
+});
+
+it('renders single runs as verdicts, not rates', function () {
+    $report = new EvalReport([
+        new EvalResult('a', 'bug', new EvalGrade(true), 10, 1, 0.05, 100),
+    ]);
+
+    expect($report->render())->toContain('fixed')->not->toContain('fixed 1/1');
+});

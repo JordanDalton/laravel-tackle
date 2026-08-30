@@ -356,7 +356,12 @@ class CaseRepository
             title: 'make() leaves spaces in the slug',
             category: 'bug',
             files: [$file => $buggy],
-            prompt: "EvalSlug::make() should turn a title into a URL slug — lowercase, words joined by single hyphens, no punctuation. 'Hello, World!' should become 'hello-world'.",
+            // "no punctuation" used to be in this prompt. A hyphen is punctuation,
+            // so stripping it was compliance — and three runs in a row wrote
+            // tests asserting exactly that, then scored as false fixes against
+            // a grader with a private opinion. The invariant is stated now; the
+            // case still tests whether the agent thinks past the one example.
+            prompt: "EvalSlug::make() should turn a title into a URL slug: lowercase, words joined by single hyphens, and 'Hello, World!' should become 'hello-world'. A title that is already a valid slug must come through unchanged.",
             grader: Probe::subprocess($file, <<<'PROBE'
                 $s = new EvalSlug();
                 $target = $s->make('Hello, World!') === 'hello-world';

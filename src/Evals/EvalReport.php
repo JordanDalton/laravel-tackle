@@ -101,6 +101,15 @@ class EvalReport
             'cache_write_tokens' => $this->totalCacheWriteTokens(),
             'context_tokens' => $this->totalContextTokens(),
             'cost_usd' => round($this->totalCost(), 4),
+            'by_case' => array_map(fn (array $runs) => [
+                'runs' => count($runs),
+                'fixed' => count(array_filter($runs, fn (EvalResult $r) => $r->status() === 'fixed')),
+                'false_fixes' => count(array_filter($runs, fn (EvalResult $r) => $r->status() === 'false-fix')),
+                'errors' => count(array_filter($runs, fn (EvalResult $r) => $r->status() === 'error')),
+                'cost_min' => round(min(array_map(fn (EvalResult $r) => $r->costUsd, $runs)), 4),
+                'cost_max' => round(max(array_map(fn (EvalResult $r) => $r->costUsd, $runs)), 4),
+                'cost_mean' => round(array_sum(array_map(fn (EvalResult $r) => $r->costUsd, $runs)) / count($runs), 4),
+            ], $this->byCase()),
             'cases' => array_map(fn (EvalResult $r) => [
                 'id' => $r->caseId,
                 'category' => $r->category,
@@ -138,8 +147,59 @@ class EvalReport
         ));
     }
 
+    /**
+     * Results grouped by case id, in first-seen order. With --repeat every
+     * case appears several times; the per-case story is then a rate and a
+     * cost range, not a verdict.
+     *
+     * @return array<string, list<EvalResult>>
+     */
+    public function byCase(): array
+    {
+        $groups = [];
+        foreach ($this->results as $r) {
+            $groups[$r->caseId][] = $r;
+        }
+
+        return $groups;
+    }
+
+    private function isRepeated(): bool
+    {
+        return count($this->byCase()) < count($this->results);
+    }
+
+    /**
+     * @param  list<EvalResult>  $runs
+     */
+    private function renderGroup(string $id, array $runs): string
+    {
+        $n = count($runs);
+        $fixed = count(array_filter($runs, fn (EvalResult $r) => $r->status() === 'fixed'));
+        $false = count(array_filter($runs, fn (EvalResult $r) => $r->status() === 'false-fix'));
+        $errors = count(array_filter($runs, fn (EvalResult $r) => $r->status() === 'error'));
+        $costs = array_map(fn (EvalResult $r) => $r->costUsd, $runs);
+        $icon = $fixed === $n ? '✅' : ($false > 0 ? '🟥' : ($errors > 0 ? '⚠️' : '❌'));
+
+        return sprintf(
+            '  %s  %-28s fixed %d/%d · false-fix %d/%d%s · $%.4f–$%.4f (mean $%.4f)',
+            $icon, mb_strimwidth($id, 0, 28), $fixed, $n, $false, $n,
+            $errors > 0 ? " · errors {$errors}/{$n}" : '',
+            min($costs), max($costs), array_sum($costs) / $n,
+        );
+    }
+
     public function render(): string
     {
+        if ($this->isRepeated()) {
+            $rows = [];
+            foreach ($this->byCase() as $id => $runs) {
+                $rows[] = $this->renderGroup($id, $runs);
+            }
+
+            return implode("\n", $rows)."\n\n".$this->summaryLine();
+        }
+
         $rows = [];
         foreach ($this->results as $r) {
             $icon = match ($r->status()) {
@@ -168,8 +228,13 @@ class EvalReport
             }
         }
 
+        return implode("\n", $rows)."\n\n".$this->summaryLine();
+    }
+
+    private function summaryLine(): string
+    {
         $summary = sprintf(
-            "Cases: %d  ·  fixed: %d (%.0f%%)  ·  false-fixes: %d (%.0f%%)  ·  not-fixed: %d  ·  errors: %d\n".
+            "Runs: %d  ·  fixed: %d (%.0f%%)  ·  false-fixes: %d (%.0f%%)  ·  not-fixed: %d  ·  errors: %d\n".
             'Context: %s in (%s fresh) / %s out  ·  Cost: $%.4f',
             $this->total(),
             $this->fixed(), $this->fixRate() * 100,
@@ -182,7 +247,7 @@ class EvalReport
             $this->totalCost(),
         );
 
-        return implode("\n", $rows)."\n\n".$summary;
+        return $summary;
     }
 
     private function count(callable $pred): int

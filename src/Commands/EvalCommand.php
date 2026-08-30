@@ -25,7 +25,8 @@ class EvalCommand extends Command
         {--agent=    : Agent to benchmark: "lean", "default", or a CodingAgent class. Default: the configured agent.}
         {--no-cache  : Disable prompt caching for the run (to measure its effect).}
         {--json      : Emit the report as JSON.}
-        {--keep      : Leave each case directory in place so the produced code can be read.}';
+        {--keep      : Leave each case directory in place so the produced code can be read.}
+        {--repeat=1  : Run every case this many times and report rates, not verdicts.}';
 
     protected $description = 'Benchmark the coding agent against seeded bugs — reports fix rate, false-fix rate, tokens, and cost.';
 
@@ -68,6 +69,18 @@ class EvalCommand extends Command
             $this->line('<fg=green;options=bold>Tackle Eval</> — '.count($suite).' case(s) · $'.number_format($budgetUsd, 2).'/case · '.config('tackle.model').' · '.class_basename($agentClass));
             $this->line('');
         }
+
+        $repeat = (int) $this->option('repeat');
+
+        if ($repeat < 1) {
+            $this->error("Invalid --repeat value '{$this->option('repeat')}'. Must be a positive integer.");
+
+            return self::FAILURE;
+        }
+
+        // The same case, same model, same prompt ranged from $0.05 to $0.42
+        // across three runs. One run is an anecdote; the report needs a rate.
+        $suite = array_merge(...array_fill(0, $repeat, $suite));
 
         $report = (new EvalRunner)->keepDirectories((bool) $this->option('keep'))->runAll(
             $suite,
