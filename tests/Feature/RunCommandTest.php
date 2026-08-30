@@ -396,3 +396,18 @@ it('counts created files in the diff stat', function () {
 
     shell_exec('rm -rf '.escapeshellarg($repo));
 });
+
+it('fails fast with an actionable message when the provider has no key', function () {
+    // Before this, the run booted a CI runner and died with "HTTP request
+    // returned status code 401" — on every PR, if the misconfigured model was
+    // the reviewer.
+    config()->set('ai.providers.openai.key', null);
+    fakeAgent([textDelta('never reached'), streamEnd()]);
+
+    [$json, $exit] = runJson(['--provider' => 'openai']);
+
+    expect($exit)->toBe(RunCommand::EXIT_ERROR)
+        ->and($json['outcome'])->toBe('error')
+        ->and($json['error'])->toContain("Provider 'openai' has no API key")
+        ->and($json['usage']['measured'])->toBeFalse();
+});

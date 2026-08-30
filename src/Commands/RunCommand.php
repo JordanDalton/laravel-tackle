@@ -17,6 +17,7 @@ use Tackle\Support\AutoApproveInteraction;
 use Tackle\Support\BudgetTracker;
 use Tackle\Support\CustomCommands;
 use Tackle\Support\DenyInteraction;
+use Tackle\Support\ProviderCredentials;
 use Tackle\Support\Reporting\JsonReporter;
 use Tackle\Support\Reporting\RunReporter;
 use Tackle\Support\Reporting\TextReporter;
@@ -197,6 +198,13 @@ class RunCommand extends Command
         $worktreePath = $useWorktree ? $worktrees->path() : null;
 
         try {
+            // Fail in milliseconds with a message naming the fix, not after a
+            // CI boot with "401" — the provider is a settings-page choice and
+            // the missing key is the settings-page mistake.
+            if ($credentialError = ProviderCredentials::missing()) {
+                throw new \RuntimeException($credentialError);
+            }
+
             $agent->stream($this->resolvedPrompt)->each(
                 fn ($event) => $this->handleEvent($event, $budget, $reporter),
             );

@@ -18,6 +18,7 @@ use Tackle\Review\PullRequestFetcher;
 use Tackle\Review\ReviewHistory;
 use Tackle\Review\ReviewPublisher;
 use Tackle\Support\BudgetTracker;
+use Tackle\Support\ProviderCredentials;
 use Tackle\Support\Utf8;
 use Throwable;
 
@@ -132,6 +133,10 @@ class ReviewCommand extends Command
         $text = '';
 
         try {
+            if ($credentialError = ProviderCredentials::missing()) {
+                throw new RuntimeException($credentialError);
+            }
+
             $response = $agent->stream($prompt);
             $response->each(function ($event) use (&$text, $structured, $budget) {
                 if ($event instanceof TextDelta) {

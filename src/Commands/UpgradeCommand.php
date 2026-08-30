@@ -18,6 +18,7 @@ use Tackle\Exceptions\AgentInterruptedException;
 use Tackle\Prompts\TackleSuggestPrompt;
 use Tackle\Support\AutoApproveInteraction;
 use Tackle\Support\BudgetTracker;
+use Tackle\Support\ProviderCredentials;
 use Tackle\Support\Reporting\JsonReporter;
 use Tackle\Support\Reporting\RunReporter;
 use Tackle\Support\Reporting\TextReporter;
@@ -292,6 +293,10 @@ class UpgradeCommand extends Command
             $error = null;
 
             try {
+                if ($credentialError = ProviderCredentials::missing()) {
+                    throw new \RuntimeException($credentialError);
+                }
+
                 app(UpgradeAgent::class)
                     ->stream($this->headlessPrompt($package, $context, $refIssue !== null ? (int) $refIssue : null))
                     ->each(fn ($event) => $this->handleHeadlessEvent($event, $budget, $reporter, $maxSteps));

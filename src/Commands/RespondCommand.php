@@ -22,6 +22,7 @@ use Tackle\Support\AutoApproveInteraction;
 use Tackle\Support\BudgetTracker;
 use Tackle\Support\DenyInteraction;
 use Tackle\Support\GitHubClient;
+use Tackle\Support\ProviderCredentials;
 use Throwable;
 
 /**
@@ -239,6 +240,10 @@ class RespondCommand extends Command
     private function runAgent(CodingAgent $agent, BudgetTracker $budget, string $prompt): string
     {
         $text = '';
+
+        if ($credentialError = ProviderCredentials::missing()) {
+            throw new RuntimeException($credentialError);
+        }
 
         $agent->stream($prompt)->each(function ($event) use (&$text, $budget) {
             if ($event instanceof TextDelta) {
