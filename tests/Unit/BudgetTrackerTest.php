@@ -128,3 +128,62 @@ it('surfaces cached tokens in the summary when present', function () {
 
     expect($tracker->summary())->toContain('cached: 5000 read / 500 write');
 });
+
+// ---------------------------------------------------------------------------
+// Machine-readable usage
+// ---------------------------------------------------------------------------
+
+it('reports cache reads and writes as their own lines in the usage summary', function () {
+    // The counts existed and were priced, but every JSON emitter dropped them —
+    // so a factory run reporting 141,811 input tokens gave no way to tell
+    // whether that was one big context or the same context bought 11 times.
+    $tracker = new BudgetTracker(10.00, 3.00, 15.00);
+    $tracker->record(1000, 100, 8000, 1000);
+
+    expect($tracker->usageSummary())->toMatchArray([
+        'input_tokens' => 1000,
+        'output_tokens' => 100,
+        'cache_read_tokens' => 8000,
+        'cache_write_tokens' => 1000,
+    ]);
+});
+
+it('reports the share of input served from cache', function () {
+    $tracker = new BudgetTracker(10.00, 3.00, 15.00);
+
+    // 2k fresh + 8k read (+ 0 write) — 80% of input came from cache.
+    $tracker->record(2000, 100, 8000);
+
+    expect($tracker->cacheHitRate())->toBe(0.8)
+        ->and($tracker->usageSummary()['cache_hit_rate'])->toBe(0.8);
+});
+
+it('reports a zero hit rate when caching never engaged', function () {
+    $tracker = new BudgetTracker(10.00, 3.00, 15.00);
+    $tracker->record(141_811, 1124);
+
+    expect($tracker->cacheHitRate())->toBe(0.0)
+        ->and($tracker->totalInputTokens())->toBe(141_811);
+});
+
+it('reports a zero hit rate rather than dividing by zero before any usage', function () {
+    expect((new BudgetTracker(10.00, 3.00, 15.00))->cacheHitRate())->toBe(0.0);
+});
+
+it('counts cache reads as input tokens for the purpose of "did this reach the model"', function () {
+    // inputTokens() is fresh-only, so a heavily cached turn can report a
+    // handful of fresh tokens. Callers asking whether the model ran at all
+    // must use the total.
+    $tracker = new BudgetTracker(10.00, 3.00, 15.00);
+    $tracker->record(0, 50, 9000, 0);
+
+    expect($tracker->inputTokens())->toBe(0)
+        ->and($tracker->totalInputTokens())->toBe(9000);
+});
+
+it('keeps estimated_cost_usd rounded to four places', function () {
+    $tracker = new BudgetTracker(10.00, 3.00, 15.00);
+    $tracker->record(1000, 100);
+
+    expect($tracker->usageSummary()['estimated_cost_usd'])->toBe(round($tracker->estimatedCost(), 4));
+});

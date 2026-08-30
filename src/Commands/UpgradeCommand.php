@@ -321,11 +321,7 @@ class UpgradeCommand extends Command
                 'error' => $error,
                 'steps' => $this->steps,
                 'diff_stat' => trim((string) shell_exec('git -C '.escapeshellarg($root).' diff --stat 2>/dev/null')),
-                'usage' => [
-                    'input_tokens' => $budget->inputTokens(),
-                    'output_tokens' => $budget->outputTokens(),
-                    'estimated_cost_usd' => round($budget->estimatedCost(), 4),
-                ],
+                'usage' => $budget->usageSummary(),
                 'budget_usd' => $budget->budgetUsd(),
                 'pr_url' => $this->pullRequestUrl,
             ]);

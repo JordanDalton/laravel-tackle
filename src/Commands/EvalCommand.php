@@ -99,7 +99,11 @@ class EvalCommand extends Command
                     // model (bad model id, auth, network) — that's an error to
                     // surface, not a silent "not-fixed". If it ran and then threw
                     // (budget/step ceiling), keep the partial state to grade.
-                    if ($budget->inputTokens() === 0) {
+                    //
+                    // Total, not fresh: with prompt caching most of a step's
+                    // input can arrive as a cache read, so inputTokens() alone
+                    // would call a real run a failure to reach the model.
+                    if ($budget->totalInputTokens() === 0) {
                         if (! $json) {
                             $this->line('<fg=red>error</>');
                         }

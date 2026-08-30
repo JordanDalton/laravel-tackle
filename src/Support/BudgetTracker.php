@@ -251,6 +251,52 @@ class BudgetTracker
         return $this->budgetUsd;
     }
 
+    /**
+     * Every input token the run was billed for, however it was priced.
+     * inputTokens() counts only the fresh ones, so it is the wrong number to
+     * ask "did this reach the model at all?" — with caching on, most of a
+     * step's input can arrive as a cache read.
+     */
+    public function totalInputTokens(): int
+    {
+        return $this->inputTokens + $this->cacheReadTokens + $this->cacheWriteTokens;
+    }
+
+    /**
+     * Share of input tokens served from cache, 0.0-1.0. The one number that
+     * answers whether caching is actually working: a long agent run re-sends
+     * its whole context on every step, so a low rate here means that context
+     * is being bought again at full price on each step.
+     */
+    public function cacheHitRate(): float
+    {
+        $total = $this->totalInputTokens();
+
+        return $total === 0 ? 0.0 : $this->cacheReadTokens / $total;
+    }
+
+    /**
+     * The canonical machine-readable usage block, shared by every command
+     * that emits JSON so the shape cannot drift between them.
+     *
+     * input_tokens is *fresh* input only — cache reads and writes are
+     * separate lines, because they are separate prices. Reporting the sum as
+     * one figure hides the only lever that matters on a multi-step run.
+     *
+     * @return array{input_tokens: int, output_tokens: int, cache_read_tokens: int, cache_write_tokens: int, cache_hit_rate: float, estimated_cost_usd: float}
+     */
+    public function usageSummary(): array
+    {
+        return [
+            'input_tokens' => $this->inputTokens,
+            'output_tokens' => $this->outputTokens,
+            'cache_read_tokens' => $this->cacheReadTokens,
+            'cache_write_tokens' => $this->cacheWriteTokens,
+            'cache_hit_rate' => round($this->cacheHitRate(), 4),
+            'estimated_cost_usd' => round($this->estimatedCost(), 4),
+        ];
+    }
+
     public function summary(): string
     {
         $cached = ($this->cacheReadTokens + $this->cacheWriteTokens) > 0

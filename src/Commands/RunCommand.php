@@ -226,11 +226,7 @@ class RunCommand extends Command
             'files_changed' => $this->changedFiles($worktreePath ?? base_path()),
             'diff_stat' => $diffStat,
             'interactions_denied' => $denied,
-            'usage' => [
-                'input_tokens' => $budget->inputTokens(),
-                'output_tokens' => $budget->outputTokens(),
-                'estimated_cost_usd' => round($budget->estimatedCost(), 4),
-            ],
+            'usage' => $budget->usageSummary(),
             'budget_usd' => $budget->budgetUsd(),
             'worktree' => $worktreePath,
             'pr_url' => $this->pullRequestUrl,

@@ -33,9 +33,10 @@ function toolResultEvent(string $tool, string $result): ToolResult
     return new ToolResult('e', new Data\ToolResult('t', $tool, [], $result), true, null, 0);
 }
 
-function streamEnd(int $in = 1000, int $out = 100): StreamEnd
+function streamEnd(int $in = 1000, int $out = 100, int $cacheWrite = 0, int $cacheRead = 0): StreamEnd
 {
-    return new StreamEnd('e', 'stop', new Usage($in, $out), 0);
+    // Usage's constructor order is prompt, completion, cache-write, cache-read.
+    return new StreamEnd('e', 'stop', new Usage($in, $out, $cacheWrite, $cacheRead), 0);
 }
 
 function fakeAgent(array $events): void
@@ -225,10 +226,32 @@ it('emits a single parseable JSON document with the run summary', function () {
         ->and($json['interactions_denied'])->toBe(0)
         ->and($json['usage']['input_tokens'])->toBe(2000)
         ->and($json['usage']['output_tokens'])->toBe(300)
+        ->and($json['usage']['cache_read_tokens'])->toBe(0)
+        ->and($json['usage']['cache_write_tokens'])->toBe(0)
         ->and($json['events'])->toHaveCount(2)
         ->and($json['events'][0]['type'])->toBe('tool_call')
         ->and($json['events'][0]['tool'])->toBe('ReadFile')
         ->and($json['events'][0]['args']['path'])->toBe('app/Models/User.php');
+});
+
+it('reports the cache breakdown so a run\'s real token cost can be read', function () {
+    // Two steps: the first writes the cacheable prefix, the second reads it
+    // back. Reporting only input_tokens made these two runs indistinguishable
+    // from one that re-bought the whole context at full price.
+    fakeAgent([
+        toolCallEvent('ReadFile', ['path' => 'app/Models/User.php']),
+        toolResultEvent('ReadFile', '<?php class User {}'),
+        streamEnd(in: 400, out: 120, cacheWrite: 7800),
+        streamEnd(in: 900, out: 200, cacheRead: 7800),
+    ]);
+
+    [$json] = runJson();
+
+    expect($json['usage']['input_tokens'])->toBe(1300)
+        ->and($json['usage']['cache_write_tokens'])->toBe(7800)
+        ->and($json['usage']['cache_read_tokens'])->toBe(7800)
+        // 7800 of 16,900 input tokens came from cache.
+        ->and($json['usage']['cache_hit_rate'])->toBe(0.4615);
 });
 
 it('keeps stdout parseable when a tool result contains angle brackets', function () {

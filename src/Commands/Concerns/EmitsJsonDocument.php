@@ -76,7 +76,9 @@ trait EmitsJsonDocument
     }
 
     /**
-     * The usage block ai:run reports, shaped identically here.
+     * The usage block ai:run reports — the same one, now that BudgetTracker
+     * owns the shape. Null-tolerant because a run can fail before a tracker
+     * exists.
      */
     protected function usageSummary(?BudgetTracker $budget): ?array
     {
@@ -84,10 +86,6 @@ trait EmitsJsonDocument
             return null;
         }
 
-        return [
-            'input_tokens' => $budget->inputTokens(),
-            'output_tokens' => $budget->outputTokens(),
-            'estimated_cost_usd' => round($budget->estimatedCost(), 4),
-        ];
+        return $budget->usageSummary();
     }
 }
