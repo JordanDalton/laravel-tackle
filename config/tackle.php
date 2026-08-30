@@ -41,9 +41,12 @@ return [
     */
     'model' => env('AI_CODE_MODEL', 'claude-sonnet-4-6'),
 
-    // Cache the system prompt + tool schemas on Anthropic (cache_control) so
-    // the fixed per-step prefix is billed at ~10% on repeat steps. Transparent —
-    // same behaviour, lower cost. Set false to disable everywhere.
+    // Anthropic prompt caching (cache_control). Covers both halves of a
+    // request: the fixed prefix (system prompt + tool schemas) and the
+    // conversation, which is what actually grows — without the second, every
+    // step re-buys every file read and test run at full price. Repeat reads
+    // bill at ~10%. Transparent — same behaviour, lower cost. Set false to
+    // disable everywhere.
     'prompt_cache' => env('AI_CODE_PROMPT_CACHE', true),
 
     // Restrict the coding agent's toolset to this allowlist (tool class base

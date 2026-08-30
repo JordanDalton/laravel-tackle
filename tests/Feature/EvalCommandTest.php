@@ -8,6 +8,7 @@ use Laravel\Ai\Streaming\Events\StreamEnd;
 use Tackle\Agents\CachingCodingAgent;
 use Tackle\Agents\LeanCodingAgent;
 use Tackle\Contracts\CodingAgent;
+use Tackle\Support\ConversationCache;
 use Tackle\Tests\Fakes\FakeCodingAgent;
 
 it('ai:eval is registered', function () {
@@ -111,6 +112,39 @@ it('caches by default on the standard agent and respects tackle.prompt_cache', f
 
     config()->set('tackle.prompt_cache', false);
     expect(app(CodingAgent::class)->providerOptions(Lab::Anthropic))->toBe([]);
+});
+
+it('arms conversation caching alongside the system breakpoint', function () {
+    // The system block covers instructions and tool schemas — the fixed part.
+    // The conversation is the part that grows, and laravel/ai owns those
+    // messages, so the trait arms the outbound rewrite that marks them.
+    ConversationCache::disarm();
+    config()->set('tackle.workspace', sys_get_temp_dir());
+
+    app(CachingCodingAgent::class)->providerOptions(Lab::Anthropic);
+
+    expect(ConversationCache::armed())->toBeTrue();
+
+    ConversationCache::disarm();
+});
+
+it('does not arm conversation caching for a non-anthropic provider', function () {
+    ConversationCache::disarm();
+    config()->set('tackle.workspace', sys_get_temp_dir());
+
+    app(CachingCodingAgent::class)->providerOptions('openai');
+
+    expect(ConversationCache::armed())->toBeFalse();
+});
+
+it('does not arm conversation caching when prompt caching is off', function () {
+    ConversationCache::disarm();
+    config()->set('tackle.workspace', sys_get_temp_dir());
+    config()->set('tackle.prompt_cache', false);
+
+    app(CachingCodingAgent::class)->providerOptions(Lab::Anthropic);
+
+    expect(ConversationCache::armed())->toBeFalse();
 });
 
 it('surfaces a model/stream failure as an error, not a silent not-fixed', function () {

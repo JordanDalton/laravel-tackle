@@ -4,6 +4,7 @@ namespace Tackle;
 
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Database\Events\MigrationsEnded;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -42,6 +43,7 @@ use Tackle\Http\Controllers\NightwatchWebhookController;
 use Tackle\Http\Middleware\VerifyNightwatchSignature;
 use Tackle\Support\AppMap;
 use Tackle\Support\BudgetTracker;
+use Tackle\Support\ConversationCache;
 use Tackle\Support\HookRunner;
 use Tackle\Support\TerminalInteraction;
 use Tackle\Support\WorktreeManager;
@@ -108,6 +110,10 @@ class TackleServiceProvider extends PackageServiceProvider
 
         $this->registerNightwatchWebhook();
         $this->registerAppMapInvalidation();
+
+        // Global middleware, but armed per-request by CachesInstructions, so
+        // it only ever rewrites a body a Tackle agent just built.
+        ConversationCache::register($this->app->make(Factory::class));
 
         Event::listen(SessionStarted::class, function (SessionStarted $event) {
             $this->app->make(HookRunner::class)->sessionEvent('session_start', [
