@@ -161,3 +161,44 @@ it('returns error when git checkout fails', function () {
 
     expect($result)->toContain('Failed to create branch');
 });
+
+// ---------------------------------------------------------------------------
+// Closing references
+// ---------------------------------------------------------------------------
+
+it('does not repeat a closing reference the body already carries', function () {
+    // Tackle Cloud's issue-to-task prompt tells the agent to write "Closes #N"
+    // into the description, and this tool appended another — every PR the
+    // factory opened closed the same issue twice.
+    $tool = makePrTool();
+    $method = new ReflectionMethod($tool, 'alreadyCloses');
+
+    expect($method->invoke($tool, 'Fixes the thing.
+
+Closes #30', 30))->toBeTrue();
+});
+
+it('recognises every closing keyword GitHub accepts', function () {
+    $tool = makePrTool();
+    $method = new ReflectionMethod($tool, 'alreadyCloses');
+
+    foreach (['Closes #7', 'closed #7', 'Fixes #7', 'fixed #7', 'Resolves #7', 'resolve: #7', 'FIX #7'] as $body) {
+        expect($method->invoke($tool, $body, 7))->toBeTrue("'{$body}' should count");
+    }
+});
+
+it('still appends when the body only mentions the issue in passing', function () {
+    $tool = makePrTool();
+    $method = new ReflectionMethod($tool, 'alreadyCloses');
+
+    // A bare reference does not close anything, so the tool must still add one.
+    expect($method->invoke($tool, 'Related to #30, but see also #31.', 30))->toBeFalse();
+});
+
+it('does not confuse a different issue number', function () {
+    $tool = makePrTool();
+    $method = new ReflectionMethod($tool, 'alreadyCloses');
+
+    expect($method->invoke($tool, 'Closes #300', 30))->toBeFalse()
+        ->and($method->invoke($tool, 'Closes #3', 30))->toBeFalse();
+});

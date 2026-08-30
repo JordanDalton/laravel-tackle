@@ -90,9 +90,14 @@ class CreatePullRequest extends AbstractTool
                 return 'Push failed: '.trim($push->errorOutput());
             }
 
-            // Build PR body
+            // Build PR body. The agent is often told to reference the issue
+            // itself — Tackle Cloud's issue-to-task prompt says exactly that —
+            // so appending unconditionally produced PRs closing the same issue
+            // twice. GitHub accepts any of its closing keywords, so check for
+            // all of them rather than only the one this tool writes.
             $prBody = $body;
-            if ($issueNumber > 0) {
+
+            if ($issueNumber > 0 && ! $this->alreadyCloses($body, $issueNumber)) {
                 $prBody .= "\n\nCloses #{$issueNumber}";
             }
 
@@ -116,5 +121,18 @@ class CreatePullRequest extends AbstractTool
         } catch (Throwable $e) {
             return 'Error opening pull request: '.$e->getMessage();
         }
+    }
+
+    /**
+     * Whether the body already links the issue with a closing keyword.
+     *
+     * @see https://docs.github.com/articles/closing-issues-using-keywords
+     */
+    private function alreadyCloses(string $body, int $issueNumber): bool
+    {
+        return (bool) preg_match(
+            '/\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b\s*:?\s*#'.$issueNumber.'\b/i',
+            $body,
+        );
     }
 }
