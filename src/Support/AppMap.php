@@ -867,9 +867,68 @@ class AppMap
     {
         ['routes' => $routes, 'controllers' => $controllers] = $this->routeCounts();
 
-        return $routes === 0
-            ? ''
-            : "Routes: {$routes} across {$controllers} controllers. Use ListRoutes to find one, DescribeRoute for its middleware, validation and authorization.";
+        if ($routes === 0) {
+            return '';
+        }
+
+        $line = "Routes: {$routes} across {$controllers} controllers. Use ListRoutes to find one, DescribeRoute for its middleware, validation and authorization.";
+
+        $entry = $this->entryPoint();
+
+        return $entry === '' ? $line : $line."\n".$entry;
+    }
+
+    /**
+     * What the site's root actually renders.
+     *
+     * The line above is a pointer, and dereferencing it costs tool calls: a
+     * run watched in production spent three steps on ListRoutes and
+     * `route:list` working out where "the homepage" lived, then edited the
+     * wrong file anyway. The router already knows, and saying so costs about
+     * twenty tokens.
+     *
+     * Deliberately only the root. Listing every route would grow the per-step
+     * floor for every run, including the ones that never touch a route; the
+     * entry point is the one a task is most often described relative to.
+     */
+    private function entryPoint(): string
+    {
+        try {
+            foreach (app('router')->getRoutes() as $route) {
+                if (trim($route->uri(), '/') !== '' || ! in_array('GET', $route->methods(), true)) {
+                    continue;
+                }
+
+                $name = $route->getName();
+                $suffix = $name ? " [name: {$name}]" : '';
+
+                // Inertia's route macro stashes the page component in the
+                // route defaults; Laravel's Route::view does the same with a
+                // view name. Either is the answer the agent is looking for.
+                $defaults = $route->defaults ?? [];
+
+                if (is_string($component = $defaults['component'] ?? null) && $component !== '') {
+                    $file = 'resources/js/pages/'.$component.'.vue';
+
+                    return 'Entry: GET / renders the Inertia page '.$component
+                        .(is_file($this->guard->workspace().'/'.$file) ? " ({$file})" : '').$suffix;
+                }
+
+                if (is_string($view = $defaults['view'] ?? null) && $view !== '') {
+                    return "Entry: GET / renders the view {$view}{$suffix}";
+                }
+
+                $action = $route->getActionName();
+
+                return $action === 'Closure'
+                    ? "Entry: GET / is a closure in the route files{$suffix}"
+                    : "Entry: GET / is handled by {$action}{$suffix}";
+            }
+        } catch (Throwable) {
+            // An app map is a convenience; never let it break a run.
+        }
+
+        return '';
     }
 
     /**

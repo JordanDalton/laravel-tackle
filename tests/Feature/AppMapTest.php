@@ -362,3 +362,61 @@ it('rebuilds the cache on tackle:map --fresh', function () {
 
     expect(is_file($map->path()))->toBeTrue();
 });
+
+// ---------------------------------------------------------------------------
+// The entry point
+// ---------------------------------------------------------------------------
+
+it('names what the site root renders, rather than pointing at ListRoutes', function () {
+    // A production run spent three steps on ListRoutes and route:list working
+    // out where "the homepage" lived, then edited the wrong file. The router
+    // knew all along.
+    Route::get('/', fn () => '')->name('home');
+
+    $map = new AppMap(new PathGuard(mapWorkspace()));
+    $map->flush();
+
+    expect($map->indexSection())->toContain('Entry: GET /')
+        ->toContain('[name: home]');
+});
+
+it('names the Inertia page a root route renders', function () {
+    // Inertia's route macro stashes the component in the route defaults.
+    Route::get('/', fn () => '')->defaults('component', 'Welcome');
+
+    $map = new AppMap(new PathGuard(mapWorkspace()));
+    $map->flush();
+
+    expect($map->indexSection())
+        ->toContain('renders the Inertia page Welcome')
+        // The file is only named when it is actually there.
+        ->not->toContain('resources/js/pages/Welcome.vue');
+});
+
+it('names the view a root route renders', function () {
+    Route::get('/', fn () => '')->defaults('view', 'welcome');
+
+    $map = new AppMap(new PathGuard(mapWorkspace()));
+    $map->flush();
+
+    expect($map->indexSection())->toContain('renders the view welcome');
+});
+
+it('names the controller behind the root route', function () {
+    Route::get('/', [DescribeModels::class, 'handle']);
+
+    $map = new AppMap(new PathGuard(mapWorkspace()));
+    $map->flush();
+
+    expect($map->indexSection())->toContain('is handled by')
+        ->toContain('DescribeModels');
+});
+
+it('says nothing about an entry point when there is no root route', function () {
+    Route::get('/somewhere-else', fn () => '');
+
+    $map = new AppMap(new PathGuard(mapWorkspace()));
+    $map->flush();
+
+    expect($map->indexSection())->not->toContain('Entry: GET /');
+});
