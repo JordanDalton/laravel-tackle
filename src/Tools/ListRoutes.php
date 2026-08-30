@@ -3,9 +3,10 @@
 namespace Tackle\Tools;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Tools\Request;
 use Tackle\Support\PathGuard;
+use Tackle\Support\ToolOutput;
+use Throwable;
 
 class ListRoutes extends AbstractTool
 {
@@ -28,40 +29,47 @@ class ListRoutes extends AbstractTool
 
     public function handle(Request $request): string
     {
-        $workspace = $this->guard->workspace();
+        $filter = strtolower(trim($request->string('filter', '')));
+        $method = strtoupper(trim($request->string('method', '')));
 
-        $cmd = ['php', 'artisan', 'route:list', '--json'];
-
-        if ($filter = $request->string('filter', '')) {
-            $cmd = array_merge($cmd, ['--filter', $filter]);
+        // Read the booted router rather than shelling out to `route:list`.
+        // The subprocess version passed a `--filter` option that command does
+        // not have, so every filtered call failed — and artisan prints that
+        // error on stdout, which the tool did not report, so it failed blank.
+        // The app map already reads routes this way; it needs no APP_KEY, no
+        // subprocess, and no parsing of its own output.
+        try {
+            $routes = app('router')->getRoutes();
+        } catch (Throwable $e) {
+            return 'Could not retrieve routes: '.$e->getMessage();
         }
 
-        if ($method = $request->string('method', '')) {
-            $cmd = array_merge($cmd, ['--method', strtoupper($method)]);
+        $lines = [];
+
+        foreach ($routes as $route) {
+            $methods = array_values(array_diff($route->methods(), ['HEAD']));
+
+            if ($method !== '' && ! in_array($method, $methods, true)) {
+                continue;
+            }
+
+            $uri = $route->uri();
+            $name = (string) $route->getName();
+            $action = $route->getActionName();
+
+            if ($filter !== '' && ! str_contains(strtolower($uri.' '.$name.' '.$action), $filter)) {
+                continue;
+            }
+
+            $lines[] = sprintf('%-8s %-45s %-30s %s', implode('|', $methods), $uri, $name, $action);
         }
 
-        $result = Process::path($workspace)->timeout(30)->run($cmd);
-
-        if (! $result->successful()) {
-            return 'Could not retrieve routes: '.trim($result->errorOutput());
+        if ($lines === []) {
+            return $filter !== '' || $method !== ''
+                ? 'No routes matched'.($filter !== '' ? " '{$filter}'" : '').($method !== '' ? " [{$method}]" : '').'.'
+                : 'No routes found.';
         }
 
-        $routes = json_decode(trim($result->output()), true);
-
-        if (! is_array($routes) || empty($routes)) {
-            return 'No routes found.';
-        }
-
-        $lines = array_map(fn ($r) => sprintf(
-            '%-8s %-45s %-30s %s',
-            implode('|', (array) ($r['method'] ?? '')),
-            $r['uri'] ?? '',
-            $r['name'] ?? '',
-            $r['action'] ?? '',
-        ), $routes);
-
-        return sprintf("%-8s %-45s %-30s %s\n", 'METHOD', 'URI', 'NAME', 'ACTION')
-            .str_repeat('-', 120)."\n"
-            .implode("\n", $lines);
+        return ToolOutput::cap(implode("\n", $lines));
     }
 }

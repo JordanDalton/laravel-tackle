@@ -55,10 +55,46 @@ class RunArtisan extends AbstractTool
             ->run("php artisan {$command}");
 
         if ($result->failed()) {
-            return "Artisan command failed (exit {$result->exitCode()}):\n{$result->errorOutput()}";
+            // Artisan writes most of its errors to stdout, not stderr — an
+            // unknown option, a missing argument, a rendered exception. A
+            // failure reported from stderr alone was very often blank.
+            $detail = trim($result->errorOutput()."\n".$result->output());
+
+            return "Artisan command failed (exit {$result->exitCode()}):\n".Utf8::clean($detail);
         }
 
-        return Utf8::clean($result->output()) ?: '(Command ran successfully with no output.)';
+        $output = Utf8::clean($result->output()) ?: '(Command ran successfully with no output.)';
+
+        return $output.$this->createdFiles($output);
+    }
+
+    /**
+     * The contents of whatever a make:* command just created.
+     *
+     * Without this the next step is always a guess at the stub's contents
+     * followed by an EditFile that misses, then a ReadFile, then the edit
+     * again — three steps to learn what artisan had just printed the path
+     * of. Two runs in a row did exactly that.
+     */
+    private function createdFiles(string $output): string
+    {
+        if (! preg_match_all('/\[([^\]]+\.php)\] created successfully/', $output, $matches)) {
+            return '';
+        }
+
+        $appended = '';
+
+        foreach (array_unique($matches[1]) as $relative) {
+            $path = $this->pathGuard->workspace().'/'.ltrim($relative, '/');
+
+            if (! is_file($path)) {
+                continue;
+            }
+
+            $appended .= "\n\n--- {$relative} ---\n".Utf8::clean((string) file_get_contents($path));
+        }
+
+        return $appended;
     }
 
     private function interaction(): InteractionPolicy
