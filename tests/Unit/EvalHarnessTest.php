@@ -352,3 +352,28 @@ it('renders a run shape beneath each case', function () {
 
     expect((new EvalReport([$result]))->render())->toContain('ReadFile×2 EditFile');
 });
+
+it('deletes the case directory by default', function () {
+    $runner = new EvalRunner;
+    $case = (new CaseRepository)->only(['div-by-zero'])[0];
+
+    $result = $runner->run($case, fn (string $dir) => []);
+
+    expect($result->keptDir)->toBeNull();
+});
+
+it('keeps the case directory when asked, and says where it is', function () {
+    // A false fix is the interesting failure, and the evidence used to be
+    // deleted the moment it was graded — leaving only the verdict.
+    $runner = (new EvalRunner)->keepDirectories();
+    $case = (new CaseRepository)->only(['div-by-zero'])[0];
+
+    $result = $runner->run($case, fn (string $dir) => []);
+
+    expect($result->keptDir)->toBeString()
+        ->and(is_dir($result->keptDir))->toBeTrue()
+        ->and(file_exists($result->keptDir.'/EvalOrderStats.php'))->toBeTrue()
+        ->and((new EvalReport([$result]))->render())->toContain($result->keptDir);
+
+    shell_exec('rm -rf '.escapeshellarg($result->keptDir));
+});

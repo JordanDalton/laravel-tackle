@@ -113,6 +113,7 @@ class EvalReport
                 'cost_usd' => round($r->costUsd, 4),
                 'tool_calls' => $r->toolCalls,
                 'tool_counts' => $r->toolCounts(),
+                'kept_dir' => $r->keptDir,
                 'duration_ms' => $r->durationMs,
                 'note' => $r->grade->note,
                 'error' => $r->error,
@@ -160,6 +161,10 @@ class EvalReport
 
             if ($r->toolCalls !== []) {
                 $rows[] = '      '.self::toolShape($r->toolCounts());
+            }
+
+            if ($r->keptDir !== null) {
+                $rows[] = '      '.$r->keptDir;
             }
         }
 

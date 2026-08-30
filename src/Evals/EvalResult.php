@@ -28,6 +28,8 @@ class EvalResult
         public readonly int $cacheWriteTokens = 0,
         /** @var list<string> tool names in call order */
         public readonly array $toolCalls = [],
+        /** Where the graded files were left, when the runner was told to keep them. */
+        public readonly ?string $keptDir = null,
     ) {}
 
     /**

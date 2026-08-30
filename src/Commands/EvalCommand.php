@@ -24,7 +24,8 @@ class EvalCommand extends Command
         {--provider= : Provider to run the cases on.}
         {--agent=    : Agent to benchmark: "lean", "default", or a CodingAgent class. Default: the configured agent.}
         {--no-cache  : Disable prompt caching for the run (to measure its effect).}
-        {--json      : Emit the report as JSON.}';
+        {--json      : Emit the report as JSON.}
+        {--keep      : Leave each case directory in place so the produced code can be read.}';
 
     protected $description = 'Benchmark the coding agent against seeded bugs — reports fix rate, false-fix rate, tokens, and cost.';
 
@@ -68,7 +69,7 @@ class EvalCommand extends Command
             $this->line('');
         }
 
-        $report = (new EvalRunner)->runAll(
+        $report = (new EvalRunner)->keepDirectories((bool) $this->option('keep'))->runAll(
             $suite,
             function (string $dir, EvalCase $case) use ($budgetUsd, $maxSteps, $json, $agentClass): array {
                 // In JSON mode progress goes to stderr, not nowhere: the suite

@@ -14,6 +14,8 @@ use Throwable;
  */
 class EvalRunner
 {
+    private bool $keep = false;
+
     public function __construct(private readonly ?string $baseDir = null) {}
 
     /**
@@ -21,6 +23,22 @@ class EvalRunner
      *                                                                                                                                                                                     Given the case directory and case, mutate the files to solve it and
      *                                                                                                                                                                                     return usage. May throw — the case is then recorded as an error.
      */
+    /**
+     * Keep case directories after grading instead of deleting them.
+     *
+     * A false fix is the interesting failure — the agent satisfied the stated
+     * example and broke something the prompt never mentioned — and until now
+     * the evidence was deleted the moment it was graded, leaving only the
+     * verdict. Off by default: a full suite would otherwise leave a directory
+     * per case behind on every run.
+     */
+    public function keepDirectories(bool $keep = true): self
+    {
+        $this->keep = $keep;
+
+        return $this;
+    }
+
     public function run(EvalCase $case, callable $solve): EvalResult
     {
         $dir = $this->seed($case);
@@ -40,7 +58,9 @@ class EvalRunner
 
         $durationMs = (int) (microtime(true) * 1000) - $start;
 
-        $this->cleanup($dir);
+        if (! $this->keep) {
+            $this->cleanup($dir);
+        }
 
         return new EvalResult(
             caseId: $case->id,
@@ -54,6 +74,7 @@ class EvalRunner
             cacheReadTokens: (int) $usage['cacheReadTokens'],
             cacheWriteTokens: (int) $usage['cacheWriteTokens'],
             toolCalls: array_values((array) $usage['toolCalls']),
+            keptDir: $this->keep ? $dir : null,
         );
     }
 
