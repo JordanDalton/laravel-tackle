@@ -11,6 +11,21 @@ use Tackle\Contracts\CodingAgent;
 use Tackle\Support\ConversationCache;
 use Tackle\Tests\Fakes\FakeCodingAgent;
 
+/**
+ * The JSON document ai:eval wrote to stdout.
+ *
+ * Progress now goes to stderr, and under Artisan::call both streams share one
+ * buffer — so the human-readable lines are trimmed off the front here, exactly
+ * as ai:run's test helper does.
+ */
+function evalJson(): ?array
+{
+    $output = Artisan::output();
+    $start = strpos($output, '{');
+
+    return $start === false ? null : json_decode(substr($output, $start), true);
+}
+
 it('ai:eval is registered', function () {
     expect(Artisan::all())->toHaveKey('ai:eval');
 });
@@ -54,7 +69,8 @@ it('benchmarks the agent class given to --agent', function () {
     app()->bind(EvalFakeAgent::class, fn () => new EvalFakeAgent);
 
     $exit = Artisan::call('ai:eval', ['--case' => ['div-by-zero'], '--agent' => EvalFakeAgent::class, '--json' => true]);
-    $doc = json_decode(substr(Artisan::output(), strpos(Artisan::output(), '{')), true);
+    // Once: Artisan::output() drains the buffer, so a second call returns ''.
+    $doc = evalJson();
 
     expect($exit)->toBe(0)
         ->and($doc['total'])->toBe(1)
@@ -160,10 +176,29 @@ it('surfaces a model/stream failure as an error, not a silent not-fixed', functi
     });
 
     $exit = Artisan::call('ai:eval', ['--case' => ['div-by-zero'], '--json' => true]);
-    $doc = json_decode(substr(Artisan::output(), strpos(Artisan::output(), '{')), true);
+    // Once: Artisan::output() drains the buffer, so a second call returns ''.
+    $doc = evalJson();
 
     expect($exit)->toBe(1) // errors → non-zero
         ->and($doc['errors'])->toBe(1)
         ->and($doc['cases'][0]['status'])->toBe('error')
         ->and($doc['cases'][0]['error'])->toContain('unknown model');
+});
+
+it('reports per-case progress on stderr in JSON mode', function () {
+    // A suite runs for minutes. --json used to print nothing at all until the
+    // final document, which is indistinguishable from a hang — and it is the
+    // one command here that spends real money while it does it.
+    app()->bind(CodingAgent::class, fn () => new EvalFakeAgent);
+
+    Artisan::call('ai:eval', ['--case' => ['div-by-zero'], '--json' => true]);
+
+    $output = Artisan::output();
+
+    // Both streams share one buffer under Artisan::call, so this asserts the
+    // progress was written at all, and that it lands ahead of the document.
+    expect($output)->toContain('running div-by-zero')
+        ->and(strpos($output, 'running div-by-zero'))->toBeLessThan(strpos($output, '{'))
+        // stdout is still exactly one parseable document.
+        ->and(json_decode(substr($output, strpos($output, '{')), true))->toHaveKey('total');
 });

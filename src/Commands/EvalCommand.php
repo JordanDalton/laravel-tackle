@@ -71,9 +71,10 @@ class EvalCommand extends Command
         $report = (new EvalRunner)->runAll(
             $suite,
             function (string $dir, EvalCase $case) use ($budgetUsd, $maxSteps, $json, $agentClass): array {
-                if (! $json) {
-                    $this->output->write(sprintf('  running %-28s ', $case->id));
-                }
+                // In JSON mode progress goes to stderr, not nowhere: the suite
+                // runs for minutes and stdout must stay a single parseable
+                // document. Same discipline as ai:review and ai:respond.
+                $this->progress($json, sprintf('  running %-28s ', $case->id));
 
                 config(['tackle.workspace' => $dir, 'tackle.budget_usd' => $budgetUsd]);
                 app()->forgetInstance(BudgetTracker::class);
@@ -104,17 +105,16 @@ class EvalCommand extends Command
                     // input can arrive as a cache read, so inputTokens() alone
                     // would call a real run a failure to reach the model.
                     if ($budget->totalInputTokens() === 0) {
-                        if (! $json) {
-                            $this->line('<fg=red>error</>');
-                        }
+                        $this->progress($json, "error\n");
 
                         throw new \RuntimeException($e->getMessage(), 0, $e);
                     }
                 }
 
-                if (! $json) {
-                    $this->line('done');
-                }
+                $this->progress($json, sprintf("done  %s tok  $%.4f\n",
+                    number_format($budget->totalInputTokens() + $budget->outputTokens()),
+                    $budget->estimatedCost(),
+                ));
 
                 return [
                     'inputTokens' => $budget->inputTokens(),
@@ -143,6 +143,22 @@ class EvalCommand extends Command
      * ai:code / ai:run use) so the numbers reflect production; an explicit
      * --agent lets you measure a leaner toolset against the same cases.
      */
+    /**
+     * Per-case progress. A suite takes minutes and --json used to print
+     * nothing at all until the final document, which is indistinguishable
+     * from a hang. Routed to stderr so stdout stays one parseable document.
+     */
+    private function progress(bool $json, string $line): void
+    {
+        if ($json) {
+            $this->output->getErrorStyle()->write($line);
+
+            return;
+        }
+
+        $this->output->write($line);
+    }
+
     private function resolveAgentClass(): ?string
     {
         $given = $this->option('agent');
