@@ -131,8 +131,14 @@ class CreatePullRequest extends AbstractTool
 
             if (! $response->successful()) {
                 $error = $response->json('message', 'unknown error');
+                $details = $response->json('errors');
 
-                return "PR creation failed: {$error}";
+                if (is_array($details) && $details !== []) {
+                    $encoded = json_encode($details, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                    $error .= $encoded === false ? '' : ' — '.$encoded;
+                }
+
+                return "PR creation failed (HTTP {$response->status()}): {$error}";
             }
 
             $prUrl = $response->json('html_url', '');

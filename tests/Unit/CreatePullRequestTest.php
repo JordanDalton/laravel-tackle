@@ -135,7 +135,10 @@ it('returns error when GitHub API rejects the PR', function () {
     fakeGitSuccess();
 
     Http::fake([
-        '*api.github.com*' => Http::response(['message' => 'Validation Failed'], 422),
+        '*api.github.com*' => Http::response([
+            'message' => 'Validation Failed',
+            'errors' => [['resource' => 'PullRequest', 'field' => 'head', 'code' => 'invalid']],
+        ], 422),
     ]);
 
     $result = makePrTool()->handle(prRequest([
@@ -144,7 +147,11 @@ it('returns error when GitHub API rejects the PR', function () {
         'branch' => 'tackle/fix',
     ]));
 
-    expect($result)->toContain('Validation Failed');
+    expect($result)
+        ->toContain('HTTP 422')
+        ->toContain('Validation Failed')
+        ->toContain('PullRequest')
+        ->toContain('head');
 });
 
 it('returns error when git checkout fails', function () {

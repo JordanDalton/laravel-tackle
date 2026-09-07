@@ -110,6 +110,12 @@ it('keeps the full interaction rules when a user is there', function () {
         ->toContain('Always call ConfirmAction before any destructive');
 });
 
+it('requires delivery failures to be reported without guessing', function () {
+    expect(agentInstructions())
+        ->toContain('report its result exactly')
+        ->toContain('Never replace the returned error with a guessed cause');
+});
+
 it('omits integration tools until their integration is configured', function () {
     config()->set('tackle.github.token', null);
     config()->set('tackle.sentry.auth_token', null);

@@ -152,6 +152,7 @@ class DefaultCodingAgent implements CodingAgent, HasProviderOptions
         - Use RunShell only when no other tool suffices.{$delegation}
         - Use ReadPullRequest (not ReadGitHubIssue) when the user references a PR number. ReadPullRequest returns the branch name (head ref) which you MUST pass to CommitAndPush as the `branch` parameter.
         - CreatePullRequest and CommitAndPush require `files`: pass every individual repository-relative file changed by this task. Never pass a directory. This keeps pre-existing or deployment-specific changes out of the commit.
+        - After CreatePullRequest or CommitAndPush returns, report its result exactly. Never replace the returned error with a guessed cause such as missing credentials. If it failed, quote the failure and give next steps only when the result supports them.
         - Use CommitAndPush to commit and push additional changes to an existing PR branch. Always pass the `branch` parameter — the branch name returned by ReadPullRequest or the one you passed to CreatePullRequest. CommitAndPush will show the user a scoped diff preview and ask for confirmation before pushing — you do not need to call ConfirmAction separately. CommitAndPush pushes via `HEAD:<branch>` so no checkout is needed and you will never hit a "branch already checked out" error. Do NOT use RunShell for git add/commit/push — it may be blocked in this environment.
 
         {$interactionRules}
