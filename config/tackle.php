@@ -588,10 +588,11 @@ return [
     | When set, the ReadGitHubIssue tool can fetch issue details (title, body,
     | labels, and all comments) directly from the GitHub API.
     |
-    | token  - A GitHub personal access token with repo scope (or a fine-grained
-    |           token with Issues: read permission). Shared with the self-healer.
+    | token  - A GitHub personal access token with repo scope. For a fine-grained
+    |           token or GitHub App, grant repository access plus Contents: read,
+    |           Issues: read, and Pull requests: write. Shared with the self-healer.
     |           Generate one at https://github.com/settings/tokens
-    | repo   - The owner/repo slug, e.g. "acme/my-app".
+    | repo   - The owner/repo slug matching git origin, e.g. "acme/my-app".
     |
     */
     'github' => [

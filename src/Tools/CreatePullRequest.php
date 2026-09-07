@@ -65,6 +65,11 @@ class CreatePullRequest extends AbstractTool
         $base = $base ?: 'main';
         $repo = $this->client->repo();
         $git = new ScopedGitCommit($this->pathGuard);
+        $originRepo = $this->originRepo();
+
+        if ($originRepo !== null && strcasecmp($originRepo, (string) $repo) !== 0) {
+            return "GITHUB_REPO is set to {$repo}, but git origin points to {$originRepo}. Set GITHUB_REPO={$originRepo} so GitHub can read the branch this tool pushes.";
+        }
 
         try {
             $files = $git->files($request->array('files', []));
@@ -138,6 +143,10 @@ class CreatePullRequest extends AbstractTool
                     $error .= $encoded === false ? '' : ' — '.$encoded;
                 }
 
+                if (str_contains(strtolower($error), 'not all refs are readable')) {
+                    return "PR creation failed (HTTP {$response->status()}): {$error}. The branch was pushed successfully, but this GitHub token cannot read the base or head ref. Verify GITHUB_REPO={$originRepo} and grant the token access to that repository with Contents: read and Pull requests: write.";
+                }
+
                 return "PR creation failed (HTTP {$response->status()}): {$error}";
             }
 
@@ -147,6 +156,23 @@ class CreatePullRequest extends AbstractTool
         } catch (Throwable $e) {
             return 'Error opening pull request: '.$e->getMessage();
         }
+    }
+
+    private function originRepo(): ?string
+    {
+        $result = Process::path($this->pathGuard->workspace())->run('git remote get-url origin');
+
+        if (! $result->successful()) {
+            return null;
+        }
+
+        $url = trim($result->output());
+
+        if (! preg_match('#github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$#i', $url, $matches)) {
+            return null;
+        }
+
+        return rtrim($matches[1], '/');
     }
 
     /**

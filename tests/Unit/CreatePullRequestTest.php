@@ -154,6 +154,55 @@ it('returns error when GitHub API rejects the PR', function () {
         ->toContain('head');
 });
 
+it('explains unreadable refs after a successful branch push', function () {
+    config()->set('tackle.github.token', 'ghp_token');
+    config()->set('tackle.github.repo', 'acme/app');
+
+    fakeGitSuccess();
+
+    Http::fake([
+        '*api.github.com*' => Http::response([
+            'message' => 'Validation Failed',
+            'errors' => [['resource' => 'PullRequest', 'code' => 'custom', 'message' => 'not all refs are readable']],
+        ], 422),
+    ]);
+
+    $result = makePrTool()->handle(prRequest([
+        'title' => 'Fix',
+        'body' => 'Details.',
+        'branch' => 'tackle/fix',
+    ]));
+
+    expect($result)
+        ->toContain('The branch was pushed successfully')
+        ->toContain('Contents: read')
+        ->toContain('Pull requests: write');
+});
+
+it('refuses to push when GITHUB_REPO does not match origin', function () {
+    config()->set('tackle.github.token', 'ghp_token');
+    config()->set('tackle.github.repo', 'acme/wrong-app');
+
+    Process::fake(function ($process) {
+        $command = is_array($process->command) ? implode(' ', $process->command) : (string) $process->command;
+
+        return str_contains($command, 'remote get-url origin')
+            ? Process::result('git@github.com:acme/app.git')
+            : Process::result(' M app/Foo.php');
+    });
+
+    $result = makePrTool()->handle(prRequest([
+        'title' => 'Fix',
+        'body' => 'Details.',
+        'branch' => 'tackle/fix',
+    ]));
+
+    expect($result)
+        ->toContain('GITHUB_REPO is set to acme/wrong-app')
+        ->toContain('git origin points to acme/app')
+        ->toContain('GITHUB_REPO=acme/app');
+});
+
 it('returns error when git checkout fails', function () {
     config()->set('tackle.github.token', 'ghp_token');
     config()->set('tackle.github.repo', 'acme/app');
