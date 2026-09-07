@@ -35,7 +35,7 @@ Then start an interactive coding session:
 php artisan ai:code
 ```
 
-That's it — see [Your First Session](https://tackle.jordandalton.com/guide/first-session) for the guided tour. Requires **PHP 8.3+** and **Laravel 12 or 13**.
+That's it — see [Your First Session](https://tackle.jordandalton.com/guide/first-session.html) for the guided tour. Requires **PHP 8.3+** and **Laravel 12 or 13**.
 
 ## What's in the box
 
@@ -43,34 +43,34 @@ A family of agents, all sharing one tool infrastructure and safety layer:
 
 | Command | What it does |
 |---|---|
-| [`ai:code`](https://tackle.jordandalton.com/agents/interactive) | Interactive coding agent — reads the codebase, edits files, runs tests, plan mode, slash commands, context compaction. |
-| [`ai:run`](https://tackle.jordandalton.com/agents/headless) | The same agent headless — one task, a JSON result, an exit code. For CI and cron. |
-| [`ai:fix`](https://tackle.jordandalton.com/agents/fix) | Focused fix session — paste an exception or point it at a Sentry / GitHub issue; it diagnoses, patches, and verifies. |
-| [`ai:review`](https://tackle.jordandalton.com/agents/review) | Read-only diff review with severity levels; posts inline comments on a PR. |
-| [`ai:onboard`](https://tackle.jordandalton.com/agents/onboard) | A read-only tour of a codebase for a new developer; `--write` saves `docs/ONBOARDING.md`. |
-| [`ai:upgrade`](https://tackle.jordandalton.com/agents/upgrade) | Safe major-version Composer upgrades — audit, plan, fix, verify — delivered as a PR. |
-| [`ai:eval`](https://tackle.jordandalton.com/agents/eval) | Benchmark the agent against seeded bugs — fix rate, false-fix rate, tokens, cost. |
-| [Self-healer](https://tackle.jordandalton.com/agents/self-healing) | Autonomous agent that heals failed jobs, scheduled tasks, and [Nightwatch](https://tackle.jordandalton.com/integrations/nightwatch) production issues — verifies the fix, opens a PR. |
+| [`ai:code`](https://tackle.jordandalton.com/agents/interactive.html) | Interactive coding agent — reads the codebase, edits files, runs tests, plan mode, slash commands, context compaction. |
+| [`ai:run`](https://tackle.jordandalton.com/agents/headless.html) | The same agent headless — one task, a JSON result, an exit code. For CI and cron. |
+| [`ai:fix`](https://tackle.jordandalton.com/agents/fix.html) | Focused fix session — paste an exception or point it at a Sentry / GitHub issue; it diagnoses, patches, and verifies. |
+| [`ai:review`](https://tackle.jordandalton.com/agents/review.html) | Read-only diff review with severity levels; posts inline comments on a PR. |
+| [`ai:onboard`](https://tackle.jordandalton.com/agents/onboard.html) | A read-only tour of a codebase for a new developer; `--write` saves `docs/ONBOARDING.md`. |
+| [`ai:upgrade`](https://tackle.jordandalton.com/agents/upgrade.html) | Safe major-version Composer upgrades — audit, plan, fix, verify — delivered as a PR. |
+| [`ai:eval`](https://tackle.jordandalton.com/agents/eval.html) | Benchmark the agent against seeded bugs — fix rate, false-fix rate, tokens, cost. |
+| [Self-healer](https://tackle.jordandalton.com/agents/self-healing.html) | Autonomous agent that heals failed jobs, scheduled tasks, and [Nightwatch](https://tackle.jordandalton.com/integrations/nightwatch.html) production issues — verifies the fix, opens a PR. |
 
-Plus [`ai:explain`](https://tackle.jordandalton.com/agents/explain-and-test), [`ai:test`](https://tackle.jordandalton.com/agents/explain-and-test#generate-tests), and [`ai:respond`](https://tackle.jordandalton.com/agents/review).
+Plus [`ai:explain`](https://tackle.jordandalton.com/agents/explain-and-test.html), [`ai:test`](https://tackle.jordandalton.com/agents/explain-and-test.html#generate-tests), and [`ai:respond`](https://tackle.jordandalton.com/agents/review.html).
 
-Every agent also sees the **[application map](https://tackle.jordandalton.com/guide/app-map)** — your real columns and types off the live connection, relationships, scopes, observers, policies, factory states, and the fully resolved middleware and validation on any route, read from the booted application rather than inferred from files. An index of your models rides in every session's prompt; the detail is one tool call away. It's the thing an agent running outside your app can't have.
+Every agent also sees the **[application map](https://tackle.jordandalton.com/guide/app-map.html)** — your real columns and types off the live connection, relationships, scopes, observers, policies, factory states, and the fully resolved middleware and validation on any route, read from the booted application rather than inferred from files. An index of your models rides in every session's prompt; the detail is one tool call away. It's the thing an agent running outside your app can't have.
 
-Every agent is extensible — [add your own tools](https://tackle.jordandalton.com/extending/custom-tools), [write new agents](https://tackle.jordandalton.com/extending/custom-agents), [hook the tool lifecycle](https://tackle.jordandalton.com/extending/hooks), or [swap the default agent](https://tackle.jordandalton.com/extending/custom-agents) — without forking. And the terminal isn't the only way in: [Tackle Remote](https://tackle.jordandalton.com/integrations/remote) drives the same harness from your phone's browser, and [Tackle Telegram](https://tackle.jordandalton.com/integrations/telegram) drives it from a chat — outbound-only, so it works from anywhere without your phone needing to reach your machine.
+Every agent is extensible — [add your own tools](https://tackle.jordandalton.com/extending/custom-tools.html), [write new agents](https://tackle.jordandalton.com/extending/custom-agents.html), [hook the tool lifecycle](https://tackle.jordandalton.com/extending/hooks.html), or [swap the default agent](https://tackle.jordandalton.com/extending/custom-agents.html) — without forking. And the terminal isn't the only way in: [Tackle Remote](https://tackle.jordandalton.com/integrations/remote.html) drives the same harness from your phone's browser, and [Tackle Telegram](https://tackle.jordandalton.com/integrations/telegram.html) drives it from a chat — outbound-only, so it works from anywhere without your phone needing to reach your machine.
 
 ## Documentation
 
 Everything lives at **[tackle.jordandalton.com](https://tackle.jordandalton.com)**:
 
-- **Guide** — [What is Tackle?](https://tackle.jordandalton.com/guide/what-is-tackle) · [Installation](https://tackle.jordandalton.com/guide/installation) · [First Session](https://tackle.jordandalton.com/guide/first-session) · [Configuration](https://tackle.jordandalton.com/guide/configuration) · [Project Instructions](https://tackle.jordandalton.com/guide/project-instructions) · [Session Memory](https://tackle.jordandalton.com/guide/session-memory) · [Safety](https://tackle.jordandalton.com/guide/safety)
-- **The Agents** — [interactive](https://tackle.jordandalton.com/agents/interactive) · [headless](https://tackle.jordandalton.com/agents/headless) · [fix](https://tackle.jordandalton.com/agents/fix) · [review](https://tackle.jordandalton.com/agents/review) · [onboard](https://tackle.jordandalton.com/agents/onboard) · [upgrade](https://tackle.jordandalton.com/agents/upgrade) · [eval](https://tackle.jordandalton.com/agents/eval) · [self-healing](https://tackle.jordandalton.com/agents/self-healing)
-- **Integrations** — [GitHub](https://tackle.jordandalton.com/integrations/github) · [Sentry](https://tackle.jordandalton.com/integrations/sentry) · [Nightwatch](https://tackle.jordandalton.com/integrations/nightwatch) · [MCP](https://tackle.jordandalton.com/integrations/mcp) · [Remote](https://tackle.jordandalton.com/integrations/remote) · [Telegram](https://tackle.jordandalton.com/integrations/telegram)
-- **Extending** — [tools](https://tackle.jordandalton.com/extending/custom-tools) · [agents](https://tackle.jordandalton.com/extending/custom-agents) · [hooks](https://tackle.jordandalton.com/extending/hooks) · [subagents](https://tackle.jordandalton.com/extending/subagents) · [models & providers](https://tackle.jordandalton.com/extending/models)
-- **Reference** — [commands](https://tackle.jordandalton.com/reference/commands) · [tools](https://tackle.jordandalton.com/reference/tools)
+- **Guide** — [What is Tackle?](https://tackle.jordandalton.com/guide/what-is-tackle.html) · [Installation](https://tackle.jordandalton.com/guide/installation.html) · [First Session](https://tackle.jordandalton.com/guide/first-session.html) · [Configuration](https://tackle.jordandalton.com/guide/configuration.html) · [Project Instructions](https://tackle.jordandalton.com/guide/project-instructions.html) · [Session Memory](https://tackle.jordandalton.com/guide/session-memory.html) · [Safety](https://tackle.jordandalton.com/guide/safety.html)
+- **The Agents** — [interactive](https://tackle.jordandalton.com/agents/interactive.html) · [headless](https://tackle.jordandalton.com/agents/headless.html) · [fix](https://tackle.jordandalton.com/agents/fix.html) · [review](https://tackle.jordandalton.com/agents/review.html) · [onboard](https://tackle.jordandalton.com/agents/onboard.html) · [upgrade](https://tackle.jordandalton.com/agents/upgrade.html) · [eval](https://tackle.jordandalton.com/agents/eval.html) · [self-healing](https://tackle.jordandalton.com/agents/self-healing.html)
+- **Integrations** — [GitHub](https://tackle.jordandalton.com/integrations/github.html) · [Sentry](https://tackle.jordandalton.com/integrations/sentry.html) · [Nightwatch](https://tackle.jordandalton.com/integrations/nightwatch.html) · [MCP](https://tackle.jordandalton.com/integrations/mcp.html) · [Remote](https://tackle.jordandalton.com/integrations/remote.html) · [Telegram](https://tackle.jordandalton.com/integrations/telegram.html)
+- **Extending** — [tools](https://tackle.jordandalton.com/extending/custom-tools.html) · [agents](https://tackle.jordandalton.com/extending/custom-agents.html) · [hooks](https://tackle.jordandalton.com/extending/hooks.html) · [subagents](https://tackle.jordandalton.com/extending/subagents.html) · [models & providers](https://tackle.jordandalton.com/extending/models.html)
+- **Reference** — [commands](https://tackle.jordandalton.com/reference/commands.html) · [tools](https://tackle.jordandalton.com/reference/tools.html)
 
 ## Safety
 
-Tackle edits code and runs commands, and the boundaries are enforced in PHP, not by prompting: protected paths, per-environment [shell modes](https://tackle.jordandalton.com/guide/configuration#shell-modes), artisan allowlists, spend budgets, and worktree isolation. See [Safety](https://tackle.jordandalton.com/guide/safety).
+Tackle edits code and runs commands, and the boundaries are enforced in PHP, not by prompting: protected paths, per-environment [shell modes](https://tackle.jordandalton.com/guide/configuration.html#shell-modes), artisan allowlists, spend budgets, and worktree isolation. See [Safety](https://tackle.jordandalton.com/guide/safety.html).
 
 Two things worth knowing before you start:
 
