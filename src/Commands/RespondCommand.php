@@ -40,6 +40,7 @@ class RespondCommand extends Command
         {--pr=           : Pull request number the comment was left on}
         {--comment-id=   : ID of the triggering comment}
         {--comment-type=review : Where the comment lives: review (inline) | issue (conversation)}
+        {--defer-reply   : Return the reply in JSON for another service to publish}
         {--budget=       : Override the spend limit in USD for this run}
         {--max-steps=    : Stop after this many tool calls}
         {--yes           : Approve confirmations automatically instead of denying them}
@@ -63,6 +64,10 @@ class RespondCommand extends Command
 
     private bool $replyPosted = false;
 
+    private bool $deferReply = false;
+
+    private ?string $replyBody = null;
+
     private bool $pushed = false;
 
     public function handle(
@@ -74,6 +79,8 @@ class RespondCommand extends Command
         if (! $this->resolveOutputFormat()) {
             return self::FAILURE;
         }
+
+        $this->deferReply = (bool) $this->option('defer-reply');
 
         if (($error = $this->validateOptions()) !== null) {
             $this->error($error);
@@ -106,7 +113,12 @@ class RespondCommand extends Command
             return $this->finish(self::FAILURE, 'error', $e->getMessage());
         }
 
-        $responder->acknowledge($comment);
+        // Cloud runs publish as the installed GitHub App. Keep the workflow
+        // token completely out of the visible interaction when publication
+        // has been delegated to that trusted service.
+        if (! $this->deferReply) {
+            $responder->acknowledge($comment);
+        }
 
         // Never push into someone else's repository. Fork PRs get a polite
         // reply instead of a failed push.
@@ -197,6 +209,12 @@ class RespondCommand extends Command
      */
     private function reply(CommentResponder $responder, int $prNumber, CommentThread $comment, string $body): void
     {
+        $this->replyBody = $body;
+
+        if ($this->deferReply) {
+            return;
+        }
+
         if ($responder->reply($prNumber, $comment, $body)) {
             $this->replyPosted = true;
         }
@@ -218,6 +236,9 @@ class RespondCommand extends Command
             'error' => $error,
             'pr_number' => $this->prNumber,
             'comment_id' => $this->commentId,
+            'comment_type' => $this->option('comment-type'),
+            'reply_body' => $this->replyBody,
+            'reply_deferred' => $this->deferReply && $this->replyBody !== null,
             'reply_posted' => $this->replyPosted,
             'pushed' => $this->pushed,
             'usage' => $this->usageSummary($this->budget),
@@ -228,6 +249,10 @@ class RespondCommand extends Command
 
     private function validateOptions(): ?string
     {
+        if ($this->deferReply && ! $this->jsonOutput) {
+            return 'The --defer-reply option requires --output=json.';
+        }
+
         if (! ctype_digit((string) $this->option('pr'))) {
             return 'The --pr option is required and must be a pull request number.';
         }

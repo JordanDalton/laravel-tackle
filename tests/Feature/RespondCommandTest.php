@@ -74,6 +74,12 @@ it('rejects an unknown --comment-type', function () {
         ->assertExitCode(1);
 });
 
+it('requires JSON output when reply publication is deferred', function () {
+    $this->artisan('ai:respond', ['--pr' => '42', '--comment-id' => '555', '--defer-reply' => true])
+        ->expectsOutputToContain('--defer-reply option requires --output=json')
+        ->assertExitCode(1);
+});
+
 it('refuses fork PRs and replies instead of pushing', function () {
     fakeRespondPr(['head' => ['ref' => 'feat', 'sha' => 'abc9999', 'repo' => ['full_name' => 'stranger/fork']]]);
 
@@ -212,10 +218,44 @@ it('ai:respond --output=json reports a completed no-op with the reply posted', f
         ->and($json['error'])->toBeNull()
         ->and($json['pr_number'])->toBe(42)
         ->and($json['comment_id'])->toBe(555)
+        ->and($json['comment_type'])->toBe('review')
+        ->and($json['reply_body'])->toContain('Nothing to change')
+        ->and($json['reply_deferred'])->toBeFalse()
         ->and($json['reply_posted'])->toBeTrue()
         ->and($json['pushed'])->toBeFalse()
         ->and($json['usage']['input_tokens'])->toBe(1500)
         ->and($json['usage']['output_tokens'])->toBe(200);
+});
+
+it('ai:respond can defer its reply for a trusted publisher', function () {
+    fakeRespondPr();
+
+    Process::fake([
+        '*rev-parse*' => Process::result("abc9999\n"),
+        '*' => Process::result(''),
+    ]);
+
+    app()->instance(CodingAgent::class, new FakeCodingAgent([
+        new TextDelta('e', 'm', 'The requested change is already present.', 0),
+        new StreamEnd('e', 'stop', new Usage(800, 100), 0),
+    ]));
+
+    $exit = Artisan::call('ai:respond', [
+        '--pr' => '42',
+        '--comment-id' => '555',
+        '--comment-type' => 'issue',
+        '--output' => 'json',
+        '--defer-reply' => true,
+    ]);
+    $json = respondJson(Artisan::output());
+
+    expect($exit)->toBe(0)
+        ->and($json['reply_body'])->toBe('🤖 The requested change is already present.')
+        ->and($json['reply_deferred'])->toBeTrue()
+        ->and($json['reply_posted'])->toBeFalse()
+        ->and($json['comment_type'])->toBe('issue');
+
+    Http::assertNotSent(fn ($request) => $request->method() === 'POST');
 });
 
 it('ai:respond --output=json emits a document when refusing a fork PR', function () {
