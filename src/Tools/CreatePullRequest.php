@@ -4,10 +4,12 @@ namespace Tackle\Tools;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Process;
+use InvalidArgumentException;
 use Laravel\Ai\Tools\Request;
 use Tackle\Support\GitHubClient;
 use Tackle\Support\PathGuard;
 use Tackle\Support\RedGreenProof;
+use Tackle\Support\ScopedGitCommit;
 use Throwable;
 
 class CreatePullRequest extends AbstractTool
@@ -19,7 +21,7 @@ class CreatePullRequest extends AbstractTool
 
     public function description(): string
     {
-        return 'Create a git branch, commit all changes, push to origin, and open a GitHub pull request. Call this after finishing work on a GitHub issue. Always call ConfirmAction before calling this tool.';
+        return 'Create a git branch, commit only the explicitly listed files, push to origin, and open a GitHub pull request. Call this after finishing work on a GitHub issue. Always call ConfirmAction before calling this tool.';
     }
 
     public function schema(JsonSchema $schema): array
@@ -33,6 +35,9 @@ class CreatePullRequest extends AbstractTool
                 ->required(),
             'branch' => $schema->string()
                 ->description('Branch name to create, e.g. "tackle/issue-3-fix-login". Must not already exist.')
+                ->required(),
+            'files' => $schema->array()
+                ->description('Every repository-relative file to commit. List individual files edited, created, renamed, or deleted by this task; never pass directories.')
                 ->required(),
             'base' => $schema->string()
                 ->description('Base branch to open the PR against. Defaults to "main".'),
@@ -59,20 +64,26 @@ class CreatePullRequest extends AbstractTool
 
         $base = $base ?: 'main';
         $repo = $this->client->repo();
+        $git = new ScopedGitCommit($this->pathGuard);
+
+        try {
+            $files = $git->files($request->array('files', []));
+        } catch (InvalidArgumentException $e) {
+            return $e->getMessage();
+        }
 
         $escapedBranch = escapeshellarg($branch);
-        $escapedTitle = escapeshellarg($title);
 
         // Check there's something to commit
-        $status = Process::path($this->pathGuard->workspace())->run('git status --porcelain');
+        $status = $git->status($files);
         if (trim($status->output()) === '') {
-            return 'No changes to commit. Make sure the agent has edited files before opening a PR.';
+            return 'None of the selected files has changes to commit. Make sure files lists everything the agent edited.';
         }
 
         // Prove the new tests test the change while everything is still
         // uncommitted — the answer to "what would you need to see before
         // trusting this PR" was verification, every time we asked.
-        $proof = (new RedGreenProof($this->pathGuard))->run();
+        $proof = (new RedGreenProof($this->pathGuard))->run($files);
 
         try {
             // Create and switch to the new branch
@@ -81,11 +92,14 @@ class CreatePullRequest extends AbstractTool
                 return 'Failed to create branch: '.trim($checkout->errorOutput());
             }
 
-            // Stage all changes (respects .gitignore)
-            Process::path($this->pathGuard->workspace())->run('git add -A');
+            $stage = $git->stage($files);
+            if ($stage->failed()) {
+                return 'Staging failed: '.trim($stage->errorOutput());
+            }
 
-            // Commit
-            $commit = Process::path($this->pathGuard->workspace())->run("git commit -m {$escapedTitle}");
+            // Commit only the task's files, even if the deployment already
+            // has unrelated staged changes.
+            $commit = $git->commit($title, $files);
             if (! $commit->successful()) {
                 return 'Commit failed: '.trim($commit->errorOutput());
             }

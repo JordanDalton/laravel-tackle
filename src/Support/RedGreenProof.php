@@ -42,9 +42,10 @@ class RedGreenProof
     ) {}
 
     /**
+     * @param  list<string>|null  $scope
      * @return array{ran: bool, red: bool, green: bool, tests: list<string>}
      */
-    public function run(): array
+    public function run(?array $scope = null): array
     {
         $none = ['ran' => false, 'red' => false, 'green' => false, 'tests' => []];
 
@@ -55,7 +56,7 @@ class RedGreenProof
         $workspace = $this->guard->workspace();
 
         try {
-            [$testPaths, $fixFiles] = $this->changedFiles($workspace);
+            [$testPaths, $fixFiles] = $this->changedFiles($workspace, $scope);
 
             if ($testPaths === [] || $fixFiles === [] || count($fixFiles) > self::MAX_FIX_FILES) {
                 return $none;
@@ -106,13 +107,18 @@ class RedGreenProof
      *
      * @return array{0: list<string>, 1: list<string>}
      */
-    private function changedFiles(string $workspace): array
+    private function changedFiles(string $workspace, ?array $scope = null): array
     {
         // --untracked-files=all: a brand-new directory otherwise shows as one
         // "?? tests/" entry and the file inside it is invisible — which is
         // exactly the first-test-in-a-new-subdirectory case.
-        $status = Process::path($workspace)->timeout(30)
-            ->run(['git', 'status', '--porcelain', '--untracked-files=all']);
+        $command = ['git', '--literal-pathspecs', 'status', '--porcelain', '--untracked-files=all'];
+
+        if ($scope !== null) {
+            array_push($command, '--', ...$scope);
+        }
+
+        $status = Process::path($workspace)->timeout(30)->run($command);
 
         if (! $status->successful()) {
             return [[], []];

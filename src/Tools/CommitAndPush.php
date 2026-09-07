@@ -4,9 +4,11 @@ namespace Tackle\Tools;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Process;
+use InvalidArgumentException;
 use Laravel\Ai\Tools\Request;
 use Tackle\Contracts\InteractionPolicy;
 use Tackle\Support\PathGuard;
+use Tackle\Support\ScopedGitCommit;
 
 class CommitAndPush extends AbstractTool
 {
@@ -20,7 +22,7 @@ class CommitAndPush extends AbstractTool
 
     public function description(): string
     {
-        return 'Stage all changes in the workspace, create a commit, and push to the current remote branch. Use this to add follow-up commits to an existing pull request after CreatePullRequest has already opened it. Does not create a new PR.';
+        return 'Commit only the explicitly listed files and push to the current remote branch. Use this to add follow-up commits to an existing pull request after CreatePullRequest has already opened it. Does not create a new PR.';
     }
 
     public function schema(JsonSchema $schema): array
@@ -28,6 +30,9 @@ class CommitAndPush extends AbstractTool
         return [
             'message' => $schema->string()
                 ->description('Commit message describing what changed.')
+                ->required(),
+            'files' => $schema->array()
+                ->description('Every repository-relative file to commit. List individual files edited, created, renamed, or deleted by this task; never pass directories.')
                 ->required(),
             'branch' => $schema->string()
                 ->description('Remote branch name to push to, e.g. "tackle/issue-6-return-dalton". Required when working in a worktree (detached HEAD). Get this from ReadPullRequest. Do NOT check out the branch — the push uses HEAD:<branch> so no checkout is needed.'),
@@ -44,10 +49,17 @@ class CommitAndPush extends AbstractTool
         }
 
         $path = $this->pathGuard->workspace();
+        $git = new ScopedGitCommit($this->pathGuard);
 
-        $status = Process::path($path)->run('git status --porcelain');
+        try {
+            $files = $git->files($request->array('files', []));
+        } catch (InvalidArgumentException $e) {
+            return $e->getMessage();
+        }
+
+        $status = $git->status($files);
         if (trim($status->output()) === '') {
-            return 'No changes to commit.';
+            return 'None of the selected files has changes to commit.';
         }
 
         if ($branch !== '') {
@@ -57,20 +69,23 @@ class CommitAndPush extends AbstractTool
             $fetch = Process::path($path)->run('git fetch origin '.escapeshellarg($branch));
             if ($fetch->successful()) {
                 Process::path($path)->run('git reset --mixed FETCH_HEAD');
-                $afterReset = Process::path($path)->run('git status --porcelain');
+                $afterReset = $git->status($files);
                 if (trim($afterReset->output()) === '') {
-                    return 'No changes to commit — the remote branch already contains these changes.';
+                    return 'None of the selected files has changes to commit — the remote branch already contains them.';
                 }
             }
         }
 
-        if (! $this->previewAndConfirm($path, $branch)) {
+        if (! $this->previewAndConfirm($git, $branch, $files)) {
             return 'Cancelled by user.';
         }
 
-        Process::path($path)->run('git add -A');
+        $stage = $git->stage($files);
+        if ($stage->failed()) {
+            return 'Staging failed: '.trim($stage->errorOutput());
+        }
 
-        $commit = Process::path($path)->run('git commit -m '.escapeshellarg($message));
+        $commit = $git->commit($message, $files);
         if ($commit->failed()) {
             return 'Commit failed: '.trim($commit->errorOutput());
         }
@@ -89,7 +104,8 @@ class CommitAndPush extends AbstractTool
         return 'Changes committed and pushed to the existing PR branch.';
     }
 
-    private function previewAndConfirm(string $path, string $branch): bool
+    /** @param  list<string>  $files */
+    private function previewAndConfirm(ScopedGitCommit $git, string $branch, array $files): bool
     {
         $interaction = $this->interaction();
 
@@ -97,7 +113,7 @@ class CommitAndPush extends AbstractTool
         // With no terminal there is nobody to read it, and echoing it would corrupt
         // stdout for callers parsing structured output.
         if ($interaction->isInteractive()) {
-            $this->printPreview($path);
+            $this->printPreview($git, $files);
         }
 
         if (static::$confirmOverride !== null) {
@@ -109,10 +125,11 @@ class CommitAndPush extends AbstractTool
         return $interaction->confirm($label, default: false);
     }
 
-    private function printPreview(string $path): void
+    /** @param  list<string>  $files */
+    private function printPreview(ScopedGitCommit $git, array $files): void
     {
-        $stat = trim(Process::path($path)->run('git diff HEAD --stat')->output());
-        $diff = trim(Process::path($path)->run('git diff HEAD')->output());
+        $stat = trim($git->diff($files, stat: true)->output());
+        $diff = trim($git->diff($files)->output());
 
         echo PHP_EOL;
 

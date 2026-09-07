@@ -12,15 +12,20 @@ function makePrTool(): CreatePullRequest
     return new CreatePullRequest(app(GitHubClient::class), app(PathGuard::class));
 }
 
+function prRequest(array $attributes): Request
+{
+    return new Request(['files' => ['app/Foo.php'], ...$attributes]);
+}
+
 function fakeGitSuccess(string $statusOutput = ' M app/Foo.php'): void
 {
-    Process::fake([
-        'git status --porcelain' => Process::result($statusOutput),
-        'git checkout*' => Process::result(''),
-        'git add -A' => Process::result(''),
-        'git commit*' => Process::result(''),
-        'git push*' => Process::result(''),
-    ]);
+    Process::fake(function ($process) use ($statusOutput) {
+        $command = is_array($process->command) ? implode(' ', $process->command) : (string) $process->command;
+
+        return str_contains($command, 'status --porcelain')
+            ? Process::result($statusOutput)
+            : Process::result('');
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -35,7 +40,7 @@ it('returns not-configured message when GitHub credentials are missing', functio
         'gh*' => Process::result('', '', 1),
     ]);
 
-    $result = makePrTool()->handle(new Request([
+    $result = makePrTool()->handle(prRequest([
         'title' => 'Fix login',
         'body' => 'Fixed the login flow.',
         'branch' => 'tackle/issue-3-fix-login',
@@ -52,7 +57,7 @@ it('returns error when title is missing', function () {
     config()->set('tackle.github.token', 'ghp_token');
     config()->set('tackle.github.repo', 'acme/app');
 
-    $result = makePrTool()->handle(new Request([
+    $result = makePrTool()->handle(prRequest([
         'body' => 'Some body.',
         'branch' => 'tackle/fix',
     ]));
@@ -64,17 +69,15 @@ it('returns error when no changes to commit', function () {
     config()->set('tackle.github.token', 'ghp_token');
     config()->set('tackle.github.repo', 'acme/app');
 
-    Process::fake([
-        'git status --porcelain' => Process::result(''), // empty = no changes
-    ]);
+    Process::fake(fn () => Process::result(''));
 
-    $result = makePrTool()->handle(new Request([
+    $result = makePrTool()->handle(prRequest([
         'title' => 'Fix login',
         'body' => 'Fixed.',
         'branch' => 'tackle/fix',
     ]));
 
-    expect($result)->toContain('No changes to commit');
+    expect($result)->toContain('None of the selected files has changes to commit');
 });
 
 // ---------------------------------------------------------------------------
@@ -94,7 +97,7 @@ it('creates branch, commits, pushes, and opens a PR', function () {
         ], 201),
     ]);
 
-    $result = makePrTool()->handle(new Request([
+    $result = makePrTool()->handle(prRequest([
         'title' => 'Fix issue 3',
         'body' => 'Implemented the fix.',
         'branch' => 'tackle/issue-3-fix',
@@ -115,7 +118,7 @@ it('appends Closes #N to PR body when issue_number is given', function () {
         '*api.github.com*' => Http::response(['html_url' => 'https://github.com/acme/app/pull/10'], 201),
     ]);
 
-    makePrTool()->handle(new Request([
+    makePrTool()->handle(prRequest([
         'title' => 'My fix',
         'body' => 'Details here.',
         'branch' => 'tackle/issue-5',
@@ -135,7 +138,7 @@ it('returns error when GitHub API rejects the PR', function () {
         '*api.github.com*' => Http::response(['message' => 'Validation Failed'], 422),
     ]);
 
-    $result = makePrTool()->handle(new Request([
+    $result = makePrTool()->handle(prRequest([
         'title' => 'Fix',
         'body' => 'Details.',
         'branch' => 'tackle/fix',
@@ -148,12 +151,15 @@ it('returns error when git checkout fails', function () {
     config()->set('tackle.github.token', 'ghp_token');
     config()->set('tackle.github.repo', 'acme/app');
 
-    Process::fake([
-        'git status --porcelain' => Process::result(' M app/Foo.php'),
-        'git checkout*' => Process::result('', 'fatal: branch already exists', 1),
-    ]);
+    Process::fake(function ($process) {
+        $command = is_array($process->command) ? implode(' ', $process->command) : (string) $process->command;
 
-    $result = makePrTool()->handle(new Request([
+        return str_contains($command, 'git checkout')
+            ? Process::result('', 'fatal: branch already exists', 1)
+            : Process::result(' M app/Foo.php');
+    });
+
+    $result = makePrTool()->handle(prRequest([
         'title' => 'Fix',
         'body' => 'Details.',
         'branch' => 'tackle/fix',
@@ -231,10 +237,11 @@ it('reports the red-green proof in the PR body', function () {
 
     Http::fake(['*api.github.com*' => Http::response(['html_url' => 'https://github.com/acme/app/pull/9'], 201)]);
 
-    makePrTool()->handle(new Request([
+    makePrTool()->handle(prRequest([
         'title' => 'Fix',
         'body' => 'Details.',
         'branch' => 'tackle/fix',
+        'files' => ['app/Foo.php', 'tests/FooTest.php'],
     ]));
 
     Http::assertSent(fn ($request) => str_contains($request->body(), 'Verification')
@@ -251,7 +258,7 @@ it('says nothing about verification when no test was added', function () {
 
     Http::fake(['*api.github.com*' => Http::response(['html_url' => 'https://github.com/acme/app/pull/9'], 201)]);
 
-    makePrTool()->handle(new Request(['title' => 'Fix', 'body' => 'Details.', 'branch' => 'tackle/fix']));
+    makePrTool()->handle(prRequest(['title' => 'Fix', 'body' => 'Details.', 'branch' => 'tackle/fix']));
 
     Http::assertSent(fn ($request) => ! str_contains($request->body(), 'Verification'));
 });
