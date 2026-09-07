@@ -361,20 +361,22 @@ class RespondCommand extends Command
             throw new RuntimeException('Could not fetch the current base branch: '.trim($fetch->errorOutput()));
         }
 
-        $baseSha = $pr->baseSha;
+        $fetched = Process::path($base)->timeout(10)->run(['git', 'rev-parse', 'FETCH_HEAD']);
 
-        if ($baseSha === '') {
-            $fetched = Process::path($base)->timeout(10)->run(['git', 'rev-parse', 'FETCH_HEAD']);
-
-            if (! $fetched->successful()) {
-                throw new RuntimeException('Could not resolve the fetched base branch commit.');
-            }
-
-            $baseSha = trim($fetched->output());
+        if (! $fetched->successful()) {
+            throw new RuntimeException('Could not resolve the fetched base branch commit.');
         }
 
+        // GitHub's PR payload can briefly retain an older base.sha after the
+        // branch advances. FETCH_HEAD is the branch tip we just fetched and
+        // therefore the only authoritative merge target for this run.
+        $baseSha = trim($fetched->output());
+
         $merge = Process::path($base)->timeout(60)->run([
-            'git', 'merge', '--no-commit', '--no-ff', $baseSha,
+            'git',
+            '-c', 'user.name=Tackle',
+            '-c', 'user.email=tackle-bot@users.noreply.github.com',
+            'merge', '--no-commit', '--no-ff', $baseSha,
         ]);
 
         if ($merge->successful()) {

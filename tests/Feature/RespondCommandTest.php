@@ -106,7 +106,7 @@ it('prepares an actual merge against the current base when asked to resolve conf
         url: 'https://github.com/acme/app/pull/70',
         diff: '',
         headRepo: 'acme/app',
-        baseSha: 'base456',
+        baseSha: 'stale-base456',
         mergeable: false,
         mergeableState: 'dirty',
     );
@@ -114,7 +114,16 @@ it('prepares an actual merge against the current base when asked to resolve conf
     Process::fake(function (PendingProcess $process) {
         $command = $process->command;
 
-        if ($command === ['git', 'merge', '--no-commit', '--no-ff', 'base456']) {
+        if ($command === ['git', 'rev-parse', 'FETCH_HEAD']) {
+            return Process::result("current-base789\n");
+        }
+
+        if ($command === [
+            'git',
+            '-c', 'user.name=Tackle',
+            '-c', 'user.email=tackle-bot@users.noreply.github.com',
+            'merge', '--no-commit', '--no-ff', 'current-base789',
+        ]) {
             return Process::result(
                 output: "Auto-merging resources/js/pages/Welcome.vue\n",
                 errorOutput: "CONFLICT (content): Merge conflict in resources/js/pages/Welcome.vue\n",
@@ -135,7 +144,7 @@ it('prepares an actual merge against the current base when asked to resolve conf
 
     expect($context)
         ->toContain('GitHub reports this PR as conflicting')
-        ->toContain('`main` at `base456`')
+        ->toContain('`main` at `current-base789`')
         ->toContain('`resources/js/pages/Welcome.vue`')
         ->toContain('active merge');
 
@@ -143,7 +152,10 @@ it('prepares an actual merge against the current base when asked to resolve conf
         'git', 'fetch', '--no-tags', 'origin', 'main',
     ]);
     Process::assertRan(fn (PendingProcess $process) => $process->command === [
-        'git', 'merge', '--no-commit', '--no-ff', 'base456',
+        'git',
+        '-c', 'user.name=Tackle',
+        '-c', 'user.email=tackle-bot@users.noreply.github.com',
+        'merge', '--no-commit', '--no-ff', 'current-base789',
     ]);
 });
 
