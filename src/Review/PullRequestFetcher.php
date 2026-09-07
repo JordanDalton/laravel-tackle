@@ -56,6 +56,9 @@ class PullRequestFetcher
             url: (string) ($pr['html_url'] ?? ''),
             diff: Utf8::clean(trim($diff->body())),
             headRepo: (string) ($pr['head']['repo']['full_name'] ?? ''),
+            baseSha: (string) ($pr['base']['sha'] ?? ''),
+            mergeable: is_bool($pr['mergeable'] ?? null) ? $pr['mergeable'] : null,
+            mergeableState: (string) ($pr['mergeable_state'] ?? 'unknown'),
         );
     }
 }

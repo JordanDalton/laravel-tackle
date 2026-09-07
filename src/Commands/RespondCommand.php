@@ -128,6 +128,19 @@ class RespondCommand extends Command
             return $this->finish(self::FAILURE, 'error', $error);
         }
 
+        $conflictContext = '';
+
+        if ($this->requestsConflictResolution($comment->instruction)) {
+            try {
+                $conflictContext = $this->prepareConflictResolution($pr);
+            } catch (RuntimeException $e) {
+                $this->reply($responder, $pr->number, $comment, "❌ Tackle couldn't prepare the branch conflicts for resolution: {$e->getMessage()}");
+                $this->error($e->getMessage());
+
+                return $this->finish(self::FAILURE, 'error', $e->getMessage());
+            }
+        }
+
         $interaction = $this->option('yes') ? new AutoApproveInteraction : new DenyInteraction;
         $this->laravel->instance(InteractionPolicy::class, $interaction);
 
@@ -136,7 +149,7 @@ class RespondCommand extends Command
         $this->info("Responding to {$comment->author}'s comment on PR #{$pr->number}…");
 
         try {
-            $summary = $this->runAgent($agent, $budget, $this->buildPrompt($pr, $comment));
+            $summary = $this->runAgent($agent, $budget, $this->buildPrompt($pr, $comment, $conflictContext));
         } catch (Throwable $e) {
             $reason = $e instanceof AgentInterruptedException
                 ? ($e->getMessage() === 'budget_exceeded' ? 'the spend limit was reached' : 'the step limit was reached')
@@ -159,12 +172,12 @@ class RespondCommand extends Command
             return $this->finish(self::SUCCESS, 'completed');
         }
 
-        $diffStat = trim(Process::path(base_path())->run(['git', 'diff', '--stat'])->output());
+        $diffStat = trim(Process::path(base_path())->run(['git', 'diff', '--stat', 'HEAD'])->output());
 
         try {
             $sha = $this->commitAndPush($pr, $comment);
         } catch (RuntimeException $e) {
-            $this->reply($responder, $pr->number, $comment, "❌ Tackle made the change locally but couldn't push it: {$e->getMessage()}");
+            $this->reply($responder, $pr->number, $comment, "❌ Tackle made the change locally but couldn't finish and push it: {$e->getMessage()}");
             $this->error($e->getMessage());
 
             return $this->finish(self::FAILURE, 'error', $e->getMessage());
@@ -277,7 +290,7 @@ class RespondCommand extends Command
         return trim($text);
     }
 
-    private function buildPrompt(PullRequest $pr, CommentThread $comment): string
+    private function buildPrompt(PullRequest $pr, CommentThread $comment, string $conflictContext = ''): string
     {
         $location = $comment->path !== ''
             ? "\n**Location:** `{$comment->path}`".($comment->line ? " line {$comment->line}" : '')
@@ -291,9 +304,13 @@ class RespondCommand extends Command
             ? "\n\n**Earlier comments in this thread:**\n- ".implode("\n- ", $comment->thread)
             : '';
 
+        $conflicts = $conflictContext !== ''
+            ? "\n\n**Conflict-resolution setup performed by Tackle:**\n{$conflictContext}"
+            : '';
+
         return <<<PROMPT
         A reviewer left a comment on pull request #{$pr->number} ("{$pr->title}", branch `{$pr->headRef}`) and asked you to act on it.
-        {$location}{$hunk}{$thread}
+        {$location}{$hunk}{$thread}{$conflicts}
 
         **{$comment->author} wrote:**
         {$comment->instruction}
@@ -301,6 +318,7 @@ class RespondCommand extends Command
         Do what the comment asks, and nothing more:
         - If it asks for a code change, make the smallest change that addresses it, then run the relevant tests if the project has them.
         - If it asks a question, answer it — do not change any files.
+        - If Tackle prepared a conflict merge, resolve every listed file in the working tree. Remove all conflict markers, preserve the intent of both the PR and the current base, and verify the result. Do not claim there are no conflicts merely because the PR branch contains the base branch's older commits.
         - Do NOT commit or push. The changes are committed and pushed for you after you finish.
 
         Your final message is posted verbatim as the reply in the comment thread, so write it to the reviewer: brief, direct, and about what you did or found — not a running narration.
@@ -314,12 +332,83 @@ class RespondCommand extends Command
         return trim($result->output()) !== '';
     }
 
+    private function requestsConflictResolution(string $instruction): bool
+    {
+        return preg_match(
+            '/\b(?:resolve|fix|address)\b.{0,50}\bconflicts?\b|\bconflicts?\b.{0,50}\b(?:resolve|fix|address)\b/i',
+            $instruction,
+        ) === 1;
+    }
+
+    private function prepareConflictResolution(PullRequest $pr): string
+    {
+        $base = base_path();
+        $status = Process::path($base)->timeout(10)->run(['git', 'status', '--porcelain']);
+
+        if (! $status->successful()) {
+            throw new RuntimeException('Could not inspect the working tree before merging the base branch.');
+        }
+
+        if (trim($status->output()) !== '') {
+            throw new RuntimeException('The working tree is not clean before conflict resolution.');
+        }
+
+        $fetch = Process::path($base)->timeout(60)->run([
+            'git', 'fetch', '--no-tags', 'origin', $pr->baseRef,
+        ]);
+
+        if (! $fetch->successful()) {
+            throw new RuntimeException('Could not fetch the current base branch: '.trim($fetch->errorOutput()));
+        }
+
+        $baseSha = $pr->baseSha;
+
+        if ($baseSha === '') {
+            $fetched = Process::path($base)->timeout(10)->run(['git', 'rev-parse', 'FETCH_HEAD']);
+
+            if (! $fetched->successful()) {
+                throw new RuntimeException('Could not resolve the fetched base branch commit.');
+            }
+
+            $baseSha = trim($fetched->output());
+        }
+
+        $merge = Process::path($base)->timeout(60)->run([
+            'git', 'merge', '--no-commit', '--no-ff', $baseSha,
+        ]);
+
+        if ($merge->successful()) {
+            return "Fetched `{$pr->baseRef}` at `{$baseSha}` and merged it into the PR head without file-level conflicts. A merge commit may still be pending; verify the resulting tree before finishing.";
+        }
+
+        $unmerged = Process::path($base)->timeout(10)->run([
+            'git', 'diff', '--name-only', '--diff-filter=U', '-z',
+        ]);
+        $files = array_values(array_filter(explode("\0", $unmerged->output())));
+
+        if (! $unmerged->successful() || $files === []) {
+            $error = trim($merge->errorOutput()."\n".$merge->output());
+
+            throw new RuntimeException('Merging the current base failed without producing resolvable file conflicts: '.$error);
+        }
+
+        return 'GitHub reports this PR as '.($pr->hasConflicts() ? 'conflicting' : "`{$pr->mergeableState}`")
+            .". Fetched `{$pr->baseRef}` at `{$baseSha}` and merged it into the PR head. Git produced real conflict markers in:\n- `"
+            .implode("`\n- `", $files)."`\nResolve those files in the active merge. The command will create and push the merge commit after verification.";
+    }
+
     private function commitAndPush(PullRequest $pr, CommentThread $comment): string
     {
         $base = base_path();
         $message = "Apply review feedback from @{$comment->author}\n\n".$this->truncate($comment->instruction, 300);
 
         Process::path($base)->run(['git', 'add', '-A']);
+
+        $check = Process::path($base)->timeout(30)->run(['git', 'diff', '--cached', '--check']);
+
+        if (! $check->successful()) {
+            throw new RuntimeException('The staged resolution still contains conflict markers or whitespace errors: '.trim($check->output().$check->errorOutput()));
+        }
 
         $commit = Process::path($base)->run([
             'git', '-c', 'user.name=Tackle', '-c', 'user.email=tackle-bot@users.noreply.github.com',

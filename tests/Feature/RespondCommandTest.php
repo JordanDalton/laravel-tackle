@@ -1,12 +1,15 @@
 <?php
 
+use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Streaming\Events\StreamEnd;
 use Laravel\Ai\Streaming\Events\TextDelta;
+use Tackle\Commands\RespondCommand;
 use Tackle\Contracts\CodingAgent;
+use Tackle\Review\PullRequest;
 use Tackle\Tests\Fakes\FakeCodingAgent;
 
 function fakeRespondPr(array $overrides = []): void
@@ -90,6 +93,67 @@ it('refuses to run when the checkout does not match the PR head', function () {
     $this->artisan('ai:respond', ['--pr' => '42', '--comment-id' => '555'])
         ->expectsOutputToContain('does not match the PR head')
         ->assertExitCode(1);
+});
+
+it('prepares an actual merge against the current base when asked to resolve conflicts', function () {
+    $pr = new PullRequest(
+        number: 70,
+        title: 'Update heading',
+        body: '',
+        headRef: 'tackle/update-heading',
+        headSha: 'head123',
+        baseRef: 'main',
+        url: 'https://github.com/acme/app/pull/70',
+        diff: '',
+        headRepo: 'acme/app',
+        baseSha: 'base456',
+        mergeable: false,
+        mergeableState: 'dirty',
+    );
+
+    Process::fake(function (PendingProcess $process) {
+        $command = $process->command;
+
+        if ($command === ['git', 'merge', '--no-commit', '--no-ff', 'base456']) {
+            return Process::result(
+                output: "Auto-merging resources/js/pages/Welcome.vue\n",
+                errorOutput: "CONFLICT (content): Merge conflict in resources/js/pages/Welcome.vue\n",
+                exitCode: 1,
+            );
+        }
+
+        if ($command === ['git', 'diff', '--name-only', '--diff-filter=U', '-z']) {
+            return Process::result("resources/js/pages/Welcome.vue\0");
+        }
+
+        return Process::result();
+    });
+
+    $command = app(RespondCommand::class);
+    $prepare = new ReflectionMethod($command, 'prepareConflictResolution');
+    $context = $prepare->invoke($command, $pr);
+
+    expect($context)
+        ->toContain('GitHub reports this PR as conflicting')
+        ->toContain('`main` at `base456`')
+        ->toContain('`resources/js/pages/Welcome.vue`')
+        ->toContain('active merge');
+
+    Process::assertRan(fn (PendingProcess $process) => $process->command === [
+        'git', 'fetch', '--no-tags', 'origin', 'main',
+    ]);
+    Process::assertRan(fn (PendingProcess $process) => $process->command === [
+        'git', 'merge', '--no-commit', '--no-ff', 'base456',
+    ]);
+});
+
+it('only prepares conflict resolution for an explicit fix request', function () {
+    $command = app(RespondCommand::class);
+    $matches = new ReflectionMethod($command, 'requestsConflictResolution');
+
+    expect($matches->invoke($command, '/tackle resolve the branch conflicts'))->toBeTrue()
+        ->and($matches->invoke($command, '/tackle fix merge conflict in Welcome.vue'))->toBeTrue()
+        ->and($matches->invoke($command, '/tackle why does GitHub report a conflict?'))->toBeFalse();
 });
 
 // ---------------------------------------------------------------------------

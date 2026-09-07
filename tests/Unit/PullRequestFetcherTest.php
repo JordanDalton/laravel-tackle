@@ -29,7 +29,9 @@ it('fetches PR metadata and the API diff', function () {
             'title' => 'Add slugs',
             'body' => 'Adds slug support.',
             'head' => ['ref' => 'feat/slugs', 'sha' => 'abc123'],
-            'base' => ['ref' => 'main'],
+            'base' => ['ref' => 'main', 'sha' => 'def456'],
+            'mergeable' => false,
+            'mergeable_state' => 'dirty',
             'html_url' => 'https://github.com/acme/app/pull/42',
         ], 200);
     });
@@ -41,6 +43,10 @@ it('fetches PR metadata and the API diff', function () {
         ->and($pr->headRef)->toBe('feat/slugs')
         ->and($pr->headSha)->toBe('abc123')
         ->and($pr->baseRef)->toBe('main')
+        ->and($pr->baseSha)->toBe('def456')
+        ->and($pr->mergeable)->toBeFalse()
+        ->and($pr->mergeableState)->toBe('dirty')
+        ->and($pr->hasConflicts())->toBeTrue()
         ->and($pr->url)->toBe('https://github.com/acme/app/pull/42')
         ->and($pr->diff)->toBe('diff --git a/a.php b/a.php');
 });

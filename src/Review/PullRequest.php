@@ -14,7 +14,15 @@ class PullRequest
         public readonly string $url,
         public readonly string $diff,
         public readonly string $headRepo = '',
+        public readonly string $baseSha = '',
+        public readonly ?bool $mergeable = null,
+        public readonly string $mergeableState = 'unknown',
     ) {}
+
+    public function hasConflicts(): bool
+    {
+        return $this->mergeable === false || $this->mergeableState === 'dirty';
+    }
 
     /**
      * Whether the head branch lives in a different repository than the one
