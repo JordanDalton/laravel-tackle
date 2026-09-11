@@ -4,6 +4,8 @@ namespace Tackle\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Composer;
+use Illuminate\Support\Facades\Process;
+use Symfony\Component\Process\Process as SymfonyProcess;
 use TackleCodex\TackleCodexServiceProvider;
 use TackleGrok\TackleGrokServiceProvider;
 use TackleRemote\TackleRemoteServiceProvider;
@@ -11,10 +13,11 @@ use TackleRemote\TackleRemoteServiceProvider;
 class InstallCommand extends Command
 {
     protected $signature = 'tackle:install
-        {component? : Optional add-on: "remote" (phone/browser UI), "review" (PR review workflow), "eval-ci" (nightly ai:eval workflow), "codex" (OpenAI Codex provider), "grok" (xAI Grok provider), or "guard" (exfiltration guard hooks)}
+        {component? : Optional add-on: "remote" (phone/browser UI), "review" (PR review workflow), "eval-ci" (nightly ai:eval workflow), "codex" (OpenAI Codex provider), "grok" (xAI Grok provider), "grokbot" (Cursor automation webhooks), or "guard" (exfiltration guard hooks)}
         {--stubs : Also publish customisable stubs to stubs/tackle/}
         {--migrate : Run migrations automatically after publishing}
-        {--no-dev : For "remote" / "codex" / "grok": add to require instead of require-dev}';
+        {--no-dev : For "remote" / "codex" / "grok" / "grokbot": add to require instead of require-dev}
+        {--force : For "grokbot": run migrations in production without confirmation}';
 
     protected $description = 'Install Laravel Tackle — publish config, migrations, and optionally stubs — or an ecosystem add-on.';
 
@@ -29,6 +32,7 @@ class InstallCommand extends Command
                 'eval-ci' => $this->installEvalCi(),
                 'codex' => $this->installCodex(),
                 'grok' => $this->installGrok(),
+                'grokbot' => $this->installGrokbot(),
                 'guard' => $this->installGuard(),
                 default => $this->unknownComponent($component),
             };
@@ -175,6 +179,38 @@ class InstallCommand extends Command
         $this->line('');
 
         return self::SUCCESS;
+    }
+
+    private function installGrokbot(): int
+    {
+        // A registered installer means a compatible package is already booted.
+        // Version 0.1.0 has no installer, so it must go through Composer too.
+        if (! $this->getApplication()->has('grokbot:install')) {
+            $dev = ! $this->option('no-dev');
+            $this->components->info('Installing Tackle Grokbot'.($dev ? ' (require-dev)' : '').'...');
+            $composer = $this->laravel->make(Composer::class)->setWorkingPath(base_path());
+
+            if (! $composer->requirePackages(['jordandalton/tackle-grokbot:^0.1.1'], $dev, $this->output)) {
+                $this->components->error('composer require failed — see the output above. Grokbot setup was not run.');
+
+                return self::FAILURE;
+            }
+        }
+
+        // Restart Artisan to discover a newly installed provider. A TTY lets
+        // the child own hidden credential prompts without routing input here.
+        $interactive = $this->input->isInteractive() && SymfonyProcess::isTtySupported();
+        $command = [PHP_BINARY, base_path('artisan'), 'grokbot:install'];
+        if ($this->option('force')) {
+            $command[] = '--force';
+        }
+        if (! $interactive) {
+            $command[] = '--no-interaction';
+        }
+
+        return Process::path(base_path())->forever()->tty($interactive)
+            ->run($command, fn ($type, $output) => $this->output->write($output))
+            ->exitCode();
     }
 
     /**
@@ -331,6 +367,7 @@ class InstallCommand extends Command
         $this->line('  <fg=cyan>php artisan tackle:install eval-ci</> — nightly ai:eval benchmark workflow');
         $this->line('  <fg=cyan>php artisan tackle:install codex</>   — OpenAI Codex provider (ChatGPT plan or API key)');
         $this->line('  <fg=cyan>php artisan tackle:install grok</>    — xAI Grok provider (API key or grok.com plan)');
+        $this->line('  <fg=cyan>php artisan tackle:install grokbot</> — named Cursor automation webhooks');
         $this->line('  <fg=cyan>php artisan tackle:install guard</>   — exfiltration/injection guard hooks');
 
         return self::FAILURE;

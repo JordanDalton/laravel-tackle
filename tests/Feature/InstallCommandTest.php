@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Composer;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Process;
 
 beforeEach(function () {
     // Create a blank .env for tests
@@ -196,4 +198,51 @@ it('scaffolds the tackle-eval nightly workflow without overwriting', function ()
     expect(file_get_contents($path))->toBe('custom: workflow');
 
     @unlink($path);
+});
+
+it('installs grokbot and launches setup in a fresh artisan process', function () {
+    Process::fake();
+    $this->mock(Composer::class, function ($mock) {
+        $mock->shouldReceive('setWorkingPath')->once()->with(base_path())->andReturnSelf();
+        $mock->shouldReceive('requirePackages')->once()
+            ->withArgs(fn ($packages, $dev) => $packages === ['jordandalton/tackle-grokbot:^0.1.1'] && $dev === true)
+            ->andReturnTrue();
+    });
+
+    $this->artisan('tackle:install', ['component' => 'grokbot', '--no-interaction' => true])->assertSuccessful();
+
+    Process::assertRan(fn ($process) => $process->command === [PHP_BINARY, base_path('artisan'), 'grokbot:install', '--no-interaction']
+        && $process->path === base_path() && $process->timeout === null && ! $process->tty);
+});
+
+it('supports production grokbot installation with no-dev and force', function () {
+    Process::fake();
+    $this->mock(Composer::class, function ($mock) {
+        $mock->shouldReceive('setWorkingPath')->andReturnSelf();
+        $mock->shouldReceive('requirePackages')->once()
+            ->withArgs(fn ($packages, $dev) => $dev === false)->andReturnTrue();
+    });
+    $this->artisan('tackle:install', ['component' => 'grokbot', '--no-dev' => true, '--force' => true, '--no-interaction' => true])
+        ->assertSuccessful();
+    Process::assertRan(fn ($process) => $process->command === [PHP_BINARY, base_path('artisan'), 'grokbot:install', '--force', '--no-interaction']);
+});
+
+it('does not run grokbot setup when composer fails', function () {
+    Process::fake();
+    $this->mock(Composer::class, function ($mock) {
+        $mock->shouldReceive('setWorkingPath')->andReturnSelf();
+        $mock->shouldReceive('requirePackages')->once()->andReturnFalse();
+    });
+    $this->artisan('tackle:install', ['component' => 'grokbot'])->assertFailed();
+    Process::assertNothingRan();
+});
+
+it('reruns setup for an installed grokbot and propagates its failure', function () {
+    Artisan::command('grokbot:install', fn () => 0);
+    Process::fake([
+        '*' => Process::result(exitCode: 7),
+    ]);
+    $this->mock(Composer::class, fn ($mock) => $mock->shouldNotReceive('requirePackages'));
+    $this->artisan('tackle:install', ['component' => 'grokbot', '--no-interaction' => true])->assertExitCode(7)->run();
+    Process::assertRanTimes(fn ($process) => $process->command[2] === 'grokbot:install', 1);
 });
