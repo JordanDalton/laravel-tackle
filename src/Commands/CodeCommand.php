@@ -9,7 +9,7 @@ use Laravel\Ai\Streaming\Events\StreamEnd;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolCall;
 use Laravel\Ai\Streaming\Events\ToolResult;
-use Laravel\Prompts\Stream;
+use Symfony\Component\Console\Output\OutputInterface;
 use Tackle\Agents\PlanningAgent;
 use Tackle\Commands\Concerns\ResolvesSessionOptions;
 use Tackle\Contracts\CodingAgent;
@@ -33,7 +33,6 @@ use function Laravel\Prompts\intro;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\outro;
 use function Laravel\Prompts\select;
-use function Laravel\Prompts\stream;
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\textarea;
@@ -79,7 +78,9 @@ class CodeCommand extends Command
         'help' => '/help — this list',
     ];
 
-    private ?Stream $activeStream = null;
+    private bool $streamOpen = false;
+
+    private bool $streamEndsWithNewline = false;
 
     /**
      * Whether a markdown table in the response is drawn as a table. Toggled
@@ -254,6 +255,8 @@ class CodeCommand extends Command
                 }
             }
 
+            $diffBefore = $this->gitDiffFingerprint();
+
             title('Tackle — Thinking…');
             $this->line('');
 
@@ -294,7 +297,7 @@ class CodeCommand extends Command
 
             $this->persistSession($agent);
 
-            $this->showGitDiff();
+            $this->showGitDiff($diffBefore);
 
             title('Tackle — Ready');
             $this->line('');
@@ -859,20 +862,26 @@ class CodeCommand extends Command
                 continue;
             }
 
-            if ($this->activeStream === null) {
+            if (! $this->streamOpen) {
                 $this->line('');
-                $this->activeStream = stream();
+                $this->streamOpen = true;
             }
 
-            $this->activeStream->append($op['text']);
+            // Write each delta once. Animated redraws replay accumulated text
+            // in captured terminals and can no longer erase scrolled-off lines.
+            $this->output->write($op['text'], false, OutputInterface::OUTPUT_RAW);
+            $this->streamEndsWithNewline = str_ends_with($op['text'], "\n");
         }
     }
 
     private function closeStream(): void
     {
-        if ($this->activeStream !== null) {
-            $this->activeStream->close();
-            $this->activeStream = null;
+        if ($this->streamOpen) {
+            if (! $this->streamEndsWithNewline) {
+                $this->output->write("\n", false, OutputInterface::OUTPUT_RAW);
+            }
+            $this->streamOpen = false;
+            $this->streamEndsWithNewline = false;
         }
     }
 
@@ -946,21 +955,41 @@ class CodeCommand extends Command
         }
     }
 
-    private function showGitDiff(): void
+    private function gitDiffFingerprint(): ?string
     {
-        $wt = app(WorktreeManager::class);
-        $root = $wt->active() ? $wt->path() : base_path();
+        try {
+            $result = Process::path($this->workspaceRoot())->timeout(10)->run([
+                'git', 'diff', '--no-ext-diff', '--no-textconv', '--binary', 'HEAD', '--',
+            ]);
 
-        if (! is_dir($root.'/.git') && ! $wt->active()) {
+            return $result->successful() ? hash('sha256', $result->output()) : null;
+        } catch (Throwable) {
+            // Optional status output must not prevent a conversation turn.
+            return null;
+        }
+    }
+
+    private function showGitDiff(?string $before): void
+    {
+        $after = $this->gitDiffFingerprint();
+        if ($before === null || $after === null || $before === $after) {
             return;
         }
 
-        $output = shell_exec('git -C '.escapeshellarg($root).' diff --stat 2>/dev/null');
+        try {
+            $result = Process::path($this->workspaceRoot())->timeout(10)->run([
+                'git', 'diff', '--no-ext-diff', '--no-textconv', '--stat=80,60,10', 'HEAD', '--',
+            ]);
+        } catch (Throwable) {
+            return;
+        }
 
-        if ($output && trim($output) !== '') {
+        if ($result->successful() && trim($result->output()) !== '') {
             $this->line('');
-            $label = $wt->active() ? 'Worktree changes (live files untouched)' : 'Uncommitted changes';
-            note($label."\n".trim($output));
+            $label = app(WorktreeManager::class)->active()
+                ? 'Worktree changes (live files untouched)'
+                : 'Uncommitted changes (includes earlier edits)';
+            note($label."\n".trim($result->output()));
         }
     }
 
