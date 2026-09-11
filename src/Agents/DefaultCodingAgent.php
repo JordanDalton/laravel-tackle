@@ -370,6 +370,10 @@ RULES;
             $tools[] = $this->delegate;
         }
 
+        foreach (app()->tagged('tackle.tools') as $tool) {
+            $tools[] = $tool;
+        }
+
         // Optional explicit allowlist: tackle.tools = ['ReadFile', ...] keeps
         // only those (by class basename). Null/empty = everything above.
         $allow = config('tackle.tools');
