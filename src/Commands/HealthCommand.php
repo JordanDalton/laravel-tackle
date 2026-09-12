@@ -5,10 +5,14 @@ namespace Tackle\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
+use Tackle\Support\ProviderCredentials;
+use Tackle\Support\ProviderProbe;
+use Throwable;
 
 class HealthCommand extends Command
 {
-    protected $signature = 'tackle:health';
+    protected $signature = 'tackle:health
+        {--probe-provider : Make a minimal live request to verify the configured model provider credentials}';
 
     protected $description = 'Check that Laravel Tackle is correctly configured.';
 
@@ -18,7 +22,7 @@ class HealthCommand extends Command
 
     private array $warnings = [];
 
-    public function handle(): int
+    public function handle(ProviderProbe $providerProbe): int
     {
         $this->line('');
         $this->line('<fg=green;options=bold>Laravel Tackle — Health Check</>');
@@ -27,6 +31,11 @@ class HealthCommand extends Command
         $this->checkConfig();
         $this->checkAiConfig();
         $this->checkApiKey();
+
+        if ((bool) $this->option('probe-provider')) {
+            $this->probeProvider($providerProbe);
+        }
+
         $this->checkGit();
         $this->checkEnvTesting();
 
@@ -77,6 +86,25 @@ class HealthCommand extends Command
         }
     }
 
+    private function probeProvider(ProviderProbe $providerProbe): void
+    {
+        $provider = (string) config('tackle.provider', 'anthropic');
+
+        if (ProviderCredentials::missing($provider) !== null) {
+            return;
+        }
+
+        try {
+            $providerProbe->verify($provider, (string) config('tackle.model'));
+            $this->pass("Provider [{$provider}] accepted a live request");
+        } catch (Throwable $exception) {
+            $this->check(
+                "Provider [{$provider}] rejected the live request: {$exception->getMessage()}",
+                'Verify the provider API key and URL in this deployment, clear the config cache, and try again.'
+            );
+        }
+    }
+
     private function checkGit(): void
     {
         $base = base_path();
@@ -117,7 +145,7 @@ class HealthCommand extends Command
         try {
             DB::table('tackle_healing_log')->count();
             $this->pass('tackle_healing_log migration has been run');
-        } catch (\Throwable) {
+        } catch (Throwable) {
             $this->check(
                 'tackle_healing_log table not found',
                 'Run: php artisan vendor:publish --tag="tackle-migrations" && php artisan migrate'

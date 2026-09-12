@@ -35,6 +35,18 @@ Then start an interactive coding session:
 php artisan ai:code
 ```
 
+For a server deployment, verify that the configured key is not merely present
+but accepted by the provider:
+
+```bash
+php artisan tackle:health --probe-provider
+```
+
+The probe makes one minimal model request. If interactive or remote chat shows
+an HTTP 401, the model provider rejected the key loaded by that deployment;
+this is separate from Tackler mobile and connector authentication. Correct the
+provider key or URL, run `php artisan optimize:clear`, and restart the worker.
+
 That's it — see [Your First Session](https://tackle.jordandalton.com/guide/first-session.html) for the guided tour. Requires **PHP 8.3+** and **Laravel 12 or 13**.
 
 ## What's in the box
